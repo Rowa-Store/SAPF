@@ -1,60 +1,28 @@
-// Página inicial: mostra se as integrações estão respondendo. É o lugar para
-// conferir se as variáveis de ambiente foram preenchidas corretamente.
+// Página inicial: atalhos para cada área do app, com uma linha sobre o que
+// cada uma faz.
 
-'use client';
-
-import { useSaude } from '../hooks/useSaude';
+import { AREAS } from '@/lib/navegacao';
 
 export default function Inicio() {
-  const { saude, erro } = useSaude();
-
   return (
     <>
-      <p>
-        Este protótipo lê pedidos de atacado e de franquia e cria a nota como <strong>rascunho</strong> no
-        Tiny. A conferência e a emissão continuam sendo feitas dentro do Tiny, à mão.
-      </p>
-
-
-      <h2>Situação das integrações</h2>
-
-      {erro && <p className="aviso">Não foi possível consultar o status: {erro}</p>}
-      {!saude && !erro && <p className="fraco">Consultando os três serviços…</p>}
-
-      {saude && (
-        <table>
-          <thead>
-            <tr>
-              <th>Serviço</th>
-              <th>Situação</th>
-              <th>Detalhe</th>
-            </tr>
-          </thead>
-          <tbody>
-            {saude.servicos.map((s) => (
-              <tr key={s.servico}>
-                <td>{s.servico}</td>
-                <td>
-                  <span className={s.ok ? 'marca marca-ok' : 'marca marca-erro'}>
-                    {s.ok ? 'respondendo' : 'com problema'}
-                  </span>
-                </td>
-                <td className="fraco">{s.detalhe}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {saude && (
+      <div className="boas-vindas">
+        <h2>SAPF</h2>
         <p className="fraco">
-          Emissão fiscal: {saude.permitirEmissao ? 'liberada (PERMITIR_EMISSAO=true)' : 'bloqueada por PERMITIR_EMISSAO'}.
+          Pedidos de atacado e de franquia e transferências entre lojas do Shopify viram nota fiscal no
+          Tiny. Escolha por onde começar.
         </p>
-      )}
+      </div>
 
-      <p style={{ marginTop: '2rem' }}>
-        <a href="/pedidos">Ver pedidos recentes</a>
-      </p>
+      <nav className="grade-atalhos" aria-label="Áreas do app">
+        {AREAS.map((a) => (
+          <a key={a.href} href={a.href} className="atalho">
+            <span className="atalho-titulo">{a.rotulo}</span>
+            <span className="atalho-descricao">{a.descricao}</span>
+            <span className="atalho-seta" aria-hidden="true">→</span>
+          </a>
+        ))}
+      </nav>
     </>
   );
 }

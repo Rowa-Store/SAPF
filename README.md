@@ -1,4 +1,4 @@
-# Notas de atacado — Shopify para Tiny (Olist)
+# SAPF — Shopify para Tiny (Olist)
 
 Sistema que lê pedidos de atacado e de franquia no Shopify, monta a nota
 fiscal e cria o **rascunho** dentro do Tiny. A conferência e a emissão
@@ -69,7 +69,7 @@ commitada no repositório.
 
 O sistema roda sem Supabase configurado, mas sem histórico, sem trava contra
 nota duplicada e sem a lista de CNPJs de franquia (todo CNPJ com pedido vira
-"atacado" nesse caso). A página inicial (`/api/saude`) avisa quando algum
+"atacado" nesse caso). A tela Sys Info (`/sysinfo`, que consulta `/api/saude`) avisa quando algum
 serviço não está configurado ou fora do ar.
 
 ### Criando as tabelas no Supabase
@@ -139,7 +139,7 @@ pedidos (confirmação na tela e `permitir_emissao`). O registro fica em
 ## Mapa do projeto
 
 O projeto segue uma organização orientada a **features**: cada domínio
-(`inicio`, `pedidos`, `rascunhos`) tem sua própria pasta de componentes e
+(`inicio`, `sysinfo`, `pedidos`, `rascunhos`) tem sua própria pasta de componentes e
 hooks em `src/features/`, e o que é compartilhado entre eles (integrações
 externas, acesso a dados, regras fiscais, utilitários) fica isolado em
 `src/lib/`. As rotas em `src/app/` são a "casca" de roteamento do Next.js —
@@ -149,7 +149,8 @@ cada `page.js` reexporta o componente da feature correspondente, e cada
 ```
 src/
   app/
-    page.js                          Entrada da rota inicial -> features/inicio
+    page.js                          Tela inicial com atalhos -> features/inicio
+    sysinfo/page.js                  Diagnóstico das integrações -> features/sysinfo
     pedidos/page.js                  Entrada da lista -> features/pedidos
     pedidos/[id]/rascunho/page.js            Conferência e inclusão do rascunho -> features/rascunhos
     pedidos/[id]/rascunho/editar/page.js     Edição do rascunho -> features/rascunhos

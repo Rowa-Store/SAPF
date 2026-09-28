@@ -64,7 +64,8 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   justify-content: space-between;
   background: var(--papel-alt);
 }
-.marca-app { display: flex; align-items: center; gap: 0.6rem; }
+.marca-app { display: flex; align-items: center; gap: 0.6rem; color: var(--tinta); }
+.marca-app:hover { text-decoration: none; }
 .marca-app-icone {
   width: 1.35rem;
   height: 1.35rem;
@@ -73,13 +74,39 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   flex-shrink: 0;
 }
 .topo h1 { font-size: 1.15rem; margin: 0; font-weight: 600; letter-spacing: -0.01em; }
-.topo nav { display: flex; gap: 0.25rem; font-size: 0.9rem; }
+.topo nav { display: flex; flex-wrap: wrap; gap: 0.25rem; font-size: 0.9rem; }
 .topo nav a {
   color: var(--tinta-fraca);
   padding: 0.4rem 0.7rem;
   border-radius: 999px;
 }
 .topo nav a:hover { color: var(--tinta); background: var(--realce); text-decoration: none; }
+.topo nav a.ativo { color: var(--azul); background: var(--azul-fundo); }
+
+/* ---- / (tela inicial) ---- */
+
+.boas-vindas { margin: 1rem 0 1.5rem; }
+.boas-vindas h2 { font-size: 1.6rem; margin: 0 0 0.35rem; }
+.boas-vindas p { margin: 0; }
+
+.grade-atalhos { display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 1rem; }
+.atalho {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1.1rem 1.25rem 1.1rem;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--papel-alt);
+  color: var(--tinta);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.atalho:hover { text-decoration: none; border-color: var(--azul); background: var(--realce); }
+.atalho-titulo { font-weight: 600; font-size: 1.05rem; }
+.atalho-descricao { color: var(--tinta-fraca); font-size: 0.88rem; padding-right: 1.5rem; }
+.atalho-seta { position: absolute; top: 1.1rem; right: 1.25rem; color: var(--tinta-fraca); transition: transform 0.15s ease, color 0.15s ease; }
+.atalho:hover .atalho-seta { color: var(--azul); transform: translateX(3px); }
 
 h2 { font-size: 1.2rem; font-weight: 600; margin: 2rem 0 0.75rem; letter-spacing: -0.01em; }
 h3 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem; }

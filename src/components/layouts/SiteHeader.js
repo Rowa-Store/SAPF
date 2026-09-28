@@ -1,17 +1,33 @@
+'use client';
+
+import { usePathname } from 'next/navigation';
+import { AREAS } from '@/lib/navegacao';
+
+/** Rota ativa: a própria área ou qualquer subpágina dela (ex.: /pedidos/123/rascunho). */
+function estaAtiva(caminho, href) {
+  return href === '/' ? caminho === '/' : caminho === href || caminho.startsWith(`${href}/`);
+}
+
 /** Cabeçalho fixo do app: marca e navegação principal. */
 export default function SiteHeader() {
+  const caminho = usePathname() ?? '/';
+  const links = [{ href: '/', rotulo: 'Início' }, ...AREAS];
+
   return (
     <header className="topo">
-      <div className="marca-app">
+      <a href="/" className="marca-app">
         <span className="marca-app-icone" aria-hidden="true" />
-        <h1>Notas de atacado</h1>
-      </div>
+        <h1>SAPF</h1>
+      </a>
       <nav>
-        <a href="/">Início</a>
-        <a href="/pedidos">Pedidos</a>
-        <a href="/rascunhos">Rascunhos</a>
-        <a href="/transferencias">Transferências</a>
-        <a href="/gtin">GTIN</a>
+        {links.map((l) => {
+          const ativa = estaAtiva(caminho, l.href);
+          return (
+            <a key={l.href} href={l.href} className={ativa ? 'ativo' : undefined} aria-current={ativa ? 'page' : undefined}>
+              {l.rotulo}
+            </a>
+          );
+        })}
       </nav>
     </header>
   );

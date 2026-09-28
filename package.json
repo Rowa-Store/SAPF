@@ -1,5 +1,5 @@
 {
-  "name": "SGPF",
+  "name": "sapf",
   "version": "0.1.0",
   "private": true,
   "description": "Protótipo de automação fiscal: pedidos do Shopify viram rascunhos de nota no Tiny (Olist).",
