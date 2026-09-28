@@ -117,9 +117,10 @@ pedidos (confirmação na tela e `permitir_emissao`). O registro fica em
   endereço com bairro) — sem a loja de destino cadastrada, o rascunho é
   recusado. Cadastre direto no SQL Editor, como `cnpjs_franquia`.
 - **Regras por loja de destino** (colunas de `lojas_fiscais`):
-  - `natureza_operacao`: nome da natureza no Tiny, de onde sai o CFOP (use uma
-    para dentro do estado e outra para interestadual). Vazia, cai em
-    `Transferência de mercadoria`, com aviso.
+  - `natureza_operacao`: nome da natureza no Tiny, de onde sai o CFOP. Tem que
+    ser **idêntico** ao cadastro de naturezas do Tiny (acentos e maiúsculas
+    inclusos) — um nome que não existe lá vira, em silêncio, a natureza padrão
+    da conta ("Venda para contribuinte"). Vazia, o rascunho é recusado.
   - `base_valor`: `custo` (padrão, `unitCost` do Shopify; sem custo, cai no
     preço de venda e a tela avisa) ou `venda` (preço da variante).
   - `desconto_percentual`: % abatido do valor de cada item (padrão 0).

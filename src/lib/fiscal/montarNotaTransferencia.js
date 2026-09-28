@@ -16,16 +16,13 @@
 //         com aviso.
 //       · `desconto_percentual`: % abatido do valor unitário de cada item
 //         (0 = sem desconto).
-//       · `natureza_operacao`: nome da natureza no Tiny, de onde sai o CFOP —
-//         é o que separa transferência dentro do estado da interestadual. Tem
-//         que bater com o cadastro de naturezas da conta. Em branco, cai em
-//         NATUREZA_TRANSFERENCIA, com aviso.
+//       · `natureza_operacao`: nome da natureza no Tiny, de onde sai o CFOP.
+//         Tem que ser IGUAL ao cadastro de naturezas da conta: um nome que não
+//         existe lá é trocado em silêncio pela natureza padrão ("Venda para
+//         contribuinte"). Em branco, a nota não é criada.
 //   - Sem frete, sem transportadora, sem pagamento, sem desconto no rodapé.
 
 import { dataBr, formatarNcm, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
-
-/** Natureza usada quando a loja de destino não tem uma cadastrada. */
-export const NATUREZA_TRANSFERENCIA = 'Transferência de mercadoria';
 
 /** `frete_por_conta` "S" = sem ocorrência de transporte (a própria empresa leva). */
 const SEM_FRETE = 'S';
@@ -111,11 +108,11 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
   }
   const fator = Number.isFinite(desconto) && desconto > 0 && desconto < 100 ? 1 - desconto / 100 : 1;
 
-  const natureza = destino?.natureza_operacao?.trim() || NATUREZA_TRANSFERENCIA;
-  if (destino && !destino.natureza_operacao?.trim()) {
+  const natureza = destino?.natureza_operacao?.trim() ?? '';
+  if (destino && !natureza) {
     alertas.push(
-      `Loja "${nomeDestino}" sem natureza de operação no cadastro — usando "${NATUREZA_TRANSFERENCIA}". ` +
-        'Confira se vale para o estado dela.'
+      `Loja "${nomeDestino}" sem natureza de operação no cadastro (lojas_fiscais) — o rascunho não ` +
+        'será criado até ela ser preenchida com o nome exato da natureza no Tiny.'
     );
   }
 

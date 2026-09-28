@@ -181,6 +181,13 @@ export async function POST(request, { params }) {
         422
       );
     }
+    if (!cadastro.lojas[destinoId].natureza_operacao?.trim()) {
+      return erroJson(
+        `A loja de destino "${transferencia.destination?.name}" está sem natureza de operação em ` +
+          'lojas_fiscais — sem ela o Tiny usaria a natureza padrão da conta.',
+        422
+      );
+    }
     ({ payload } = montarNotaTransferencia(transferencia, {
       origem: cadastro.lojas[origemId] ?? null,
       destino: cadastro.lojas[destinoId],

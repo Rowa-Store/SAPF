@@ -108,8 +108,10 @@ create table if not exists lojas_fiscais (
 );
 
 -- Regras da nota por loja de DESTINO (ver montarNotaTransferencia.js):
---   natureza_operacao    nome da natureza no Tiny (define o CFOP — dentro do
---                        estado x interestadual). Vazia = "Transferência de mercadoria".
+--   natureza_operacao    nome da natureza no Tiny (define o CFOP). Tem que ser
+--                        IGUAL ao cadastro do Tiny, com acento e maiúsculas —
+--                        nome desconhecido vira "Venda para contribuinte".
+--                        Vazia = rascunho recusado.
 --   base_valor           'custo' (padrão) ou 'venda' — de onde sai o valor do item.
 --   desconto_percentual  % abatido do valor de cada item. 0 = sem desconto.
 alter table lojas_fiscais add column if not exists natureza_operacao text;
