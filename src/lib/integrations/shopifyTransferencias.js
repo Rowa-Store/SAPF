@@ -20,7 +20,7 @@ query Transferencias($first: Int!, $after: String, $query: String) {
   inventoryTransfers(first: $first, after: $after, query: $query, reverse: true, sortKey: CREATED_AT) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id name referenceName dateCreated status note totalQuantity receivedQuantity
+      id name referenceName dateCreated status totalQuantity receivedQuantity
       origin { name location { id } }
       destination { name location { id } }
     }
@@ -80,8 +80,12 @@ function montarBusca({ origemId, destinoId, dataInicial, dataFinal, mostrarRascu
   return termos.join(' AND ') || null;
 }
 
-/** Lista de transferências para a tela /transferencias, mais recentes primeiro. */
-export async function listarTransferencias(filtros = {}) {
+/**
+ * Lista de transferências para a tela /transferencias, mais recentes primeiro.
+ * `aoReceberPagina(nodes)` é chamado a cada página lida — a rota usa para já
+ * consultar o Supabase enquanto a próxima página ainda vem do Shopify.
+ */
+export async function listarTransferencias(filtros = {}, { aoReceberPagina } = {}) {
   const query = montarBusca(filtros);
   const transferencias = [];
   let after = null;
@@ -91,7 +95,9 @@ export async function listarTransferencias(filtros = {}) {
   while (true) {
     const dados = await shopifyGraphQL(QUERY_TRANSFERENCIAS, { first: 250, after, query });
     const conexao = dados.inventoryTransfers;
-    transferencias.push(...(conexao?.nodes ?? []));
+    const nodes = conexao?.nodes ?? [];
+    transferencias.push(...nodes);
+    aoReceberPagina?.(nodes);
     paginas += 1;
     if (!conexao?.pageInfo?.hasNextPage) break;
     if (paginas >= MAX_PAGINAS) {
@@ -108,10 +114,26 @@ export async function listarTransferencias(filtros = {}) {
   return { transferencias: lista, truncado };
 }
 
+// Lojas quase nunca mudam, e a lista era pedida ao Shopify a cada carga da
+// tela — na abertura, antes das transferências (para achar o CD pelo nome).
+// Fica guardada em memória por alguns minutos.
+const LOCAIS_VALIDOS_MS = 10 * 60 * 1000;
+let locaisEmCache = null;
+
 /** Locais (lojas) do Shopify, para os filtros de origem/destino/exclusão. */
-export async function listarLocais() {
-  const dados = await shopifyGraphQL(QUERY_LOCAIS, {});
-  return (dados.locations?.nodes ?? []).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+export async function listarLocais({ ignorarCache = false } = {}) {
+  if (!ignorarCache && locaisEmCache && Date.now() - locaisEmCache.em < LOCAIS_VALIDOS_MS) {
+    return locaisEmCache.promessa;
+  }
+  const promessa = shopifyGraphQL(QUERY_LOCAIS, {}).then((dados) =>
+    (dados.locations?.nodes ?? []).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
+  );
+  locaisEmCache = { em: Date.now(), promessa };
+  // Falha não fica guardada: a próxima carga tenta de novo.
+  promessa.catch(() => {
+    if (locaisEmCache?.promessa === promessa) locaisEmCache = null;
+  });
+  return promessa;
 }
 
 /** Transferência completa, com TODOS os itens (pagina `lineItems` até o fim). */
@@ -136,7 +158,7 @@ export async function obterTransferenciaCompleta(id) {
 
 /** Ping usado pelo /api/saude. */
 export async function verificarShopifyTransferencias() {
-  const locais = await listarLocais();
+  const locais = await listarLocais({ ignorarCache: true });
   return {
     servico: 'Shopify (transferências)',
     ok: true,

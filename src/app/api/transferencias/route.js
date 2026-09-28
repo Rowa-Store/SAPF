@@ -46,18 +46,32 @@ export async function GET(request) {
       origemId = locaisProntos.find((l) => chaveNome(l.name) === origemNome)?.id ?? null;
     }
 
+    // A situação fiscal de cada página já é pedida ao Supabase assim que a
+    // página chega, em paralelo com a leitura da seguinte.
+    const consultasSituacao = [];
     const [{ transferencias, truncado }, locais] = await Promise.all([
-      listarTransferencias({
-        origemId,
-        destinoId: busca.get('destino') || null,
-        dataInicial,
-        dataFinal,
-        mostrarRascunhos: busca.get('rascunhos') === '1',
-      }),
+      listarTransferencias(
+        {
+          origemId,
+          destinoId: busca.get('destino') || null,
+          dataInicial,
+          dataFinal,
+          mostrarRascunhos: busca.get('rascunhos') === '1',
+        },
+        {
+          aoReceberPagina: (nodes) => {
+            const consulta = statusPorPedido(nodes.map((t) => t.id));
+            // Se o Shopify falhar numa página seguinte, ninguém chega a
+            // esperar esta consulta — sem o catch, a falha dela ficaria solta.
+            consulta.catch(() => {});
+            consultasSituacao.push(consulta);
+          },
+        }
+      ),
       locaisProntos ?? listarLocais(),
     ]);
 
-    const situacoes = await statusPorPedido(transferencias.map((t) => t.id));
+    const situacoes = Object.assign({}, ...(await Promise.all(consultasSituacao)));
 
     const excluir = busca.get('excluir');
     const naoEmitidas = busca.get('naoEmitidas') === '1';

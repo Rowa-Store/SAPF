@@ -18,6 +18,19 @@ export const FILTROS_VAZIOS = {
 // A tela abre filtrada nas transferências que saem do CD.
 const ORIGEM_PADRAO = 'Rowa Centro de Distribuição 1';
 
+// ...e nas dos últimos dias. Sem data, o Shopify devolvia até 1000
+// transferências em páginas de 250, uma atrás da outra — era a maior parte da
+// espera. Para ver as mais antigas, basta apagar ou mudar a data inicial.
+const DIAS_PADRAO = 30;
+
+/** Filtros com que a tela abre (e para onde "Limpar" volta): só a data inicial. */
+function filtrosPadrao() {
+  const d = new Date();
+  d.setDate(d.getDate() - DIAS_PADRAO);
+  const de = [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
+  return { ...FILTROS_VAZIOS, de };
+}
+
 function paraQuery(filtros) {
   const busca = new URLSearchParams();
   for (const [chave, valor] of Object.entries(filtros)) {
@@ -49,7 +62,8 @@ async function lerJson(resposta, mensagemPadrao) {
  * mostra o erro nela mesma, e o lote segue para a próxima.
  */
 export function useTransferencias() {
-  const [filtros, setFiltros] = useState(FILTROS_VAZIOS);
+  const [padrao] = useState(filtrosPadrao);
+  const [filtros, setFiltros] = useState(padrao);
   const [transferencias, setTransferencias] = useState(null);
   const [locais, setLocais] = useState([]);
   const [truncado, setTruncado] = useState(false);
@@ -95,7 +109,7 @@ export function useTransferencias() {
   }, []);
 
   useEffect(() => {
-    carregar(FILTROS_VAZIOS, `&origemNome=${encodeURIComponent(ORIGEM_PADRAO)}`).then((corpo) => {
+    carregar(padrao, `&origemNome=${encodeURIComponent(ORIGEM_PADRAO)}`).then((corpo) => {
       // Só aplica se o usuário ainda não escolheu outra origem enquanto carregava.
       if (corpo?.origemId) setFiltros((atual) => (atual.origem ? atual : { ...atual, origem: corpo.origemId }));
     });
@@ -103,7 +117,7 @@ export function useTransferencias() {
       .then((r) => r.json())
       .then((d) => setPermitirEmissao(!!d.permitirEmissao))
       .catch(() => setPermitirEmissao(false));
-  }, [carregar]);
+  }, [carregar, padrao]);
 
   function atualizarFiltro(campo, valor) {
     setFiltros((atual) => ({ ...atual, [campo]: valor }));
@@ -114,11 +128,11 @@ export function useTransferencias() {
   }
 
   function limparFiltros() {
-    setFiltros(FILTROS_VAZIOS);
-    carregar(FILTROS_VAZIOS);
+    setFiltros(padrao);
+    carregar(padrao);
   }
 
-  const filtrosAlterados = JSON.stringify(filtros) !== JSON.stringify(FILTROS_VAZIOS);
+  const filtrosAlterados = JSON.stringify(filtros) !== JSON.stringify(padrao);
 
   function atualizarLinha(id, mudanca) {
     setTransferencias((atual) => atual.map((t) => (t.id === id ? { ...t, ...mudanca } : t)));

@@ -21,35 +21,27 @@ export const runtime = 'nodejs';
  * lugar nenhum — então entram na lista com os dados do payload que foi
  * enviado ao Tiny.
  */
-async function rascunhosForaDaPagina(idsNaPagina) {
-  const { ok, erro, rascunhos } = await listarRascunhosPendentes({ limite: 50 });
-  if (!ok) {
-    console.error('[pedidos] Falha ao listar rascunhos pendentes no Supabase:', erro);
-    return [];
-  }
+function rascunhosForaDaPagina(rascunhos, idsNaPagina) {
   return rascunhos
     .filter((r) => !idsNaPagina.has(r.shopify_order_id))
-    .map((r) => {
-      const cliente = r.payload_enviado?.nota_fiscal?.cliente;
-      return {
-        id: idNumerico(r.shopify_order_id),
-        gid: r.shopify_order_id,
-        name: r.shopify_order_name,
-        createdAt: r.criado_em,
-        cliente: cliente?.nome || '—',
-        total: r.payload_enviado ? totalDaNota(r.payload_enviado) : null,
-        tags: [],
-        classificacao: r.classificacao,
-        cnpj: cliente?.cpf_cnpj || null,
-        origemCnpj: null,
-        status: 'rascunho_criado',
-        tinyNotaId: r.tiny_nota_id,
-        notaEmitida: false,
-        numeroNf: r.numero_nf ?? null,
-        tinyNotasSubstituidas: r.tiny_notas_substituidas ?? [],
-        foraDaLista: true,
-      };
-    });
+    .map((r) => ({
+      id: idNumerico(r.shopify_order_id),
+      gid: r.shopify_order_id,
+      name: r.shopify_order_name,
+      createdAt: r.criado_em,
+      cliente: r.cliente_nome || '—',
+      total: r.itens ? totalDaNota({ nota_fiscal: { itens: r.itens } }) : null,
+      tags: [],
+      classificacao: r.classificacao,
+      cnpj: r.cliente_cnpj || null,
+      origemCnpj: null,
+      status: 'rascunho_criado',
+      tinyNotaId: r.tiny_nota_id,
+      notaEmitida: false,
+      numeroNf: r.numero_nf ?? null,
+      tinyNotasSubstituidas: r.tiny_notas_substituidas ?? [],
+      foraDaLista: true,
+    }));
 }
 
 export async function GET(request) {
@@ -60,6 +52,15 @@ export async function GET(request) {
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean);
+
+    // Os pendentes antigos só aparecem na primeira página e sem busca — numa
+    // busca, a pessoa quer ver só o que casou.
+    const primeiraPagina = !cursor && termos.length === 0;
+
+    // Franquias e rascunhos pendentes não dependem do Shopify: saem já, em
+    // paralelo com a busca, em vez de esperar os pedidos voltarem.
+    const cnpjsFranquiaPromessa = listarCnpjsFranquia();
+    const pendentesPromessa = primeiraPagina ? listarRascunhosPendentes({ limite: 50 }) : null;
 
     // Nº da NF e CNPJ não são pesquisáveis no Shopify: o Supabase os traduz
     // para o nº do pedido antes. CNPJ sai dos termos de texto (o Shopify não
@@ -74,22 +75,27 @@ export async function GET(request) {
       return Response.json({ pedidos: [], proximoCursor: null });
     }
 
-    const [{ pedidos, pageInfo }, cnpjsFranquiaResp] = await Promise.all([
-      listarPedidosRecentes({ limite: ITENS_POR_PAGINA, cursor, termos: termosShopify, nomes }),
-      listarCnpjsFranquia(),
-    ]);
-
-    // Os pendentes antigos só aparecem na primeira página e sem busca — numa
-    // busca, a pessoa quer ver só o que casou.
-    const primeiraPagina = !cursor && termos.length === 0;
-    const [situacoes, antigos] = await Promise.all([
+    const { pedidos, pageInfo } = await listarPedidosRecentes({
+      limite: ITENS_POR_PAGINA,
+      cursor,
+      termos: termosShopify,
+      nomes,
+    });
+    const [situacoes, cnpjsFranquiaResp, pendentesResp] = await Promise.all([
       statusPorPedido(pedidos.map((p) => p.id)),
-      primeiraPagina ? rascunhosForaDaPagina(new Set(pedidos.map((p) => p.id))) : [],
+      cnpjsFranquiaPromessa,
+      pendentesPromessa,
     ]);
     if (!cnpjsFranquiaResp.ok) {
       console.error('[pedidos] Falha ao buscar cnpjs_franquia no Supabase, classificando sem a lista de franquia:', cnpjsFranquiaResp.erro);
     }
     const cnpjsFranquia = cnpjsFranquiaResp.ok ? cnpjsFranquiaResp.cnpjs : [];
+    if (pendentesResp && !pendentesResp.ok) {
+      console.error('[pedidos] Falha ao listar rascunhos pendentes no Supabase:', pendentesResp.erro);
+    }
+    const antigos = pendentesResp?.ok
+      ? rascunhosForaDaPagina(pendentesResp.rascunhos, new Set(pedidos.map((p) => p.id)))
+      : [];
 
     const lista = pedidos.map((p) => {
       const { cnpj, origem } = extrairCnpj(p._bruto);

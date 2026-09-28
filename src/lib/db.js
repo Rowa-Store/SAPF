@@ -209,15 +209,22 @@ export async function statusPorPedido(orderIds) {
   const db = obterCliente();
   if (!db) return {};
 
-  const linhas = [];
-  for (let i = 0; i < orderIds.length; i += IDS_POR_CONSULTA) {
-    const { data, error } = await db
-      .from('notas_processadas')
-      .select('shopify_order_id, status, tiny_nota_id, nota_emitida, numero_nf, tiny_notas_substituidas')
-      .in('shopify_order_id', orderIds.slice(i, i + IDS_POR_CONSULTA));
+  // Os lotes vão em paralelo: um atrás do outro, 1000 transferências eram 10
+  // idas e voltas ao Supabase antes de a lista aparecer.
+  const lotes = [];
+  for (let i = 0; i < orderIds.length; i += IDS_POR_CONSULTA) lotes.push(orderIds.slice(i, i + IDS_POR_CONSULTA));
+  const respostas = await Promise.all(
+    lotes.map((ids) =>
+      db
+        .from('notas_processadas')
+        .select('shopify_order_id, status, tiny_nota_id, nota_emitida, numero_nf, tiny_notas_substituidas')
+        .in('shopify_order_id', ids)
+    )
+  );
+  const linhas = respostas.flatMap(({ data, error }) => {
     if (error) throw new Error(`Falha ao ler a situação fiscal no Supabase: ${error.message}`);
-    linhas.push(...(data ?? []));
-  }
+    return data ?? [];
+  });
   return Object.fromEntries(linhas.map((r) => [r.shopify_order_id, r]));
 }
 
@@ -250,7 +257,9 @@ export async function definirPermitirEmissao(valor) {
 /**
  * Rascunhos de pedido ainda não emitidos, mais recentes primeiro. O filtro de
  * emissão vai na consulta: trazer também os emitidos (cada um com o payload
- * inteiro) só para descartar depois pesava no carregamento da tela.
+ * inteiro) só para descartar depois pesava no carregamento da tela. Do
+ * payload vêm só o cliente e os itens (para o total) — o resto da nota não
+ * aparece na lista.
  */
 export async function listarRascunhosPendentes({ limite = 50 } = {}) {
   const db = obterCliente();
@@ -259,7 +268,10 @@ export async function listarRascunhosPendentes({ limite = 50 } = {}) {
   const { data, error } = await db
     .from('notas_processadas')
     .select(
-      'shopify_order_id, shopify_order_name, classificacao, tiny_nota_id, numero_nf, payload_enviado, tiny_notas_substituidas, criado_em'
+      'shopify_order_id, shopify_order_name, classificacao, tiny_nota_id, numero_nf, tiny_notas_substituidas, criado_em, ' +
+        'cliente_nome:payload_enviado->nota_fiscal->cliente->>nome, ' +
+        'cliente_cnpj:payload_enviado->nota_fiscal->cliente->>cpf_cnpj, ' +
+        'itens:payload_enviado->nota_fiscal->itens'
     )
     .eq('status', 'rascunho_criado')
     .eq('nota_emitida', false)

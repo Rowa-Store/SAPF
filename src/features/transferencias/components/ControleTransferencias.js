@@ -234,7 +234,13 @@ export default function ControleTransferencias() {
           </div>
           <div>
             <label htmlFor="de">Data inicial</label>
-            <input id="de" type="date" value={filtros.de} onChange={(e) => atualizarFiltro('de', e.target.value)} />
+            <input
+              id="de"
+              type="date"
+              title="A tela abre nos últimos 30 dias — apague a data e aplique para ver as mais antigas"
+              value={filtros.de}
+              onChange={(e) => atualizarFiltro('de', e.target.value)}
+            />
           </div>
           <div>
             <label htmlFor="ate">Data final</label>
