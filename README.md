@@ -59,11 +59,10 @@ commitada no repositório.
 | Variável | Descrição |
 |---|---|
 | `SHOPIFY_STORE_DOMAIN` | Domínio `.myshopify.com` da loja |
-| `SHOPIFY_API_TOKEN` | Token da Admin API (permissão de leitura de pedidos) |
+| `SHOPIFY_API_TOKEN` | Token da Admin API (leitura de pedidos e escopos `read_inventory_transfers`, `read_locations`, `read_inventory`, `read_products` para as transferências) |
 | `SHOPIFY_API_VERSION` | Versão da Admin API, ex.: `2025-07` |
 | `TINY_API_TOKEN` | Token em Configurações > Geral > Tokens no Tiny |
 | `TINY_API_BASE` | `https://api.tiny.com.br/api2` |
-| `SHOPIFY_TRANSFERENCIAS_TOKEN` | Token do app de transferências do Shopify (escopos `read_inventory_transfers`, `read_locations`, `read_inventory`, `read_products`). Domínio e versão são os mesmos `SHOPIFY_STORE_DOMAIN` e `SHOPIFY_API_VERSION` |
 | `SUPABASE_URL` | Project Settings > API > Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings > API > `service_role`. Nunca exponha no navegador. |
 | `PERMITIR_EMISSAO` | Valor inicial da trava, só usado se a linha `permitir_emissao` ainda não existir no Supabase. Não mude sem alinhar com o time fiscal. |
@@ -107,7 +106,7 @@ resposta diz qual serviço está com problema e por quê.
 ## Transferências entre lojas
 
 A tela `/transferencias` lista as transferências de estoque do Shopify
-(`inventoryTransfers`, lidas com o token do app de transferências) e, para
+(`inventoryTransfers`, lidas com o mesmo token dos pedidos) e, para
 cada uma, cria o rascunho da nota no Tiny e emite — com as mesmas travas dos
 pedidos (confirmação na tela e `permitir_emissao`). O registro fica em
 `notas_processadas`, com o gid da transferência e `classificacao =
@@ -203,7 +202,7 @@ src/
       montarNotaTransferencia.js     Transferência do Shopify -> JSON do nota.fiscal.incluir
     integrations/
       shopify.js                     Admin GraphQL API — fonte real dos pedidos
-      shopifyTransferencias.js       Transferências e locais (token do app de transferências)
+      shopifyTransferencias.js       Transferências e locais
       tiny.js                        API 2.0 do Tiny, com as travas de segurança
 
 supabase/

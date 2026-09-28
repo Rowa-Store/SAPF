@@ -7,15 +7,11 @@ import { paraGid } from '../utils.js';
 
 /**
  * POST genérico na Admin GraphQL API. Trata erros de rede, de GraphQL e userErrors.
- *
- * `credenciais` existe porque as transferências de estoque são lidas com o
- * token de outro app (ver shopifyTransferencias.js) — omitido, usa o app de
- * pedidos do .env.
  */
-export async function shopifyGraphQL(query, variables = {}, credenciais = {}) {
-  const dominio = credenciais.dominio ?? process.env.SHOPIFY_STORE_DOMAIN;
-  const token = credenciais.token ?? process.env.SHOPIFY_API_TOKEN;
-  const versao = credenciais.versao ?? process.env.SHOPIFY_API_VERSION;
+export async function shopifyGraphQL(query, variables = {}) {
+  const dominio = process.env.SHOPIFY_STORE_DOMAIN;
+  const token = process.env.SHOPIFY_API_TOKEN;
+  const versao = process.env.SHOPIFY_API_VERSION;
 
   if (!dominio || !token || !versao) {
     throw new Error('Uma ou mais variáveis de ambiente do Shopify não configuradas.');

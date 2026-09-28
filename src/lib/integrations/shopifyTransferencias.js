@@ -1,23 +1,12 @@
 // shopifyTransferencias.js — transferências de estoque entre lojas (Admin
 // GraphQL API, `inventoryTransfers`).
 //
-// Estas leituras usam o token de OUTRO app do Shopify, não o de pedidos: é o
-// app que já tem os escopos de transferência (read_inventory_transfers,
-// read_locations, read_inventory, read_products). Só o token é próprio
-// (SHOPIFY_TRANSFERENCIAS_TOKEN); domínio e versão são os mesmos do app de
-// pedidos (SHOPIFY_STORE_DOMAIN e SHOPIFY_API_VERSION), já que a loja é a mesma.
+// Usa o mesmo token da Admin API dos pedidos (SHOPIFY_API_TOKEN), que precisa
+// ter também os escopos read_inventory_transfers, read_locations,
+// read_inventory e read_products.
 
 import { idNumerico } from '../utils.js';
 import { shopifyGraphQL } from './shopify.js';
-
-function credenciais() {
-  const token = process.env.SHOPIFY_TRANSFERENCIAS_TOKEN;
-  if (!token) {
-    throw new Error('SHOPIFY_TRANSFERENCIAS_TOKEN não configurado (token do app de transferências do Shopify).');
-  }
-  // Domínio e versão ficam de fora: shopifyGraphQL usa os do .env.
-  return { token };
-}
 
 /** Aceita "123" ou o gid completo e sempre devolve o gid da transferência. */
 export function paraGidTransferencia(id) {
@@ -100,7 +89,7 @@ export async function listarTransferencias(filtros = {}) {
   let truncado = false;
 
   while (true) {
-    const dados = await shopifyGraphQL(QUERY_TRANSFERENCIAS, { first: 250, after, query }, credenciais());
+    const dados = await shopifyGraphQL(QUERY_TRANSFERENCIAS, { first: 250, after, query });
     const conexao = dados.inventoryTransfers;
     transferencias.push(...(conexao?.nodes ?? []));
     paginas += 1;
@@ -121,7 +110,7 @@ export async function listarTransferencias(filtros = {}) {
 
 /** Locais (lojas) do Shopify, para os filtros de origem/destino/exclusão. */
 export async function listarLocais() {
-  const dados = await shopifyGraphQL(QUERY_LOCAIS, {}, credenciais());
+  const dados = await shopifyGraphQL(QUERY_LOCAIS, {});
   return (dados.locations?.nodes ?? []).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 }
 
@@ -134,7 +123,7 @@ export async function obterTransferenciaCompleta(id) {
   let temProximaPagina = true;
 
   while (temProximaPagina) {
-    const dados = await shopifyGraphQL(QUERY_TRANSFERENCIA_COMPLETA, { id: gid, cursor }, credenciais());
+    const dados = await shopifyGraphQL(QUERY_TRANSFERENCIA_COMPLETA, { id: gid, cursor });
     if (!dados.inventoryTransfer) throw new Error(`Transferência ${gid} não encontrada no Shopify.`);
     transferencia = dados.inventoryTransfer;
     itens.push(...transferencia.lineItems.nodes);
@@ -151,6 +140,6 @@ export async function verificarShopifyTransferencias() {
   return {
     servico: 'Shopify (transferências)',
     ok: true,
-    detalhe: `Token do app de transferências aceito. ${locais.length} local(is) encontrado(s).`,
+    detalhe: `Acesso às transferências OK. ${locais.length} local(is) encontrado(s).`,
   };
 }
