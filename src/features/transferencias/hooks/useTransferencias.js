@@ -146,23 +146,19 @@ export function useTransferencias() {
     }
   }
 
-  /**
-   * `substituir`: cria um novo rascunho no lugar do que já existe (o antigo fica para remover no Tiny).
-   * `reemitir`: idem, mas por cima de uma nota já emitida — a linha volta a "não emitida".
-   */
-  async function enviarRascunho(t, { substituir = false, reemitir = false } = {}) {
+  /** `substituir`: cria um novo rascunho no lugar do que já existe (o antigo fica para remover no Tiny). */
+  async function enviarRascunho(t, { substituir = false } = {}) {
     const corpo = await lerJson(
       await fetch(`/api/transferencias/${t.id}/rascunho`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmacaoTeste: true, substituir, reemitir }),
+        body: JSON.stringify({ confirmacaoTeste: true, substituir }),
       }),
       'O Tiny recusou a inclusão.'
     );
     atualizarLinha(t.id, {
       situacaoFiscal: 'rascunho_criado',
       tinyNotaId: corpo.tinyNotaId,
-      ...(reemitir ? { notaEmitida: false, numeroNf: null } : {}),
       ...(corpo.tinyNotasSubstituidas ? { tinyNotasSubstituidas: corpo.tinyNotasSubstituidas } : {}),
     });
     return corpo;
@@ -183,16 +179,6 @@ export function useTransferencias() {
     if (t.situacaoFiscal !== 'rascunho_criado') await enviarRascunho(t);
     return enviarEmissao(t);
   }
-
-  // Nota já emitida: cria um novo rascunho por cima e emite a nota nova. Se a
-  // emissão falhar, a linha fica com o rascunho novo, pronta para "Emitir nota".
-  async function reemissao(t) {
-    await enviarRascunho(t, { reemitir: true });
-    return enviarEmissao(t);
-  }
-
-  /** O que "emitir" significa para a linha: reemitir se já emitida, senão criar (se faltar) e emitir. */
-  const operacaoDeEmissao = (t) => (t.notaEmitida ? reemissao : rascunhoEEmissao);
 
   async function executarNaLinha(t, operacao, aoConcluir) {
     definirAcao(t.id, { fase: 'enviando' });
@@ -215,15 +201,6 @@ export function useTransferencias() {
     return executarNaLinha(t, (linha) => enviarRascunho(linha, { substituir: true }), (corpo) => setAviso(corpo.mensagem));
   }
 
-  function reemitir(t) {
-    return executarNaLinha(t, reemissao, (corpo) =>
-      setAviso(
-        `Transferência ${t.name} reemitida${corpo.numeroNf ? ` — NF nº ${corpo.numeroNf}` : ''}. ` +
-          'Cancele a nota anterior à mão no Tiny.'
-      )
-    );
-  }
-
   function emitir(t) {
     return executarNaLinha(t, enviarEmissao);
   }
@@ -235,11 +212,8 @@ export function useTransferencias() {
   }
 
   const podeEmitir = (t) => !t.notaEmitida && t.status !== 'CANCELED';
-  // Já emitidas também podem ser marcadas, para reemitir em lote — mas só uma a
-  // uma: "emitir todas" e o "marcar a página" continuam ignorando as emitidas.
-  const podeSelecionar = (t) => t.status !== 'CANCELED';
   const comRascunho = (transferencias ?? []).filter((t) => podeEmitir(t) && t.situacaoFiscal === 'rascunho_criado');
-  const selecionadasEmitiveis = (transferencias ?? []).filter((t) => podeSelecionar(t) && selecionadas.has(t.id));
+  const selecionadasEmitiveis = (transferencias ?? []).filter((t) => podeEmitir(t) && selecionadas.has(t.id));
 
   function alternarSelecao(id) {
     setSelecionadas((atual) => {
@@ -263,16 +237,10 @@ export function useTransferencias() {
 
   async function emitirEmLote(lista, descricao) {
     if (lista.length === 0 || lote) return;
-    const semRascunho = lista.filter((t) => !t.notaEmitida && t.situacaoFiscal !== 'rascunho_criado').length;
-    const jaEmitidas = lista.filter((t) => t.notaEmitida).length;
-    // Uma confirmação só vale para o lote inteiro, inclusive para as reemissões.
+    const semRascunho = lista.filter((t) => t.situacaoFiscal !== 'rascunho_criado').length;
     const confirmou = window.confirm(
       `Emitir ${lista.length} nota(s) de ${descricao}? Isso dá valor fiscal real no Tiny e é irreversível.` +
-        (semRascunho ? ` ${semRascunho} delas ainda não têm rascunho — ele será criado antes de emitir.` : '') +
-        (jaEmitidas
-          ? ` ${jaEmitidas} delas JÁ ESTÃO EMITIDAS: cada uma ganha um novo rascunho e uma NOVA nota fiscal — ` +
-            'as notas anteriores continuam valendo até serem canceladas à mão no Tiny.'
-          : '')
+        (semRascunho ? ` ${semRascunho} delas ainda não têm rascunho — ele será criado antes de emitir.` : '')
     );
     if (!confirmou) return;
 
@@ -280,7 +248,7 @@ export function useTransferencias() {
     setLote({ feitas: 0, total: lista.length });
     const falhas = [];
     for (const [i, t] of lista.entries()) {
-      if (await executarNaLinha(t, operacaoDeEmissao(t))) selecionarVarias([t.id], false);
+      if (await executarNaLinha(t, rascunhoEEmissao)) selecionarVarias([t.id], false);
       else falhas.push(t.name);
       setLote({ feitas: i + 1, total: lista.length });
     }
@@ -375,9 +343,7 @@ export function useTransferencias() {
     novoRascunho,
     emitir,
     emitirDireto,
-    reemitir,
     podeEmitir,
-    podeSelecionar,
     selecionadas,
     alternarSelecao,
     selecionarVarias,

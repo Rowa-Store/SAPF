@@ -9,10 +9,6 @@
 //     que o preview mostrou. Com `substituir: true`, cria um novo mesmo que já
 //     exista rascunho (ex.: depois de corrigir o cadastro da loja); o antigo
 //     vai para tiny_notas_substituidas e precisa ser removido à mão no Tiny.
-//     Com `reemitir: true`, faz o mesmo mesmo que a nota atual já tenha sido
-//     EMITIDA: o registro volta a "não emitida" para a nota nova ser emitida
-//     em seguida (exige a trava de emissão ligada). A NF antiga continua
-//     valendo até ser cancelada à mão no Tiny.
 //   - GET  devolve o rascunho já criado (o payload realmente enviado ao Tiny),
 //     para a tela de edição carregar.
 //   - PUT  "edita" o rascunho: como no pedido, a API 2.0 do Tiny não altera
@@ -25,7 +21,6 @@ import { obterTransferenciaCompleta, paraGidTransferencia } from '@/lib/integrat
 import { montarNotaTransferencia } from '@/lib/fiscal/montarNotaTransferencia';
 import {
   lojasFiscaisPorLocal,
-  obterPermitirEmissao,
   obterRascunhoCriado,
   registrarErro,
   registrarRascunhoCriado,
@@ -160,25 +155,16 @@ export async function POST(request, { params }) {
     );
   }
 
-  const reemitir = corpo.reemitir === true;
-  const substituir = reemitir || corpo.substituir === true;
+  const substituir = corpo.substituir === true;
 
   // Trava contra duplicidade — vale também para nota emitida fora do sistema.
-  // Substituir um rascunho ou uma nota emitida só é aceito quando pedido
-  // explicitamente.
+  // Substituir um rascunho só é aceito quando pedido explicitamente.
   const situacao = (await statusPorPedido([gid]))[gid];
-  if (situacao?.nota_emitida && !reemitir) {
+  if (situacao?.nota_emitida) {
     return erroJson(
       `Esta transferência já está marcada como emitida${situacao.numero_nf ? ` (NF ${situacao.numero_nf})` : ''}.`,
       409
     );
-  }
-  if (reemitir && !situacao?.nota_emitida) {
-    return erroJson('Esta transferência não tem nota emitida — use "Novo rascunho" ou "Emitir nota".', 409);
-  }
-  // Sem a trava ligada, a reemissão pararia no meio: registro zerado e nota nova sem emitir.
-  if (reemitir && !(await obterPermitirEmissao())) {
-    return erroJson('Emissão bloqueada. Ligue "Permitir emissão" na tela de rascunhos.', 403);
   }
   if (situacao?.status === 'rascunho_criado' && !substituir) {
     return erroJson(`Esta transferência já tem o rascunho ${situacao.tiny_nota_id} no Tiny.`, 409, {
@@ -246,7 +232,6 @@ export async function POST(request, { params }) {
       tinyNotaId: idNota,
       respostaTiny: retorno,
       notasSubstituidas,
-      reiniciarEmissao: reemitir,
     });
     if (!registro.ok) {
       console.error(`[transferencia] Nota ${idNota} criada no Tiny, mas falhou ao registrar no Supabase:`, registro.erro);
@@ -258,11 +243,7 @@ export async function POST(request, { params }) {
       tinyNotaIdAnterior: anterior?.tiny_nota_id ?? null,
       tinyNotasSubstituidas: notasSubstituidas ?? null,
       confirmacao,
-      mensagem: reemitir
-        ? `Novo rascunho ${idNota ?? ''} criado no Tiny para reemitir a transferência ${transferencia.name}. ` +
-          `A nota anterior (${anterior.tiny_nota_id}${situacao.numero_nf ? `, NF ${situacao.numero_nf}` : ''}) ` +
-          'continua emitida — cancele ela à mão no Tiny.'
-        : anterior
+      mensagem: anterior
         ? `Novo rascunho ${idNota ?? ''} criado no Tiny para a transferência ${transferencia.name}. ` +
           `Cancele ou exclua o rascunho ${anterior.tiny_nota_id} dentro do Tiny — a API não faz isso ` +
           'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.'
