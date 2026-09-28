@@ -178,12 +178,6 @@ export async function obterSituacaoNota(id) {
   return { emitida, numero, situacao: nota?.situacao ?? null };
 }
 
-/** Consulta o Tiny e diz se a nota já foi emitida (não só criada como rascunho). */
-export async function verificarNotaEmitida(id) {
-  const nota = await obterNota(id);
-  return notaEstaEmitida(nota);
-}
-
 /**
  * Link do DANFE — uma página HTML com impressão automática, não um PDF cru.
  * O Tiny devolve esse link mesmo pra nota ainda não emitida (rascunho), só
@@ -202,14 +196,14 @@ export async function obterLinkDanfe(id) {
 /**
  * Emissão fiscal — dá valor tributário à nota, de forma irreversível.
  * Travada por "permitir_emissao" (Supabase, ligado/desligado pela tela de
- * rascunhos) — checada aqui de novo, e não só na rota, porque essa trava
+ * atacado) — checada aqui de novo, e não só na rota, porque essa trava
  * precisa valer mesmo se algum dia esta função for chamada de outro lugar.
  */
 export async function emitirNota(id) {
   const permitido = await obterPermitirEmissao();
   if (!permitido) {
     throw new Error(
-      'Emissão bloqueada. Ligue "Permitir emissão" na tela de rascunhos antes de tentar de novo.'
+      'Emissão bloqueada. Ligue "Permitir emissão" na tela de atacado antes de tentar de novo.'
     );
   }
   return chamarTiny('nota.fiscal.emitir.php', { id: String(id) });

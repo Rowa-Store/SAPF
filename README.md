@@ -30,7 +30,7 @@ São duas, independentes:
    (`POST /api/pedidos/[id]/emitir`). A checagem é feita duas vezes — na rota
    e de novo dentro de `emitirNota` em `src/lib/integrations/tiny.js` — para
    que a trava valha mesmo se a função for chamada de outro lugar no futuro.
-   Liga/desliga pela tela de rascunhos, que lê e grava essa flag no Supabase
+   Liga/desliga pela tela de atacado (`/pedidos`), que lê e grava essa flag no Supabase
    (não no `.env`, porque precisa ter efeito imediato).
 
 A API 2.0 do Tiny não tem endpoint para alterar nem excluir uma nota — por
@@ -166,20 +166,20 @@ src/
   app/
     page.js                          Tela inicial com atalhos -> features/inicio
     sysinfo/page.js                  Diagnóstico das integrações -> features/sysinfo
-    pedidos/page.js                  Entrada da lista -> features/pedidos
+    pedidos/page.js                  Tela única de atacado -> features/pedidos
     pedidos/[id]/rascunho/page.js            Conferência e inclusão do rascunho -> features/rascunhos
     pedidos/[id]/rascunho/editar/page.js     Edição do rascunho -> features/rascunhos
-    rascunhos/page.js                Entrada do histórico -> features/rascunhos
+    rascunhos/page.js                Redireciona para /pedidos (endereço antigo)
     layout.js                        Cabeçalho + CSS global
     api/saude/route.js               Testa Shopify, Tiny e Supabase
-    api/pedidos/route.js             Lista pedidos + classificação + situação
+    api/pedidos/route.js             Lista pedidos + classificação + situação fiscal
+                                      (inclui rascunhos pendentes fora da lista recente)
     api/pedidos/[id]/preview/        Monta o payload da nota que a tela do rascunho
                                       consome (só leitura)
     api/pedidos/[id]/rascunho/       Cria/edita o rascunho no Tiny (escreve em produção)
-    api/pedidos/[id]/situacao/       Confere no Tiny se a nota já foi emitida
+    api/pedidos/[id]/situacao/       Confere no Tiny se a nota já foi emitida e o nº da NF
     api/pedidos/[id]/danfe/          Resolve e redireciona pro link do DANFE
     api/pedidos/[id]/emitir/         Emite a nota (irreversível, travado)
-    api/rascunhos/                   Lista o histórico de rascunhos já criados
     api/config/permitir-emissao/     Liga/desliga a trava de emissão
     transferencias/page.js           Controle de transferências -> features/transferencias
     api/transferencias/              Lista transferências + situação fiscal; subrotas
@@ -195,13 +195,12 @@ src/
       components/Inicio.js           Página inicial: status das integrações
       hooks/useSaude.js
     pedidos/
-      components/ListaPedidos.js     Lista de pedidos classificados, com filtro
-      hooks/usePedidos.js
+      components/ControleAtacado.js  Tela única: filtros, rascunho, emissão, nº da NF e DANFE
+      hooks/useAtacado.js
     rascunhos/
       components/IncluirRascunho.js  Confere a nota e grava o rascunho no Tiny
       components/EditarRascunho.js   Corrige um rascunho já criado no Tiny
-      components/ListaRascunhos.js   Histórico de rascunhos + emissão da nota
-      hooks/useRascunhos.js, hooks/useIncluirRascunho.js, hooks/useEditarRascunho.js
+      hooks/useIncluirRascunho.js, hooks/useEditarRascunho.js
     transferencias/
       components/ControleTransferencias.js  Filtros, lista, rascunho e emissão das transferências
       hooks/useTransferencias.js

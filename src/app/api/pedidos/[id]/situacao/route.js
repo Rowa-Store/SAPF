@@ -1,11 +1,12 @@
-// GET /api/pedidos/[id]/situacao — confere no Tiny se a nota já foi emitida
-// (não só criada como rascunho) e grava o resultado no Supabase.
+// GET /api/pedidos/[id]/situacao — confere a nota do pedido no Tiny e, se ela
+// já estiver autorizada, grava a emissão e o número da NF no Supabase.
 //
-// Só é útil depois que o rascunho já existe. Chamado sob demanda pela lista
-// de pedidos, um pedido por vez, para não atrasar o carregamento da lista.
+// É assim que o número chega quando a nota foi emitida direto no Tiny (fora
+// do botão da tela de atacado) ou quando a autorização demorou mais que a
+// emissão. Só lê o Tiny: nada é emitido aqui.
 
-import { verificarNotaEmitida } from '@/lib/integrations/tiny';
-import { jaProcessado, atualizarNotaEmitida } from '@/lib/db';
+import { obterSituacaoNota } from '@/lib/integrations/tiny';
+import { atualizarNotaEmitida, registrarNumeroNf, statusPorPedido } from '@/lib/db';
 import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -15,16 +16,35 @@ export async function GET(request, { params }) {
   const { id } = await params;
   const gid = paraGid(id);
 
-  const situacao = await jaProcessado(gid);
-  if (!situacao.processado || !situacao.tinyNotaId) {
-    return Response.json({ rascunhoCriado: situacao.status === 'rascunho_criado', notaEmitida: false });
+  const situacao = (await statusPorPedido([gid]))[gid];
+  if (situacao?.status !== 'rascunho_criado' || !situacao.tiny_nota_id) {
+    return Response.json({
+      rascunhoCriado: false,
+      notaEmitida: !!situacao?.nota_emitida,
+      numeroNf: situacao?.numero_nf ?? null,
+    });
   }
 
+  let tiny;
   try {
-    const emitida = await verificarNotaEmitida(situacao.tinyNotaId);
-    await atualizarNotaEmitida(gid, emitida);
-    return Response.json({ rascunhoCriado: true, notaEmitida: emitida, tinyNotaId: situacao.tinyNotaId });
+    tiny = await obterSituacaoNota(situacao.tiny_nota_id);
   } catch (erro) {
-    return erroJson(`Não foi possível confirmar a emissão no Tiny: ${erro.message}`, 502);
+    return erroJson(`Não foi possível consultar a nota no Tiny: ${erro.message}`, 502);
   }
+
+  if (tiny.emitida) {
+    if (!situacao.nota_emitida) await atualizarNotaEmitida(gid, true);
+    if (tiny.numero && tiny.numero !== situacao.numero_nf) {
+      const registro = await registrarNumeroNf({ orderId: gid, numeroNf: tiny.numero });
+      if (!registro.ok) console.error(`[pedido] Falha ao gravar o nº da NF de ${gid}:`, registro.erro);
+    }
+  }
+
+  return Response.json({
+    rascunhoCriado: true,
+    tinyNotaId: situacao.tiny_nota_id,
+    notaEmitida: tiny.emitida,
+    numeroNf: tiny.numero ?? situacao.numero_nf ?? null,
+    situacaoTiny: tiny.situacao,
+  });
 }

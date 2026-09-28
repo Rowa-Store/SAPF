@@ -1,3 +1,8 @@
-// Entrada de rota da lista de rascunhos já criados no Tiny.
+// A lista de rascunhos foi unificada na tela de atacado (/pedidos) — o
+// endereço antigo continua valendo para quem tem o link salvo.
 
-export { default } from '@/features/rascunhos/components/ListaRascunhos';
+import { redirect } from 'next/navigation';
+
+export default function Rascunhos() {
+  redirect('/pedidos');
+}

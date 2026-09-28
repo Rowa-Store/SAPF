@@ -272,11 +272,11 @@ a.botao-link:hover { background: var(--realce); border-color: var(--tinta-fraca)
 .tabela-rolavel { overflow-x: auto; border: 1px solid var(--linha); border-radius: var(--raio); }
 .tabela-rolavel table { min-width: 56rem; }
 .tabela-rolavel tbody tr:last-child td { border-bottom: none; }
-.tabela-transferencias td { vertical-align: middle; }
+.tabela-transferencias td, .tabela-controle td { vertical-align: middle; }
 .tabela-transferencias .col-check { width: 2.25rem; }
 .tabela-transferencias input[type="checkbox"] { width: auto; }
 .tabela-transferencias tr.linha-selecionada { background: var(--azul-fundo); }
-.tabela-transferencias tr.linha-expandida td { border-bottom-color: transparent; }
+.tabela-transferencias tr.linha-expandida td, .tabela-controle tr.linha-expandida td { border-bottom-color: transparent; }
 .rota-destino { color: var(--tinta-fraca); font-size: 0.85rem; }
 .acoes-linha { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 tbody tr.linha-detalhe, tbody tr.linha-detalhe:hover { background: var(--papel); }

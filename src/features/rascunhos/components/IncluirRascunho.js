@@ -68,7 +68,7 @@ export default function IncluirRascunho({ params }) {
         <strong>Não foi possível abrir este pedido.</strong>
         <p>{erroCarregamento}</p>
         <p>
-          <a href="/pedidos">Voltar para a lista</a>
+          <a href="/pedidos">Voltar para a tela de atacado</a>
         </p>
       </div>
     );
@@ -121,7 +121,7 @@ export default function IncluirRascunho({ params }) {
             </p>
           )}
           <p>
-            <a href="/pedidos">Voltar para a lista de pedidos</a>
+            <a href="/pedidos">Voltar para a tela de atacado e emitir a nota</a>
           </p>
         </div>
       )}
@@ -351,7 +351,7 @@ export default function IncluirRascunho({ params }) {
       )}
 
       <p style={{ marginTop: '2rem' }}>
-        <a href="/pedidos">Voltar para a lista</a>
+        <a href="/pedidos">Voltar para a tela de atacado</a>
       </p>
     </>
   );

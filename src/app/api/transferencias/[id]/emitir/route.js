@@ -26,7 +26,7 @@ export async function POST(request, { params }) {
   if (situacao.nota_emitida) return erroJson('Esta nota já foi emitida.', 409);
 
   if (!(await obterPermitirEmissao())) {
-    return erroJson('Emissão bloqueada. Ligue "Permitir emissão" na tela de rascunhos.', 403);
+    return erroJson('Emissão bloqueada. Ligue "Permitir emissão" na tela de atacado.', 403);
   }
 
   const tinyNotaId = situacao.tiny_nota_id;

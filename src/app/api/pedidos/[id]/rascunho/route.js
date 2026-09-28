@@ -210,8 +210,7 @@ export async function POST(request, { params }) {
       confirmacao,
       contribuinte,
       mensagem:
-        'Rascunho criado no Tiny. Confira os dados e emita a nota manualmente dentro do Tiny — ' +
-        'este sistema não emite notas.',
+        'Rascunho criado no Tiny. Confira os dados e emita a nota pela tela de atacado.',
     });
   } catch (erro) {
     console.error(`[rascunho] Tiny recusou a inclusão do pedido ${gid}:`, erro);

@@ -3,13 +3,8 @@
 export const AREAS = [
   {
     href: '/pedidos',
-    rotulo: 'Pedidos',
-    descricao: 'Pedidos de atacado e franquia do Shopify, prontos para virar rascunho de nota no Tiny.',
-  },
-  {
-    href: '/rascunhos',
-    rotulo: 'Rascunhos',
-    descricao: 'Rascunhos já criados no Tiny: conferir, editar e emitir a nota fiscal.',
+    rotulo: 'Atacado',
+    descricao: 'Pedidos de atacado e franquia do Shopify: criar o rascunho, emitir a nota fiscal e baixar o DANFE.',
   },
   {
     href: '/transferencias',

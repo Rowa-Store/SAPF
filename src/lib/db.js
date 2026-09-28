@@ -255,7 +255,7 @@ export async function listarRascunhosCriados({ limite = 50 } = {}) {
   const { data, error } = await db
     .from('notas_processadas')
     .select(
-      'shopify_order_id, shopify_order_name, classificacao, tiny_nota_id, nota_emitida, payload_enviado, tiny_notas_substituidas, criado_em, atualizado_em'
+      'shopify_order_id, shopify_order_name, classificacao, tiny_nota_id, nota_emitida, numero_nf, payload_enviado, tiny_notas_substituidas, criado_em, atualizado_em'
     )
     .eq('status', 'rascunho_criado')
     // Transferências têm tela própria (/transferencias) e ids de outro tipo —

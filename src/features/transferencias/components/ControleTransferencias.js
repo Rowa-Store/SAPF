@@ -20,7 +20,7 @@ const STATUS_SHOPIFY = {
 
 const COLUNAS = 7;
 
-const DICA_TRAVA = 'Ligue "Permitir emissão" na tela de rascunhos';
+const DICA_TRAVA = 'Ligue "Permitir emissão" na tela de atacado';
 
 function StatusShopify({ status }) {
   const [rotulo, classe] = STATUS_SHOPIFY[status] ?? [status, ''];
@@ -188,12 +188,12 @@ export default function ControleTransferencias() {
       <div className="cabecalho-pagina">
         <h2>Controle de transferências do fiscal</h2>
         <a
-          href="/rascunhos"
+          href="/pedidos"
           className={`marca ${permitirEmissao ? 'marca-ok' : 'marca-erro'}`}
           title={
             permitirEmissao
-              ? '"Emitir nota" grava valor fiscal de verdade, sem volta. A trava fica na tela de rascunhos.'
-              : 'A trava de emissão fica na tela de rascunhos'
+              ? '"Emitir nota" grava valor fiscal de verdade, sem volta. A trava fica na tela de atacado.'
+              : 'A trava de emissão fica na tela de atacado'
           }
         >
           Emissão fiscal: {permitirEmissao === null ? 'verificando…' : permitirEmissao ? 'LIBERADA' : 'BLOQUEADA'}

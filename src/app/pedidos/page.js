@@ -1,3 +1,3 @@
-// Entrada de rota da lista de pedidos.
+// Entrada de rota da tela de atacado: pedidos, rascunho e emissão da nota.
 
-export { default } from '@/features/pedidos/components/ListaPedidos';
+export { default } from '@/features/pedidos/components/ControleAtacado';

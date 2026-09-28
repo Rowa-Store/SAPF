@@ -179,7 +179,7 @@ export async function POST(request, { params }) {
   }
   // Sem a trava ligada, a reemissão pararia no meio: registro zerado e nota nova sem emitir.
   if (reemitir && !(await obterPermitirEmissao())) {
-    return erroJson('Emissão bloqueada. Ligue "Permitir emissão" na tela de rascunhos.', 403);
+    return erroJson('Emissão bloqueada. Ligue "Permitir emissão" na tela de atacado.', 403);
   }
   if (situacao?.status === 'rascunho_criado' && !substituir) {
     return erroJson(`Esta transferência já tem o rascunho ${situacao.tiny_nota_id} no Tiny.`, 409, {

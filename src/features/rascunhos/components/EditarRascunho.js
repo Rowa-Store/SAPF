@@ -22,7 +22,7 @@ const TIPOS = {
     api: (id) => `/api/pedidos/${id}/rascunho`,
     rotulo: 'pedido',
     tituloCliente: 'Dados do cliente na nota',
-    voltar: ['/rascunhos', 'Voltar para a lista de rascunhos'],
+    voltar: ['/pedidos', 'Voltar para a tela de atacado'],
   },
   transferencia: {
     api: (id) => `/api/transferencias/${id}/rascunho`,
