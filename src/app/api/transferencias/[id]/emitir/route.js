@@ -4,10 +4,20 @@
 // aqui e de novo dentro de emitirNota). Depois de emitir, lê o número da NF
 // da nota autorizada no Tiny e grava no Supabase, para a tela mostrar e para
 // a busca por nº.
+//
+// Antes de emitir, lê a nota no Tiny e confere a natureza de operação contra
+// a do payload enviado: nome que não existe no cadastro do Tiny vira "Venda
+// para contribuinte" sem erro nenhum, e aí a nota sairia com CFOP de venda.
 
-import { emitirNota, obterSituacaoNota } from '@/lib/integrations/tiny';
+import { conferirNatureza, emitirNota, obterNota, obterSituacaoNota } from '@/lib/integrations/tiny';
 import { paraGidTransferencia } from '@/lib/integrations/shopifyTransferencias';
-import { atualizarNotaEmitida, obterPermitirEmissao, registrarNumeroNf, statusPorPedido } from '@/lib/db';
+import {
+  atualizarNotaEmitida,
+  obterPermitirEmissao,
+  obterRascunhoCriado,
+  registrarNumeroNf,
+  statusPorPedido,
+} from '@/lib/db';
 import { erroJson } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +40,30 @@ export async function POST(request, { params }) {
   }
 
   const tinyNotaId = situacao.tiny_nota_id;
+
+  const rascunho = await obterRascunhoCriado(gid);
+  if (!rascunho.ok) return erroJson(`Não foi possível ler o rascunho no Supabase: ${rascunho.erro}`, 502);
+  const esperada = rascunho.rascunho?.payload_enviado?.nota_fiscal?.natureza_operacao;
+  if (!esperada?.trim()) {
+    return erroJson('O rascunho registrado não tem natureza de operação — refaça o rascunho antes de emitir.', 422);
+  }
+  let natureza;
+  try {
+    natureza = conferirNatureza(await obterNota(tinyNotaId), esperada);
+  } catch (erro) {
+    return erroJson(`Não foi possível conferir a natureza da nota no Tiny: ${erro.message}`, 502);
+  }
+  if (!natureza.ok) {
+    return erroJson(
+      `Emissão recusada: a nota ${tinyNotaId} está no Tiny com a natureza ` +
+        `"${natureza.naNota ?? '(não informada)'}", mas foi pedida "${esperada}". O Tiny troca nome que ` +
+        'não existe no cadastro de naturezas pela natureza padrão. Corrija o nome em lojas_fiscais ' +
+        '(igual ao Tiny, com acentos) e use "Refazer rascunho".',
+      422,
+      { naturezaNaNota: natureza.naNota, naturezaEsperada: esperada }
+    );
+  }
+
   try {
     await emitirNota(tinyNotaId);
   } catch (erro) {

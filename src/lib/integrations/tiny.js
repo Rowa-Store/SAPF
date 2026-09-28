@@ -155,6 +155,25 @@ export async function obterNota(id) {
   return retorno.nota_fiscal ?? retorno;
 }
 
+function normalizarNatureza(nome) {
+  return String(nome ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * Confere se a natureza de operação que ficou na nota do Tiny é a que foi
+ * pedida. O Tiny não recusa um nome que não existe no cadastro de naturezas:
+ * troca em silêncio pela natureza padrão ("Venda para contribuinte"), e a
+ * nota sai com o CFOP errado. Só a leitura da nota depois de criada mostra.
+ *
+ * Retorna { ok, naNota, esperada }. Nota sem o campo conta como divergente —
+ * sem confirmar, não emite.
+ */
+export function conferirNatureza(notaTiny, esperada) {
+  const naNota = notaTiny?.natureza_operacao ?? null;
+  const ok = Boolean(naNota) && normalizarNatureza(naNota) === normalizarNatureza(esperada);
+  return { ok, naNota, esperada };
+}
+
 /**
  * Interpreta o campo `situacao` que o Tiny devolve para a nota.
  * TODO: confirmar com o time fiscal a lista exata de situações desta conta —

@@ -20,7 +20,7 @@
 //     vindo da tela; o antigo precisa ser cancelado/excluído à mão no Tiny e
 //     fica registrado em tiny_notas_substituidas.
 
-import { incluirNotaRascunho, obterNota } from '@/lib/integrations/tiny';
+import { conferirNatureza, incluirNotaRascunho, obterNota } from '@/lib/integrations/tiny';
 import { obterTransferenciaCompleta, paraGidTransferencia } from '@/lib/integrations/shopifyTransferencias';
 import { montarNotaTransferencia } from '@/lib/fiscal/montarNotaTransferencia';
 import {
@@ -33,6 +33,18 @@ import {
 } from '@/lib/db';
 import { totalDaNota } from '@/lib/fiscal/montarNota';
 import { erroJson } from '@/lib/utils';
+
+/** Aviso para anexar à mensagem quando o Tiny trocou a natureza pedida. */
+function avisoNatureza(confirmacao, payload) {
+  if (!confirmacao || confirmacao.aviso) return '';
+  const natureza = conferirNatureza(confirmacao, payload.nota_fiscal.natureza_operacao);
+  if (natureza.ok) return '';
+  return (
+    ` ATENÇÃO: o Tiny gravou a natureza "${natureza.naNota ?? '(não informada)'}" em vez de ` +
+    `"${natureza.esperada}" — o nome não existe no cadastro de naturezas do Tiny. A emissão ` +
+    'desta nota vai ser recusada até o nome ser corrigido em lojas_fiscais e o rascunho refeito.'
+  );
+}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -134,7 +146,8 @@ export async function PUT(request, { params }) {
       mensagem:
         `Novo rascunho ${idNota ?? ''} criado no Tiny com os dados corrigidos. ` +
         `Cancele ou exclua o rascunho ${tinyNotaIdAnterior} dentro do Tiny — a API não faz isso ` +
-        'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.',
+        'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.' +
+        avisoNatureza(confirmacao, payload),
     });
   } catch (erro) {
     console.error(`[transferencia] Tiny recusou a recriação da transferência ${gid} (substituindo ${tinyNotaIdAnterior}):`, erro);
@@ -253,21 +266,23 @@ export async function POST(request, { params }) {
       console.error(`[transferencia] Nota ${idNota} criada no Tiny, mas falhou ao registrar no Supabase:`, registro.erro);
     }
 
+    const mensagem = reemitir
+      ? `Novo rascunho ${idNota ?? ''} criado no Tiny para reemitir a transferência ${transferencia.name}. ` +
+        `A nota anterior (${anterior.tiny_nota_id}${situacao.numero_nf ? `, NF ${situacao.numero_nf}` : ''}) ` +
+        'continua emitida — cancele ela à mão no Tiny.'
+      : anterior
+      ? `Novo rascunho ${idNota ?? ''} criado no Tiny para a transferência ${transferencia.name}. ` +
+        `Cancele ou exclua o rascunho ${anterior.tiny_nota_id} dentro do Tiny — a API não faz isso ` +
+        'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.'
+      : `Rascunho ${idNota ?? ''} criado no Tiny para a transferência ${transferencia.name}.`;
+
     return Response.json({
       ok: true,
       tinyNotaId: idNota,
       tinyNotaIdAnterior: anterior?.tiny_nota_id ?? null,
       tinyNotasSubstituidas: notasSubstituidas ?? null,
       confirmacao,
-      mensagem: reemitir
-        ? `Novo rascunho ${idNota ?? ''} criado no Tiny para reemitir a transferência ${transferencia.name}. ` +
-          `A nota anterior (${anterior.tiny_nota_id}${situacao.numero_nf ? `, NF ${situacao.numero_nf}` : ''}) ` +
-          'continua emitida — cancele ela à mão no Tiny.'
-        : anterior
-        ? `Novo rascunho ${idNota ?? ''} criado no Tiny para a transferência ${transferencia.name}. ` +
-          `Cancele ou exclua o rascunho ${anterior.tiny_nota_id} dentro do Tiny — a API não faz isso ` +
-          'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.'
-        : `Rascunho ${idNota ?? ''} criado no Tiny para a transferência ${transferencia.name}.`,
+      mensagem: mensagem + avisoNatureza(confirmacao, payload),
     });
   } catch (erro) {
     console.error(`[transferencia] Tiny recusou a inclusão da transferência ${gid}:`, erro);
