@@ -174,6 +174,9 @@ export default function ControleTransferencias() {
     comRascunho,
     selecionadasEmitiveis,
     lote,
+    loteAConfirmar,
+    confirmarLote,
+    cancelarLote,
     emitirTodasComRascunho,
     emitirSelecionadas,
   } = useTransferencias();
@@ -332,7 +335,7 @@ export default function ControleTransferencias() {
               <button
                 className="secundario"
                 onClick={emitirTodasComRascunho}
-                disabled={!permitirEmissao || carregando || !!lote || comRascunho.length === 0}
+                disabled={!permitirEmissao || carregando || !!lote || !!loteAConfirmar || comRascunho.length === 0}
                 title={
                   permitirEmissao
                     ? 'Emite no Tiny todas as notas com rascunho da lista filtrada (todas as páginas)'
@@ -343,7 +346,9 @@ export default function ControleTransferencias() {
               </button>
               <button
                 onClick={emitirSelecionadas}
-                disabled={!permitirEmissao || carregando || !!lote || selecionadasEmitiveis.length === 0}
+                disabled={
+                  !permitirEmissao || carregando || !!lote || !!loteAConfirmar || selecionadasEmitiveis.length === 0
+                }
                 title={
                   permitirEmissao
                     ? 'Cria o rascunho quando falta e emite as transferências marcadas — as já emitidas são reemitidas com um novo rascunho'
@@ -354,6 +359,33 @@ export default function ControleTransferencias() {
               </button>
             </div>
           </div>
+
+          {loteAConfirmar && (
+            <div className="confirmacao">
+              <p style={{ marginTop: 0 }}>
+                <strong>
+                  Emitir {loteAConfirmar.lista.length} nota(s) de {loteAConfirmar.descricao}?
+                </strong>{' '}
+                Isso dá valor fiscal real no Tiny e é irreversível.
+                {loteAConfirmar.semRascunho > 0 &&
+                  ` ${loteAConfirmar.semRascunho} delas ainda não têm rascunho — ele será criado antes de emitir.`}
+                {loteAConfirmar.jaEmitidas > 0 && (
+                  <>
+                    {' '}
+                    <strong>{loteAConfirmar.jaEmitidas} delas JÁ ESTÃO EMITIDAS:</strong> cada uma ganha um novo
+                    rascunho e uma NOVA nota fiscal — as notas anteriores continuam valendo até serem canceladas à mão
+                    no Tiny.
+                  </>
+                )}
+              </p>
+              <div className="grupo-botoes">
+                <button onClick={confirmarLote}>Sim, emitir {loteAConfirmar.lista.length} nota(s)</button>
+                <button className="secundario" onClick={cancelarLote}>
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="tabela-rolavel">
             <table className="tabela-transferencias">

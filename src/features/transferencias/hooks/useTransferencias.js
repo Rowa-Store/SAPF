@@ -68,6 +68,8 @@ export function useTransferencias() {
   const [selecionadas, setSelecionadas] = useState(() => new Set());
   // { feitas, total } enquanto um lote de emissão roda.
   const [lote, setLote] = useState(null);
+  // { lista, descricao, semRascunho, jaEmitidas } enquanto o lote espera confirmação.
+  const [loteAConfirmar, setLoteAConfirmar] = useState(null);
 
   const carregar = useCallback(async (f) => {
     setCarregando(true);
@@ -261,21 +263,28 @@ export function useTransferencias() {
     });
   }
 
-  async function emitirEmLote(lista, descricao) {
+  // A confirmação é um painel na própria tela, não window.confirm: o navegador
+  // pode bloquear as caixas de diálogo da página, e aí o confirm devolve false
+  // na hora — o botão parecia não fazer nada.
+  function pedirConfirmacaoDoLote(lista, descricao) {
     if (lista.length === 0 || lote) return;
-    const semRascunho = lista.filter((t) => !t.notaEmitida && t.situacaoFiscal !== 'rascunho_criado').length;
-    const jaEmitidas = lista.filter((t) => t.notaEmitida).length;
-    // Uma confirmação só vale para o lote inteiro, inclusive para as reemissões.
-    const confirmou = window.confirm(
-      `Emitir ${lista.length} nota(s) de ${descricao}? Isso dá valor fiscal real no Tiny e é irreversível.` +
-        (semRascunho ? ` ${semRascunho} delas ainda não têm rascunho — ele será criado antes de emitir.` : '') +
-        (jaEmitidas
-          ? ` ${jaEmitidas} delas JÁ ESTÃO EMITIDAS: cada uma ganha um novo rascunho e uma NOVA nota fiscal — ` +
-            'as notas anteriores continuam valendo até serem canceladas à mão no Tiny.'
-          : '')
-    );
-    if (!confirmou) return;
+    setLoteAConfirmar({
+      lista,
+      descricao,
+      semRascunho: lista.filter((t) => !t.notaEmitida && t.situacaoFiscal !== 'rascunho_criado').length,
+      jaEmitidas: lista.filter((t) => t.notaEmitida).length,
+    });
+  }
 
+  function cancelarLote() {
+    setLoteAConfirmar(null);
+  }
+
+  // Uma confirmação só vale para o lote inteiro, inclusive para as reemissões.
+  async function confirmarLote() {
+    if (!loteAConfirmar || lote) return;
+    const { lista } = loteAConfirmar;
+    setLoteAConfirmar(null);
     setErro(null);
     setLote({ feitas: 0, total: lista.length });
     const falhas = [];
@@ -293,11 +302,11 @@ export function useTransferencias() {
   }
 
   function emitirTodasComRascunho() {
-    return emitirEmLote(comRascunho, 'transferências com rascunho da lista filtrada (todas as páginas)');
+    return pedirConfirmacaoDoLote(comRascunho, 'transferências com rascunho da lista filtrada (todas as páginas)');
   }
 
   function emitirSelecionadas() {
-    return emitirEmLote(selecionadasEmitiveis, 'transferências selecionadas');
+    return pedirConfirmacaoDoLote(selecionadasEmitiveis, 'transferências selecionadas');
   }
 
   const precisaConferir = (t) => !!t.tinyNotaId && (!t.notaEmitida || !t.numeroNf);
@@ -384,6 +393,9 @@ export function useTransferencias() {
     comRascunho,
     selecionadasEmitiveis,
     lote,
+    loteAConfirmar,
+    confirmarLote,
+    cancelarLote,
     emitirTodasComRascunho,
     emitirSelecionadas,
   };
