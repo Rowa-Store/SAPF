@@ -235,6 +235,16 @@ export default function ControleTransferencias() {
             <input id="ate" type="date" value={filtros.ate} onChange={(e) => atualizarFiltro('ate', e.target.value)} />
           </div>
           <div>
+            <label htmlFor="nome">Buscar por nome</label>
+            <input
+              id="nome"
+              placeholder="Nome ou referência da transferência"
+              value={filtros.nome}
+              onChange={(e) => atualizarFiltro('nome', e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && aplicarFiltros()}
+            />
+          </div>
+          <div>
             <label htmlFor="nf">Buscar por nº da NF</label>
             <input
               id="nf"

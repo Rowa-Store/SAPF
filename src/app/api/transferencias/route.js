@@ -3,7 +3,8 @@
 //
 // Filtros aceitos na URL: origem, destino, excluir (gid do local), de, ate
 // (AAAA-MM-DD), rascunhos=1 (inclui transferências em rascunho no Shopify),
-// naoEmitidas=1 e nf (número da nota). Origem, destino, datas e rascunhos vão
+// naoEmitidas=1, nf (número da nota) e nome (nome ou referência da
+// transferência, sem diferenciar maiúsculas). Origem, destino, datas e rascunhos vão
 // direto para a busca do Shopify; o resto depende do Supabase e é filtrado aqui.
 
 import { listarLocais, listarTransferencias } from '@/lib/integrations/shopifyTransferencias';
@@ -40,6 +41,7 @@ export async function GET(request) {
     const excluir = busca.get('excluir');
     const naoEmitidas = busca.get('naoEmitidas') === '1';
     const nf = (busca.get('nf') ?? '').replace(/\D+/g, '');
+    const nome = (busca.get('nome') ?? '').trim().toLowerCase();
 
     const lista = transferencias
       .map((t) => {
@@ -66,7 +68,8 @@ export async function GET(request) {
       })
       .filter((t) => !excluir || (t.origemId !== excluir && t.destinoId !== excluir))
       .filter((t) => !naoEmitidas || !t.notaEmitida)
-      .filter((t) => !nf || String(t.numeroNf ?? '').replace(/\D+/g, '').includes(nf));
+      .filter((t) => !nf || String(t.numeroNf ?? '').replace(/\D+/g, '').includes(nf))
+      .filter((t) => !nome || [t.name, t.referencia].some((v) => String(v ?? '').toLowerCase().includes(nome)));
 
     return Response.json({
       transferencias: lista,

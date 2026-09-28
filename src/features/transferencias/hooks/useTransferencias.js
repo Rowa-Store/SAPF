@@ -10,6 +10,7 @@ export const FILTROS_VAZIOS = {
   de: '',
   ate: '',
   nf: '',
+  nome: '',
   rascunhos: false,
   naoEmitidas: false,
 };
