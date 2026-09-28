@@ -112,9 +112,13 @@ create table if not exists lojas_fiscais (
 --                        IGUAL ao cadastro do Tiny, com acento e maiúsculas —
 --                        nome desconhecido vira "Venda para contribuinte".
 --                        Vazia = rascunho recusado.
+--   natureza_operacao_id id da natureza no Tiny — é o que vai na nota
+--                        (id_natureza_operacao); só o nome não bastou.
+--                        Vazio = rascunho recusado.
 --   base_valor           'custo' (padrão) ou 'venda' — de onde sai o valor do item.
 --   desconto_percentual  % abatido do valor de cada item. 0 = sem desconto.
 alter table lojas_fiscais add column if not exists natureza_operacao text;
+alter table lojas_fiscais add column if not exists natureza_operacao_id bigint;
 alter table lojas_fiscais add column if not exists base_valor text not null default 'custo'
   check (base_valor in ('custo', 'venda'));
 alter table lojas_fiscais add column if not exists desconto_percentual numeric(5,2) not null default 0

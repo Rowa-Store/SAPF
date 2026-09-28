@@ -20,6 +20,10 @@
 //         Tem que ser IGUAL ao cadastro de naturezas da conta: um nome que não
 //         existe lá é trocado em silêncio pela natureza padrão ("Venda para
 //         contribuinte"). Em branco, a nota não é criada.
+//       · `natureza_operacao_id`: id da natureza no Tiny. É ele que vai na
+//         nota (`id_natureza_operacao`) — o Tiny ignorou o nome mesmo idêntico
+//         ao cadastro. O nome continua indo junto e é o que a emissão confere.
+//         Sem id, o rascunho não é criado.
 //   - Sem frete, sem transportadora, sem pagamento, sem desconto no rodapé.
 
 import { dataBr, formatarNcm, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
@@ -116,6 +120,14 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
     );
   }
 
+  const naturezaId = String(destino?.natureza_operacao_id ?? '').trim();
+  if (destino && !naturezaId) {
+    alertas.push(
+      `Loja "${nomeDestino}" sem natureza_operacao_id no cadastro (lojas_fiscais) — o rascunho não ` +
+        'será criado até ele ser preenchido com o id da natureza no Tiny.'
+    );
+  }
+
   const semCusto = [];
   const semNcm = [];
   const itens = (transferencia.lineItems ?? []).map((linha) => {
@@ -163,6 +175,7 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
   const payload = {
     nota_fiscal: {
       tipo: 'S',
+      ...(naturezaId ? { id_natureza_operacao: Number(naturezaId) } : {}),
       natureza_operacao: natureza,
       frete_por_conta: SEM_FRETE,
       // A nota é emitida no dia em que for criada, não na data da transferência.

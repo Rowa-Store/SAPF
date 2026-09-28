@@ -124,6 +124,10 @@ pedidos (confirmação na tela e `permitir_emissao`). O registro fica em
     ser **idêntico** ao cadastro de naturezas do Tiny (acentos e maiúsculas
     inclusos) — um nome que não existe lá vira, em silêncio, a natureza padrão
     da conta ("Venda para contribuinte"). Vazia, o rascunho é recusado.
+  - `natureza_operacao_id`: id da mesma natureza no Tiny. É o que define a
+    natureza na nota — o Tiny ignorou o nome mesmo idêntico ao cadastro. Vazio,
+    o rascunho é recusado. Antes de emitir, a tela confere no Tiny se a nota
+    ficou com a natureza pedida e recusa se não ficou.
   - `base_valor`: `custo` (padrão, `unitCost` do Shopify; sem custo, cai no
     preço de venda e a tela avisa) ou `venda` (preço da variante).
   - `desconto_percentual`: % abatido do valor de cada item (padrão 0).

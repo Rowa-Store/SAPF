@@ -56,9 +56,8 @@ export async function POST(request, { params }) {
   if (!natureza.ok) {
     return erroJson(
       `Emissão recusada: a nota ${tinyNotaId} está no Tiny com a natureza ` +
-        `"${natureza.naNota ?? '(não informada)'}", mas foi pedida "${esperada}". O Tiny troca nome que ` +
-        'não existe no cadastro de naturezas pela natureza padrão. Corrija o nome em lojas_fiscais ' +
-        '(igual ao Tiny, com acentos) e use "Refazer rascunho".',
+        `"${natureza.naNota ?? '(não informada)'}", mas foi pedida "${esperada}". Confira ` +
+        'natureza_operacao_id em lojas_fiscais (id da natureza no Tiny) e use "Novo rascunho".',
       422,
       { naturezaNaNota: natureza.naNota, naturezaEsperada: esperada }
     );

@@ -41,8 +41,8 @@ function avisoNatureza(confirmacao, payload) {
   if (natureza.ok) return '';
   return (
     ` ATENÇÃO: o Tiny gravou a natureza "${natureza.naNota ?? '(não informada)'}" em vez de ` +
-    `"${natureza.esperada}" — o nome não existe no cadastro de naturezas do Tiny. A emissão ` +
-    'desta nota vai ser recusada até o nome ser corrigido em lojas_fiscais e o rascunho refeito.'
+    `"${natureza.esperada}". Confira natureza_operacao_id em lojas_fiscais (id da natureza no Tiny). ` +
+    'A emissão desta nota vai ser recusada até o cadastro ser corrigido e o rascunho refeito.'
   );
 }
 
@@ -228,6 +228,13 @@ export async function POST(request, { params }) {
       return erroJson(
         `A loja de destino "${transferencia.destination?.name}" está sem natureza de operação em ` +
           'lojas_fiscais — sem ela o Tiny usaria a natureza padrão da conta.',
+        422
+      );
+    }
+    if (!String(cadastro.lojas[destinoId].natureza_operacao_id ?? '').trim()) {
+      return erroJson(
+        `A loja de destino "${transferencia.destination?.name}" está sem natureza_operacao_id em ` +
+          'lojas_fiscais — só pelo nome o Tiny cai na natureza padrão da conta.',
         422
       );
     }
