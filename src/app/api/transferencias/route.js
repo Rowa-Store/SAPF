@@ -7,6 +7,8 @@
 // transferência, sem diferenciar maiúsculas). nf e nome aceitam vários termos
 // separados por vírgula — basta um deles bater. Origem, destino, datas e rascunhos vão
 // direto para a busca do Shopify; o resto depende do Supabase e é filtrado aqui.
+// origemNome (sem origem) procura a loja de origem pelo nome — é como a tela
+// abre já filtrada no CD; o gid encontrado volta em `origemId`.
 
 import { listarLocais, listarTransferencias } from '@/lib/integrations/shopifyTransferencias';
 import { statusPorPedido } from '@/lib/db';
@@ -16,6 +18,11 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
+
+/** "Rowa Centro de Distribuição 1" -> "rowacentrodedistribuicao1", para comparar nomes de loja sem ligar para caixa, acento e pontuação. */
+function chaveNome(nome) {
+  return String(nome ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
 
 /** "a, b ,c" -> ['a', 'b', 'c'], já normalizados; termos vazios são descartados. */
 function termos(valor, normalizar) {
@@ -31,15 +38,23 @@ export async function GET(request) {
   }
 
   try {
+    let origemId = busca.get('origem') || null;
+    let locaisProntos = null;
+    const origemNome = chaveNome(busca.get('origemNome'));
+    if (!origemId && origemNome) {
+      locaisProntos = await listarLocais();
+      origemId = locaisProntos.find((l) => chaveNome(l.name) === origemNome)?.id ?? null;
+    }
+
     const [{ transferencias, truncado }, locais] = await Promise.all([
       listarTransferencias({
-        origemId: busca.get('origem') || null,
+        origemId,
         destinoId: busca.get('destino') || null,
         dataInicial,
         dataFinal,
         mostrarRascunhos: busca.get('rascunhos') === '1',
       }),
-      listarLocais(),
+      locaisProntos ?? listarLocais(),
     ]);
 
     const situacoes = await statusPorPedido(transferencias.map((t) => t.id));
@@ -89,6 +104,7 @@ export async function GET(request) {
       transferencias: lista,
       locais: locais.map((l) => ({ id: l.id, nome: l.name, ativo: l.isActive })),
       truncado,
+      origemId,
     });
   } catch (erro) {
     return erroJson(`Não foi possível listar as transferências: ${erro.message}`);

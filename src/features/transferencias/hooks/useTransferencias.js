@@ -15,6 +15,9 @@ export const FILTROS_VAZIOS = {
   naoEmitidas: false,
 };
 
+// A tela abre filtrada nas transferências que saem do CD.
+const ORIGEM_PADRAO = 'Rowa Centro de Distribuição 1';
+
 function paraQuery(filtros) {
   const busca = new URLSearchParams();
   for (const [chave, valor] of Object.entries(filtros)) {
@@ -71,11 +74,11 @@ export function useTransferencias() {
   // { lista, descricao, semRascunho, jaEmitidas } enquanto o lote espera confirmação.
   const [loteAConfirmar, setLoteAConfirmar] = useState(null);
 
-  const carregar = useCallback(async (f) => {
+  const carregar = useCallback(async (f, extra = '') => {
     setCarregando(true);
     setErro(null);
     try {
-      const corpo = await lerJson(await fetch(`/api/transferencias?${paraQuery(f)}`), 'Falha ao carregar');
+      const corpo = await lerJson(await fetch(`/api/transferencias?${paraQuery(f)}${extra}`), 'Falha ao carregar');
       setTransferencias(corpo.transferencias);
       conferidos.current = new Set();
       // Filtro novo, lista nova: a página antiga pode nem existir mais.
@@ -83,6 +86,7 @@ export function useTransferencias() {
       setSelecionadas(new Set());
       setLocais(corpo.locais);
       setTruncado(corpo.truncado);
+      return corpo;
     } catch (e) {
       setErro(e.message);
     } finally {
@@ -91,7 +95,10 @@ export function useTransferencias() {
   }, []);
 
   useEffect(() => {
-    carregar(FILTROS_VAZIOS);
+    carregar(FILTROS_VAZIOS, `&origemNome=${encodeURIComponent(ORIGEM_PADRAO)}`).then((corpo) => {
+      // Só aplica se o usuário ainda não escolheu outra origem enquanto carregava.
+      if (corpo?.origemId) setFiltros((atual) => (atual.origem ? atual : { ...atual, origem: corpo.origemId }));
+    });
     fetch('/api/config/permitir-emissao')
       .then((r) => r.json())
       .then((d) => setPermitirEmissao(!!d.permitirEmissao))
