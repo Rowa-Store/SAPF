@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { ITENS_POR_PAGINA } from '@/lib/constants';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export const FILTROS_VAZIOS = {
   soAtacado: true,
@@ -13,17 +12,6 @@ async function lerJson(resposta, mensagemPadrao) {
   const corpo = await resposta.json().catch(() => ({}));
   if (!resposta.ok) throw new Error(corpo.erro ?? mensagemPadrao);
   return corpo;
-}
-
-/** Termos separados por vírgula; casa com nº do pedido, cliente, CNPJ ou nº da NF. */
-function casaBusca(p, busca) {
-  const termos = busca
-    .split(',')
-    .map((t) => t.trim().toLowerCase())
-    .filter(Boolean);
-  if (termos.length === 0) return true;
-  const campos = [p.name, p.cliente, p.cnpj, p.numeroNf].filter(Boolean).map((c) => String(c).toLowerCase());
-  return termos.some((t) => campos.some((c) => c.includes(t)));
 }
 
 /**
@@ -39,6 +27,10 @@ function casaBusca(p, busca) {
  * Para ajustar itens ou cliente antes, a conferência completa continua em
  * /pedidos/[id]/rascunho.
  *
+ * A lista vem paginada do servidor, 50 pedidos por vez (cursor do Shopify),
+ * e a busca roda lá também — carregar tudo de uma vez deixava a tela lenta.
+ * "Só atacado" e "não emitidas" filtram a página já carregada.
+ *
  * O nº da NF nunca é digitado: vem da nota autorizada no Tiny. Toda linha da
  * página aberta que tem nota no Tiny mas ainda não tem número é conferida
  * sozinha, uma por vez (a API do Tiny tem limite de chamadas por minuto).
@@ -48,7 +40,12 @@ export function useAtacado() {
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [filtros, setFiltros] = useState(FILTROS_VAZIOS);
-  const [pagina, setPagina] = useState(1);
+  const [carregando, setCarregando] = useState(false);
+  // Cursor de cada página já aberta (o da 1ª é null) e o da próxima, se houver.
+  const [cursores, setCursores] = useState([null]);
+  const [proximoCursor, setProximoCursor] = useState(null);
+  // Busca que valeu na última carga — a do campo só vale ao aplicar.
+  const [buscaAplicada, setBuscaAplicada] = useState('');
 
   const [permitirEmissao, setPermitirEmissao] = useState(null);
   const [alternandoTrava, setAlternandoTrava] = useState(false);
@@ -60,17 +57,34 @@ export function useAtacado() {
   // ids já conferidos automaticamente nesta carga — não repete a cada render.
   const conferidos = useRef(new Set());
 
+  const carregar = useCallback(async ({ cursor = null, busca = '' } = {}) => {
+    setCarregando(true);
+    setErro(null);
+    try {
+      const query = new URLSearchParams();
+      if (cursor) query.set('cursor', cursor);
+      if (busca.trim()) query.set('busca', busca.trim());
+      const corpo = await lerJson(await fetch(`/api/pedidos?${query}`), 'Falha ao carregar');
+      setPedidos(corpo.pedidos);
+      setProximoCursor(corpo.proximoCursor);
+      setAcoes({});
+      return true;
+    } catch (e) {
+      setErro(e.message);
+      return false;
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
+
   useEffect(() => {
-    fetch('/api/pedidos')
-      .then((r) => lerJson(r, 'Falha ao carregar'))
-      .then((d) => setPedidos(d.pedidos))
-      .catch((e) => setErro(e.message));
+    carregar();
 
     fetch('/api/config/permitir-emissao')
       .then((r) => r.json())
       .then((d) => setPermitirEmissao(!!d.permitirEmissao))
       .catch(() => setPermitirEmissao(false));
-  }, []);
+  }, [carregar]);
 
   async function alternarPermitirEmissao() {
     setAlternandoTrava(true);
@@ -94,12 +108,39 @@ export function useAtacado() {
 
   function atualizarFiltro(campo, valor) {
     setFiltros((atual) => ({ ...atual, [campo]: valor }));
-    setPagina(1);
+  }
+
+  // Busca nova, lista nova: volta para a primeira página.
+  async function buscar(busca = filtros.busca) {
+    if (await carregar({ busca })) {
+      setCursores([null]);
+      setBuscaAplicada(busca);
+    }
   }
 
   function limparFiltros() {
     setFiltros(FILTROS_VAZIOS);
-    setPagina(1);
+    if (buscaAplicada) buscar('');
+  }
+
+  const pagina = cursores.length;
+
+  async function proximaPagina() {
+    if (!proximoCursor || carregando) return;
+    const cursor = proximoCursor;
+    if (await carregar({ cursor, busca: buscaAplicada })) {
+      setCursores((atual) => [...atual, cursor]);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+
+  async function paginaAnterior() {
+    if (cursores.length <= 1 || carregando) return;
+    const anteriores = cursores.slice(0, -1);
+    if (await carregar({ cursor: anteriores[anteriores.length - 1], busca: buscaAplicada })) {
+      setCursores(anteriores);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   }
 
   const filtrosAlterados = JSON.stringify(filtros) !== JSON.stringify(FILTROS_VAZIOS);
@@ -225,24 +266,17 @@ export function useAtacado() {
   }
 
   const visiveis = (pedidos ?? []).filter(
-    (p) =>
-      (!filtros.soAtacado || p.classificacao !== 'outro') &&
-      (!filtros.naoEmitidas || !p.notaEmitida) &&
-      casaBusca(p, filtros.busca)
+    (p) => (!filtros.soAtacado || p.classificacao !== 'outro') && (!filtros.naoEmitidas || !p.notaEmitida)
   );
 
-  const totalPaginas = Math.max(1, Math.ceil(visiveis.length / ITENS_POR_PAGINA));
-  const inicio = (pagina - 1) * ITENS_POR_PAGINA;
-  const pedidosDaPagina = visiveis.slice(inicio, inicio + ITENS_POR_PAGINA);
-
-  const idsParaConferir = pedidosDaPagina
+  const idsParaConferir = visiveis
     .filter((p) => precisaConferir(p) && !conferidos.current.has(p.id))
     .map((p) => p.id)
     .join(',');
 
   useEffect(() => {
     if (!idsParaConferir) return;
-    const pendentes = pedidosDaPagina.filter((p) => idsParaConferir.split(',').includes(String(p.id)));
+    const pendentes = visiveis.filter((p) => idsParaConferir.split(',').includes(String(p.id)));
     for (const p of pendentes) conferidos.current.add(p.id);
     (async () => {
       for (const p of pendentes) await conferirNoTiny(p);
@@ -250,11 +284,6 @@ export function useAtacado() {
     // Só dispara quando muda o conjunto de linhas a conferir, não a cada render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idsParaConferir]);
-
-  function mudarPagina(nova) {
-    setPagina(nova);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
 
   return {
     pedidos,
@@ -265,11 +294,14 @@ export function useAtacado() {
     atualizarFiltro,
     limparFiltros,
     filtrosAlterados,
+    buscar,
+    buscaAplicada,
+    carregando,
     visiveis,
-    pedidosDaPagina,
     pagina,
-    totalPaginas,
-    mudarPagina,
+    temProxima: !!proximoCursor,
+    proximaPagina,
+    paginaAnterior,
     permitirEmissao,
     alternandoTrava,
     erroTrava,

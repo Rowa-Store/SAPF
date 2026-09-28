@@ -174,8 +174,9 @@ src/
     rascunhos/page.js                Redireciona para /pedidos (endereço antigo)
     layout.js                        Cabeçalho + CSS global
     api/saude/route.js               Testa Shopify, Tiny e Supabase
-    api/pedidos/route.js             Lista pedidos + classificação + situação fiscal
-                                      (inclui rascunhos pendentes fora da lista recente)
+    api/pedidos/route.js             Página de 50 pedidos (cursor do Shopify) + busca +
+                                      classificação + situação fiscal (inclui rascunhos
+                                      pendentes de pedidos mais antigos na 1ª página)
     api/pedidos/[id]/preview/        Monta o payload da nota que a tela do rascunho
                                       consome (só leitura)
     api/pedidos/[id]/rascunho/       Cria/edita o rascunho no Tiny (escreve em produção)

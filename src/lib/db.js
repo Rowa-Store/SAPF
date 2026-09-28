@@ -247,25 +247,55 @@ export async function definirPermitirEmissao(valor) {
   return error ? { ok: false, erro: error.message } : { ok: true, permitirEmissao: !!valor };
 }
 
-/** Lista os rascunhos já criados no Tiny, mais recentes primeiro. */
-export async function listarRascunhosCriados({ limite = 50 } = {}) {
+/**
+ * Rascunhos de pedido ainda não emitidos, mais recentes primeiro. O filtro de
+ * emissão vai na consulta: trazer também os emitidos (cada um com o payload
+ * inteiro) só para descartar depois pesava no carregamento da tela.
+ */
+export async function listarRascunhosPendentes({ limite = 50 } = {}) {
   const db = obterCliente();
   if (!db) return { ok: false, erro: SEM_CONFIG.erro, rascunhos: [] };
 
   const { data, error } = await db
     .from('notas_processadas')
     .select(
-      'shopify_order_id, shopify_order_name, classificacao, tiny_nota_id, nota_emitida, numero_nf, payload_enviado, tiny_notas_substituidas, criado_em, atualizado_em'
+      'shopify_order_id, shopify_order_name, classificacao, tiny_nota_id, numero_nf, payload_enviado, tiny_notas_substituidas, criado_em'
     )
     .eq('status', 'rascunho_criado')
-    // Transferências têm tela própria (/transferencias) e ids de outro tipo —
-    // os links desta lista só sabem abrir pedido.
+    .eq('nota_emitida', false)
+    // Transferências têm tela própria (/transferencias) e ids de outro tipo.
     .neq('classificacao', 'transferencia')
     .order('atualizado_em', { ascending: false })
     .limit(limite);
 
   if (error) return { ok: false, erro: error.message, rascunhos: [] };
   return { ok: true, rascunhos: data ?? [] };
+}
+
+/**
+ * Nºs dos pedidos (ex.: "#1024") cujas notas têm um destes nºs de NF ou um
+ * destes CNPJs de cliente — para a busca da tela de atacado, já que nenhum
+ * dos dois é pesquisável no Shopify. O CNPJ só acha pedido que já tem nota.
+ */
+export async function pedidosPorNfOuCnpj({ numerosNf = [], cnpjs = [] }) {
+  const db = obterCliente();
+  if (!db || (numerosNf.length === 0 && cnpjs.length === 0)) return [];
+
+  const condicoes = [
+    ...(numerosNf.length ? [`numero_nf.in.(${numerosNf.join(',')})`] : []),
+    ...cnpjs.map((c) => `payload_enviado->nota_fiscal->cliente->>cpf_cnpj.eq.${c}`),
+  ];
+  const { data, error } = await db
+    .from('notas_processadas')
+    .select('shopify_order_name')
+    .or(condicoes.join(','))
+    .neq('classificacao', 'transferencia');
+
+  if (error) {
+    console.error('[db] Falha ao buscar pedidos por nº da NF ou CNPJ:', error.message);
+    return [];
+  }
+  return [...new Set((data ?? []).map((r) => r.shopify_order_name).filter(Boolean))];
 }
 
 /** CNPJs (só dígitos) dos clientes franqueados, para a classificação decidir

@@ -90,8 +90,9 @@ query PedidoAtacado($id: ID!, $cursor: String) {
 }`;
 
 export const QUERY_PEDIDOS_RECENTES = `
-query PedidosRecentes($limite: Int!) {
-  orders(first: $limite, reverse: true, query: "financial_status:paid") {
+query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
+  orders(first: $limite, after: $cursor, sortKey: CREATED_AT, reverse: true, query: $busca) {
+    pageInfo { hasNextPage endCursor }
     nodes {
       id name createdAt tags
       currentTotalPriceSet { shopMoney { amount } }
@@ -107,24 +108,56 @@ query PedidosRecentes($limite: Int!) {
   }
 }`;
 
+const FILTRO_BASE = 'financial_status:paid';
+
+/** Aspas para a sintaxe de busca do Shopify (termos com espaço, "#", etc.). */
+function entreAspas(termo) {
+  return `"${String(termo).replace(/["\\]/g, '')}"`;
+}
+
 /**
- * Lista de pedidos para a tela /pedidos.
+ * Monta o `query` da busca de pedidos. `termos` são textos livres: número
+ * curto vira nº do pedido (`name:#1024`); o resto (cliente, e-mail) o
+ * Shopify procura nos campos padrão. `nomes`
+ * são nºs de pedido exatos (ex.: vindos de uma busca por nº da NF). Qualquer
+ * um que casar entra (OR); sem nenhum, só os pagos.
  */
-export async function listarPedidosRecentes({ limite = 30 } = {}) {
-  const dados = await shopifyGraphQL(QUERY_PEDIDOS_RECENTES, { limite });
+function montarBusca({ termos = [], nomes = [] }) {
+  const partes = [
+    ...termos.map((t) => (/^#?\d{1,8}$/.test(t) ? `name:${entreAspas(t.startsWith('#') ? t : `#${t}`)}` : entreAspas(t))),
+    ...nomes.map((n) => `name:${entreAspas(n)}`),
+  ];
+  if (partes.length === 0) return FILTRO_BASE;
+  return `${FILTRO_BASE} AND (${partes.join(' OR ')})`;
+}
+
+/**
+ * Uma página da lista de pedidos da tela de atacado, mais recentes primeiro.
+ * Paginada por cursor no próprio Shopify: pedir tudo de uma vez (com os
+ * metafields de cada cliente) deixava a consulta pesada e a tela lenta.
+ */
+export async function listarPedidosRecentes({ limite = 50, cursor = null, termos, nomes } = {}) {
+  const dados = await shopifyGraphQL(QUERY_PEDIDOS_RECENTES, {
+    limite,
+    cursor,
+    busca: montarBusca({ termos, nomes }),
+  });
   const pedidos = dados.orders?.nodes ?? [];
 
-  return pedidos.map((pedido) => ({
-    id: pedido.id,
-    name: pedido.name,
-    createdAt: pedido.createdAt,
-    cliente: pedido.customer?.displayName ?? 'Sem cliente',
-    total: Number(pedido.currentTotalPriceSet?.shopMoney?.amount ?? 0),
-    tags: pedido.tags ?? [],
-    // O pedido inteiro vai junto para a classificação rodar sem uma segunda
-    // consulta.
-    _bruto: pedido,
-  }));
+  return {
+    pageInfo: dados.orders?.pageInfo ?? { hasNextPage: false, endCursor: null },
+    pedidos: pedidos.map((pedido) => ({
+      id: pedido.id,
+      name: pedido.name,
+      createdAt: pedido.createdAt,
+      cliente: pedido.customer?.displayName ?? 'Sem cliente',
+      total: Number(pedido.currentTotalPriceSet?.shopMoney?.amount ?? 0),
+      tags: pedido.tags ?? [],
+      // O pedido inteiro vai junto para a classificação rodar sem uma segunda
+      // consulta.
+      _bruto: pedido,
+    })),
+  };
 }
 
 /**
@@ -153,7 +186,7 @@ export async function obterPedidoCompleto(orderId) {
 
 /** Ping usado pelo /api/saude. */
 export async function verificarShopify() {
-  const dados = await shopifyGraphQL(QUERY_PEDIDOS_RECENTES, { limite: 1 });
+  const dados = await shopifyGraphQL(QUERY_PEDIDOS_RECENTES, { limite: 1, busca: FILTRO_BASE });
   const pedidos = dados.orders?.nodes ?? [];
 
   return {

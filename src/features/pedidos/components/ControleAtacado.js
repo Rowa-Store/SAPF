@@ -8,7 +8,6 @@
 
 import { Fragment } from 'react';
 import IconePdf from '@/components/ui/IconePdf';
-import Paginacao from '@/components/ui/Paginacao';
 import { formatarDataCurta, formatarMoeda, formatarMoedaOuTraco } from '@/lib/format';
 import { useAtacado } from '../hooks/useAtacado';
 
@@ -80,11 +79,14 @@ export default function ControleAtacado() {
     atualizarFiltro,
     limparFiltros,
     filtrosAlterados,
+    buscar,
+    buscaAplicada,
+    carregando,
     visiveis,
-    pedidosDaPagina,
     pagina,
-    totalPaginas,
-    mudarPagina,
+    temProxima,
+    proximaPagina,
+    paginaAnterior,
     permitirEmissao,
     alternandoTrava,
     erroTrava,
@@ -97,15 +99,17 @@ export default function ControleAtacado() {
     emitir,
   } = useAtacado();
 
-  if (erro) {
-    return (
-      <div className="aviso">
-        <strong>Não foi possível carregar os pedidos.</strong>
-        <p>{erro}</p>
-        <p>Confira as integrações em Sys Info e recarregue.</p>
-      </div>
-    );
-  }
+  const paginacao = (pagina > 1 || temProxima) && (
+    <div className="paginacao">
+      <button className="secundario" onClick={paginaAnterior} disabled={pagina === 1 || carregando}>
+        Anterior
+      </button>
+      <span>Página {pagina}</span>
+      <button className="secundario" onClick={proximaPagina} disabled={!temProxima || carregando}>
+        Próxima
+      </button>
+    </div>
+  );
 
   return (
     <>
@@ -139,9 +143,10 @@ export default function ControleAtacado() {
             <input
               id="busca"
               placeholder="Ex.: #1024, #1030 ou nome do cliente"
-              title="Nº do pedido, cliente, CNPJ ou nº da NF — separe vários por vírgula"
+              title="Nº do pedido, cliente, nº da NF ou CNPJ — separe vários por vírgula. Enter para buscar."
               value={filtros.busca}
               onChange={(e) => atualizarFiltro('busca', e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && buscar()}
             />
           </div>
         </div>
@@ -164,9 +169,14 @@ export default function ControleAtacado() {
               Mostrar apenas não emitidas
             </label>
           </div>
-          <button className="secundario" onClick={limparFiltros} disabled={!filtrosAlterados}>
-            Limpar
-          </button>
+          <div className="grupo-botoes">
+            <button className="secundario" onClick={limparFiltros} disabled={carregando || !filtrosAlterados}>
+              Limpar
+            </button>
+            <button onClick={() => buscar()} disabled={carregando || filtros.busca === buscaAplicada}>
+              {carregando ? 'Carregando…' : 'Buscar'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -179,10 +189,21 @@ export default function ControleAtacado() {
         </div>
       )}
 
+      {erro && (
+        <div className="aviso">
+          <strong>Não foi possível carregar os pedidos.</strong>
+          <p>{erro}</p>
+          <p>Confira as integrações em Sys Info e tente de novo.</p>
+        </div>
+      )}
+
       {!pedidos ? (
-        <p className="fraco">Carregando pedidos…</p>
+        !erro && <p className="fraco">Carregando pedidos…</p>
       ) : visiveis.length === 0 ? (
-        <div className="vazio">Nenhum pedido corresponde aos filtros.</div>
+        <>
+          <div className="vazio">Nenhum pedido corresponde aos filtros nesta página.</div>
+          {paginacao}
+        </>
       ) : (
         <>
           <div className="tabela-rolavel">
@@ -198,7 +219,7 @@ export default function ControleAtacado() {
                 </tr>
               </thead>
               <tbody>
-                {pedidosDaPagina.map((p) => {
+                {visiveis.map((p) => {
                   const acao = acoes[p.id];
                   const enviando = acao?.fase === 'enviando';
                   const temRascunho = p.status === 'rascunho_criado';
@@ -214,6 +235,11 @@ export default function ControleAtacado() {
                             {p.foraDaLista ? p.name : <a href={`/pedidos/${p.id}/rascunho`}>{p.name}</a>}
                           </div>
                           <div className="fraco">{formatarDataCurta(p.createdAt)}</div>
+                          {p.foraDaLista && (
+                            <div className="fraco" title="Pedido mais antigo que esta página, com rascunho ainda não emitido">
+                              rascunho pendente
+                            </div>
+                          )}
                         </td>
                         <td>
                           {p.cliente}
@@ -379,10 +405,10 @@ export default function ControleAtacado() {
             </table>
           </div>
           <p className="fraco">
-            {visiveis.length} de {pedidos.length} pedido(s)
-            {totalPaginas > 1 && ` — página ${pagina} de ${totalPaginas}`}.
+            {visiveis.length} de {pedidos.length} pedido(s) nesta página
+            {carregando && ' — carregando…'}
           </p>
-          <Paginacao pagina={pagina} totalPaginas={totalPaginas} aoMudarPagina={mudarPagina} />
+          {paginacao}
         </>
       )}
     </>
