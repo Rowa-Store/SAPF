@@ -62,6 +62,8 @@ export async function registrarPreview({ orderId, orderName, classificacao, payl
  * `notasSubstituidas`, quando informado, grava a lista de tiny_nota_id de
  * rascunhos antigos que este novo rascunho substitui (ver editarRascunho em
  * app/api/pedidos/[id]/rascunho/route.js) — omitido, a coluna não é tocada.
+ * `reiniciarEmissao` zera nota_emitida e numero_nf: usado quando o novo
+ * rascunho substitui uma nota já emitida (reemissão de transferência).
  */
 export async function registrarRascunhoCriado({
   orderId,
@@ -71,6 +73,7 @@ export async function registrarRascunhoCriado({
   tinyNotaId,
   respostaTiny,
   notasSubstituidas,
+  reiniciarEmissao = false,
 }) {
   const db = obterCliente();
   if (!db) return SEM_CONFIG;
@@ -86,6 +89,7 @@ export async function registrarRascunhoCriado({
     erro: null,
     atualizado_em: new Date().toISOString(),
     ...(notasSubstituidas ? { tiny_notas_substituidas: notasSubstituidas } : {}),
+    ...(reiniciarEmissao ? { nota_emitida: false, numero_nf: null } : {}),
   };
 
   const { data, error } = await db
@@ -192,18 +196,29 @@ export async function salvarItensPendentes(orderName, pendencias) {
   return error ? { ok: false, erro: error.message } : { ok: true, gravados: linhas.length };
 }
 
-/** Mapa orderId -> status, usado pela lista de pedidos e pela de transferências. */
+// Os ids vão na URL do GET (`.in(...)`): centenas de gids de uma vez estouram
+// o limite de tamanho e a consulta inteira falha.
+const IDS_POR_CONSULTA = 100;
+
+/**
+ * Mapa orderId -> status, usado pela lista de pedidos e pela de transferências.
+ * Lança erro se o Supabase falhar: devolver {} faria tudo parecer "não
+ * processado" — a lista mentiria e a trava contra duplicidade não valeria.
+ */
 export async function statusPorPedido(orderIds) {
   const db = obterCliente();
   if (!db) return {};
 
-  const { data, error } = await db
-    .from('notas_processadas')
-    .select('shopify_order_id, status, tiny_nota_id, nota_emitida, numero_nf, tiny_notas_substituidas')
-    .in('shopify_order_id', orderIds);
-
-  if (error || !data) return {};
-  return Object.fromEntries(data.map((r) => [r.shopify_order_id, r]));
+  const linhas = [];
+  for (let i = 0; i < orderIds.length; i += IDS_POR_CONSULTA) {
+    const { data, error } = await db
+      .from('notas_processadas')
+      .select('shopify_order_id, status, tiny_nota_id, nota_emitida, numero_nf, tiny_notas_substituidas')
+      .in('shopify_order_id', orderIds.slice(i, i + IDS_POR_CONSULTA));
+    if (error) throw new Error(`Falha ao ler a situação fiscal no Supabase: ${error.message}`);
+    linhas.push(...(data ?? []));
+  }
+  return Object.fromEntries(linhas.map((r) => [r.shopify_order_id, r]));
 }
 
 /**

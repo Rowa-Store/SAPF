@@ -133,6 +133,15 @@ pedidos (confirmação na tela e `permitir_emissao`). O registro fica em
   cria outro rascunho no Tiny (`POST .../rascunho` com `substituir: true`) —
   útil depois de corrigir o cadastro da loja. O antigo vai para
   `tiny_notas_substituidas`, para ser cancelado à mão no Tiny.
+- **Reemitir:** transferência com nota já emitida tem o botão "Reemitir":
+  com uma confirmação, cria um novo rascunho (`POST .../rascunho` com
+  `reemitir: true`, que exige a trava de emissão ligada) e emite a nota nova.
+  O registro volta a "não emitida" antes da emissão e a nota antiga vai para
+  `tiny_notas_substituidas` — **a NF anterior continua valendo até ser
+  cancelada à mão no Tiny.** Já emitidas também podem ser marcadas para
+  "Emitir selecionadas": a confirmação única do lote avisa quantas serão
+  reemitidas e vale para todas. "Emitir todas com rascunho" e o "marcar a
+  página" continuam ignorando as já emitidas.
 - **Editar rascunho (opcional):** `/transferencias/[id]/rascunho/editar` (mesma tela da
   edição de pedido). Como no pedido, salvar cria um NOVO rascunho no Tiny e o
   antigo fica em `tiny_notas_substituidas`, para ser cancelado à mão lá.

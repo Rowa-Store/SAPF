@@ -165,7 +165,9 @@ export default function ControleTransferencias() {
     novoRascunho,
     emitir,
     emitirDireto,
+    reemitir,
     podeEmitir,
+    podeSelecionar,
     selecionadas,
     alternarSelecao,
     selecionarVarias,
@@ -343,7 +345,9 @@ export default function ControleTransferencias() {
                 onClick={emitirSelecionadas}
                 disabled={!permitirEmissao || carregando || !!lote || selecionadasEmitiveis.length === 0}
                 title={
-                  permitirEmissao ? 'Cria o rascunho quando falta e emite as transferências marcadas' : DICA_TRAVA
+                  permitirEmissao
+                    ? 'Cria o rascunho quando falta e emite as transferências marcadas — as já emitidas são reemitidas com um novo rascunho'
+                    : DICA_TRAVA
                 }
               >
                 Emitir selecionadas ({selecionadasEmitiveis.length})
@@ -385,7 +389,7 @@ export default function ControleTransferencias() {
                     <Fragment key={t.id}>
                       <tr className={`${selecionadas.has(t.id) ? 'linha-selecionada' : ''} ${expandida ? 'linha-expandida' : ''}`}>
                         <td className="col-check">
-                          {podeEmitir(t) && (
+                          {podeSelecionar(t) && (
                             <input
                               type="checkbox"
                               aria-label={`Selecionar a transferência ${t.name}`}
@@ -461,6 +465,23 @@ export default function ControleTransferencias() {
                                   Criar e emitir
                                 </button>
                               </>
+                            )}
+
+                            {t.notaEmitida && t.status !== 'CANCELED' && (
+                              <button
+                                className="pequeno secundario"
+                                onClick={() => definirAcao(t.id, { fase: 'confirmar-reemissao' })}
+                                disabled={
+                                  !permitirEmissao || enviando || !!lote || acao?.fase === 'confirmar-reemissao'
+                                }
+                                title={
+                                  permitirEmissao
+                                    ? 'Cria um novo rascunho a partir do Shopify e do cadastro da loja e emite uma nova nota'
+                                    : DICA_TRAVA
+                                }
+                              >
+                                Reemitir
+                              </button>
                             )}
 
                             {temRascunho && !t.notaEmitida && (
@@ -546,6 +567,28 @@ export default function ControleTransferencias() {
                             </p>
                             <div className="grupo-botoes">
                               <button onClick={() => novoRascunho(t)}>Sim, criar novo rascunho</button>
+                              <button className="secundario" onClick={() => definirAcao(t.id, null)}>
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        </LinhaDetalhe>
+                      )}
+
+                      {acao?.fase === 'confirmar-reemissao' && (
+                        <LinhaDetalhe>
+                          <div className="confirmacao">
+                            <p style={{ marginTop: 0 }}>
+                              <strong>
+                                Reemitir a transferência {t.name}
+                                {t.numeroNf ? ` (hoje NF nº ${t.numeroNf})` : ''}?
+                              </strong>{' '}
+                              Um novo rascunho é montado agora a partir do Shopify e do cadastro da loja e uma NOVA
+                              nota fiscal é emitida no Tiny — valor fiscal real, irreversível. A nota anterior (
+                              {t.tinyNotaId}) continua valendo até ser cancelada à mão no Tiny.
+                            </p>
+                            <div className="grupo-botoes">
+                              <button onClick={() => reemitir(t)}>Sim, criar novo rascunho e emitir</button>
                               <button className="secundario" onClick={() => definirAcao(t.id, null)}>
                                 Cancelar
                               </button>
