@@ -62,6 +62,8 @@ export async function registrarPreview({ orderId, orderName, classificacao, payl
  * `notasSubstituidas`, quando informado, grava a lista de tiny_nota_id de
  * rascunhos antigos que este novo rascunho substitui (ver editarRascunho em
  * app/api/pedidos/[id]/rascunho/route.js) — omitido, a coluna não é tocada.
+ * `reiniciarEmissao` zera nota_emitida e numero_nf: usado quando o novo
+ * rascunho substitui uma nota já emitida (reemissão de transferência).
  */
 export async function registrarRascunhoCriado({
   orderId,
@@ -71,6 +73,7 @@ export async function registrarRascunhoCriado({
   tinyNotaId,
   respostaTiny,
   notasSubstituidas,
+  reiniciarEmissao = false,
 }) {
   const db = obterCliente();
   if (!db) return SEM_CONFIG;
@@ -86,6 +89,7 @@ export async function registrarRascunhoCriado({
     erro: null,
     atualizado_em: new Date().toISOString(),
     ...(notasSubstituidas ? { tiny_notas_substituidas: notasSubstituidas } : {}),
+    ...(reiniciarEmissao ? { nota_emitida: false, numero_nf: null } : {}),
   };
 
   const { data, error } = await db
