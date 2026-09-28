@@ -4,9 +4,11 @@
 // exigem `confirmacaoTeste: true` e nunca criam dois rascunhos para a mesma
 // transferência.
 //
-//   - POST cria o rascunho pela primeira vez. O payload NÃO vem do navegador:
-//     é remontado aqui a partir do Shopify e do cadastro de lojas — o que vai
-//     para o Tiny é o que o preview mostrou.
+//   - POST cria o rascunho. O payload NÃO vem do navegador: é remontado aqui
+//     a partir do Shopify e do cadastro de lojas — o que vai para o Tiny é o
+//     que o preview mostrou. Com `substituir: true`, cria um novo mesmo que já
+//     exista rascunho (ex.: depois de corrigir o cadastro da loja); o antigo
+//     vai para tiny_notas_substituidas e precisa ser removido à mão no Tiny.
 //   - GET  devolve o rascunho já criado (o payload realmente enviado ao Tiny),
 //     para a tela de edição carregar.
 //   - PUT  "edita" o rascunho: como no pedido, a API 2.0 do Tiny não altera
@@ -153,18 +155,31 @@ export async function POST(request, { params }) {
     );
   }
 
+  const substituir = corpo.substituir === true;
+
   // Trava contra duplicidade — vale também para nota emitida fora do sistema.
+  // Substituir um rascunho só é aceito quando pedido explicitamente.
   const situacao = (await statusPorPedido([gid]))[gid];
-  if (situacao?.status === 'rascunho_criado') {
-    return erroJson(`Esta transferência já tem o rascunho ${situacao.tiny_nota_id} no Tiny.`, 409, {
-      tinyNotaId: situacao.tiny_nota_id,
-    });
-  }
   if (situacao?.nota_emitida) {
     return erroJson(
       `Esta transferência já está marcada como emitida${situacao.numero_nf ? ` (NF ${situacao.numero_nf})` : ''}.`,
       409
     );
+  }
+  if (situacao?.status === 'rascunho_criado' && !substituir) {
+    return erroJson(`Esta transferência já tem o rascunho ${situacao.tiny_nota_id} no Tiny.`, 409, {
+      tinyNotaId: situacao.tiny_nota_id,
+    });
+  }
+
+  let anterior = null;
+  if (substituir) {
+    const atual = await rascunhoDaTransferencia(gid);
+    if (!atual.ok) return erroJson(`Não foi possível confirmar o rascunho atual: ${atual.erro}`, 502);
+    if (!atual.rascunho?.tiny_nota_id) {
+      return erroJson('Esta transferência ainda não tem rascunho no Tiny — use "Criar rascunho".', 404);
+    }
+    anterior = atual.rascunho;
   }
 
   let transferencia, payload;
@@ -204,6 +219,11 @@ export async function POST(request, { params }) {
     const { idNota, retorno } = await incluirNotaRascunho(payload);
     const confirmacao = idNota ? await obterNota(idNota).catch((erro) => ({ aviso: erro.message })) : null;
 
+    // Acumula: um rascunho refeito duas vezes deixa dois antigos para remover no Tiny.
+    const notasSubstituidas = anterior
+      ? [...(anterior.tiny_notas_substituidas ?? []), anterior.tiny_nota_id]
+      : undefined;
+
     const registro = await registrarRascunhoCriado({
       orderId: gid,
       orderName: transferencia.name,
@@ -211,6 +231,7 @@ export async function POST(request, { params }) {
       payload,
       tinyNotaId: idNota,
       respostaTiny: retorno,
+      notasSubstituidas,
     });
     if (!registro.ok) {
       console.error(`[transferencia] Nota ${idNota} criada no Tiny, mas falhou ao registrar no Supabase:`, registro.erro);
@@ -219,8 +240,14 @@ export async function POST(request, { params }) {
     return Response.json({
       ok: true,
       tinyNotaId: idNota,
+      tinyNotaIdAnterior: anterior?.tiny_nota_id ?? null,
+      tinyNotasSubstituidas: notasSubstituidas ?? null,
       confirmacao,
-      mensagem: `Rascunho ${idNota ?? ''} criado no Tiny para a transferência ${transferencia.name}.`,
+      mensagem: anterior
+        ? `Novo rascunho ${idNota ?? ''} criado no Tiny para a transferência ${transferencia.name}. ` +
+          `Cancele ou exclua o rascunho ${anterior.tiny_nota_id} dentro do Tiny — a API não faz isso ` +
+          'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.'
+        : `Rascunho ${idNota ?? ''} criado no Tiny para a transferência ${transferencia.name}.`,
     });
   } catch (erro) {
     console.error(`[transferencia] Tiny recusou a inclusão da transferência ${gid}:`, erro);

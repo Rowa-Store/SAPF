@@ -128,7 +128,12 @@ pedidos (confirmação na tela e `permitir_emissao`). O registro fica em
   na emissão e, quando a autorização demora ou a nota é emitida direto no
   Tiny, a tela confere sozinha as linhas da página aberta
   (`/api/transferencias/[id]/situacao`); há também o botão "Conferir no Tiny".
-- **Editar rascunho:** `/transferencias/[id]/rascunho/editar` (mesma tela da
+- **Novo rascunho:** com rascunho já criado (e nota não emitida), o botão
+  "Novo rascunho" remonta a nota a partir do Shopify e de `lojas_fiscais` e
+  cria outro rascunho no Tiny (`POST .../rascunho` com `substituir: true`) —
+  útil depois de corrigir o cadastro da loja. O antigo vai para
+  `tiny_notas_substituidas`, para ser cancelado à mão no Tiny.
+- **Editar rascunho (opcional):** `/transferencias/[id]/rascunho/editar` (mesma tela da
   edição de pedido). Como no pedido, salvar cria um NOVO rascunho no Tiny e o
   antigo fica em `tiny_notas_substituidas`, para ser cancelado à mão lá.
 - **DANFE:** `/api/transferencias/[id]/danfe` pega o id da nota no Supabase e

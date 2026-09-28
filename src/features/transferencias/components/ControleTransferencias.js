@@ -1,5 +1,5 @@
 // /transferencias — transferências de estoque entre lojas (Shopify) e a nota
-// fiscal de cada uma no Tiny: rascunho (criar e editar), emissão, nº da NF e
+// fiscal de cada uma no Tiny: rascunho (criar, refazer e editar), emissão, nº da NF e
 // DANFE.
 
 'use client';
@@ -162,6 +162,7 @@ export default function ControleTransferencias() {
     precisaConferir,
     conferirNoTiny,
     criarRascunho,
+    novoRascunho,
     emitir,
     emitirDireto,
     podeEmitir,
@@ -471,10 +472,18 @@ export default function ControleTransferencias() {
                                 >
                                   {permitirEmissao ? 'Emitir nota' : 'Emissão bloqueada'}
                                 </button>
+                                <button
+                                  className="pequeno secundario"
+                                  onClick={() => definirAcao(t.id, { fase: 'confirmar-novo-rascunho' })}
+                                  disabled={enviando || !!lote || acao?.fase === 'confirmar-novo-rascunho'}
+                                  title="Remonta a nota a partir do Shopify e do cadastro da loja e cria um novo rascunho no Tiny"
+                                >
+                                  Novo rascunho
+                                </button>
                                 <a
                                   className="botao-link"
                                   href={`/transferencias/${t.id}/rascunho/editar`}
-                                  title="Corrige o destinatário e os itens — cria um novo rascunho no Tiny"
+                                  title="Opcional: ajusta à mão o destinatário e os itens — cria um novo rascunho no Tiny"
                                 >
                                   Editar rascunho
                                 </a>
@@ -513,6 +522,29 @@ export default function ControleTransferencias() {
                             </p>
                             <div className="grupo-botoes">
                               <button onClick={() => criarRascunho(t)}>Sim, criar o rascunho</button>
+                              <button className="secundario" onClick={() => definirAcao(t.id, null)}>
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        </LinhaDetalhe>
+                      )}
+
+                      {acao?.fase === 'confirmar-novo-rascunho' && (
+                        <LinhaDetalhe>
+                          <div className="confirmacao">
+                            <p style={{ marginTop: 0 }}>
+                              <strong>Criar um novo rascunho para a transferência {t.name}?</strong> A nota é
+                              remontada agora a partir do Shopify e do cadastro da loja, e grava uma nota real no
+                              Tiny de produção. O rascunho atual ({t.tinyNotaId}) não é apagado: cancele ou exclua
+                              ele à mão no Tiny depois.
+                            </p>
+                            <p className="fraco">
+                              Se o que precisa mudar não vem do Shopify nem do cadastro, use &quot;Editar
+                              rascunho&quot; (opcional) para ajustar à mão.
+                            </p>
+                            <div className="grupo-botoes">
+                              <button onClick={() => novoRascunho(t)}>Sim, criar novo rascunho</button>
                               <button className="secundario" onClick={() => definirAcao(t.id, null)}>
                                 Cancelar
                               </button>

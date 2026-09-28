@@ -146,16 +146,21 @@ export function useTransferencias() {
     }
   }
 
-  async function enviarRascunho(t) {
+  /** `substituir`: cria um novo rascunho no lugar do que já existe (o antigo fica para remover no Tiny). */
+  async function enviarRascunho(t, { substituir = false } = {}) {
     const corpo = await lerJson(
       await fetch(`/api/transferencias/${t.id}/rascunho`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmacaoTeste: true }),
+        body: JSON.stringify({ confirmacaoTeste: true, substituir }),
       }),
       'O Tiny recusou a inclusão.'
     );
-    atualizarLinha(t.id, { situacaoFiscal: 'rascunho_criado', tinyNotaId: corpo.tinyNotaId });
+    atualizarLinha(t.id, {
+      situacaoFiscal: 'rascunho_criado',
+      tinyNotaId: corpo.tinyNotaId,
+      ...(corpo.tinyNotasSubstituidas ? { tinyNotasSubstituidas: corpo.tinyNotasSubstituidas } : {}),
+    });
     return corpo;
   }
 
@@ -190,6 +195,10 @@ export function useTransferencias() {
 
   function criarRascunho(t) {
     return executarNaLinha(t, enviarRascunho, (corpo) => setAviso(corpo.mensagem));
+  }
+
+  function novoRascunho(t) {
+    return executarNaLinha(t, (linha) => enviarRascunho(linha, { substituir: true }), (corpo) => setAviso(corpo.mensagem));
   }
 
   function emitir(t) {
@@ -331,6 +340,7 @@ export function useTransferencias() {
     precisaConferir,
     conferirNoTiny,
     criarRascunho,
+    novoRascunho,
     emitir,
     emitirDireto,
     podeEmitir,
