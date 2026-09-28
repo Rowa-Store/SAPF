@@ -401,7 +401,7 @@ export default function ControleTransferencias() {
                     />
                   </th>
                   <th>Transferência</th>
-                  <th>Origem → destino</th>
+                  <th>Destino ← origem</th>
                   <th>Shopify</th>
                   <th className="num">Qtd.</th>
                   <th>Nota fiscal</th>
@@ -436,8 +436,8 @@ export default function ControleTransferencias() {
                           <div className="fraco">{formatarDataCurta(t.data)}</div>
                         </td>
                         <td>
-                          <div>{t.origem}</div>
-                          <div className="rota-destino">→ {t.destino}</div>
+                          <div>{t.destino}</div>
+                          <div className="rota-destino">← {t.origem}</div>
                         </td>
                         <td>
                           <StatusShopify status={t.status} />
