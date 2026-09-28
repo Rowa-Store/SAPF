@@ -239,7 +239,8 @@ export default function ControleTransferencias() {
             <label htmlFor="nome">Buscar por nome</label>
             <input
               id="nome"
-              placeholder="Nome ou referência da transferência"
+              placeholder="Ex.: #T1024, #T1030, #T1041"
+              title="Nome ou referência da transferência — separe vários por vírgula"
               value={filtros.nome}
               onChange={(e) => atualizarFiltro('nome', e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && aplicarFiltros()}
@@ -249,8 +250,8 @@ export default function ControleTransferencias() {
             <label htmlFor="nf">Buscar por nº da NF</label>
             <input
               id="nf"
-              inputMode="numeric"
-              placeholder="Nº da nota fiscal"
+              placeholder="Ex.: 1520, 1523"
+              title="Nº da nota fiscal — separe vários por vírgula"
               value={filtros.nf}
               onChange={(e) => atualizarFiltro('nf', e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && aplicarFiltros()}

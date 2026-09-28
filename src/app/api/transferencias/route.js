@@ -4,7 +4,8 @@
 // Filtros aceitos na URL: origem, destino, excluir (gid do local), de, ate
 // (AAAA-MM-DD), rascunhos=1 (inclui transferências em rascunho no Shopify),
 // naoEmitidas=1, nf (número da nota) e nome (nome ou referência da
-// transferência, sem diferenciar maiúsculas). Origem, destino, datas e rascunhos vão
+// transferência, sem diferenciar maiúsculas). nf e nome aceitam vários termos
+// separados por vírgula — basta um deles bater. Origem, destino, datas e rascunhos vão
 // direto para a busca do Shopify; o resto depende do Supabase e é filtrado aqui.
 
 import { listarLocais, listarTransferencias } from '@/lib/integrations/shopifyTransferencias';
@@ -15,6 +16,11 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
+
+/** "a, b ,c" -> ['a', 'b', 'c'], já normalizados; termos vazios são descartados. */
+function termos(valor, normalizar) {
+  return (valor ?? '').split(',').map(normalizar).filter(Boolean);
+}
 
 export async function GET(request) {
   const busca = new URL(request.url).searchParams;
@@ -40,8 +46,8 @@ export async function GET(request) {
 
     const excluir = busca.get('excluir');
     const naoEmitidas = busca.get('naoEmitidas') === '1';
-    const nf = (busca.get('nf') ?? '').replace(/\D+/g, '');
-    const nome = (busca.get('nome') ?? '').trim().toLowerCase();
+    const nfs = termos(busca.get('nf'), (v) => v.replace(/\D+/g, ''));
+    const nomes = termos(busca.get('nome'), (v) => v.trim().toLowerCase());
 
     const lista = transferencias
       .map((t) => {
@@ -68,8 +74,16 @@ export async function GET(request) {
       })
       .filter((t) => !excluir || (t.origemId !== excluir && t.destinoId !== excluir))
       .filter((t) => !naoEmitidas || !t.notaEmitida)
-      .filter((t) => !nf || String(t.numeroNf ?? '').replace(/\D+/g, '').includes(nf))
-      .filter((t) => !nome || [t.name, t.referencia].some((v) => String(v ?? '').toLowerCase().includes(nome)));
+      .filter((t) => {
+        if (!nfs.length) return true;
+        const numero = String(t.numeroNf ?? '').replace(/\D+/g, '');
+        return nfs.some((nf) => numero.includes(nf));
+      })
+      .filter((t) => {
+        if (!nomes.length) return true;
+        const campos = [t.name, t.referencia].map((v) => String(v ?? '').toLowerCase());
+        return nomes.some((nome) => campos.some((c) => c.includes(nome)));
+      });
 
     return Response.json({
       transferencias: lista,
