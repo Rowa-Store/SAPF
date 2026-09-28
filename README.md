@@ -33,11 +33,14 @@ São duas, independentes:
    Liga/desliga pela tela de atacado (`/pedidos`), que lê e grava essa flag no Supabase
    (não no `.env`, porque precisa ter efeito imediato).
 
-A API 2.0 do Tiny não tem endpoint para alterar nem excluir uma nota — por
-isso "editar" um rascunho (`PUT /api/pedidos/[id]/rascunho`) na prática cria
-um rascunho novo com os dados corrigidos; o antigo precisa ser
-cancelado/excluído manualmente dentro do Tiny. O id da nota antiga fica
-registrado (`tiny_notas_substituidas`) para a tela deixar isso explícito.
+Rascunho de pedido de atacado não é editado depois de enviado ao Tiny:
+cliente e itens se ajustam antes, na conferência (`/pedidos/[id]/rascunho`).
+Nas transferências, a API 2.0 do Tiny não tem endpoint para alterar nem
+excluir uma nota — por isso "editar" um rascunho
+(`PUT /api/transferencias/[id]/rascunho`) na prática cria um rascunho novo com
+os dados corrigidos; o antigo precisa ser cancelado/excluído manualmente
+dentro do Tiny. O id da nota antiga fica registrado (`tiny_notas_substituidas`)
+para a tela deixar isso explícito.
 
 ---
 
@@ -142,8 +145,7 @@ pedidos (confirmação na tela e `permitir_emissao`). O registro fica em
   "Emitir selecionadas": a confirmação única do lote avisa quantas serão
   reemitidas e vale para todas. "Emitir todas com rascunho" e o "marcar a
   página" continuam ignorando as já emitidas.
-- **Editar rascunho (opcional):** `/transferencias/[id]/rascunho/editar` (mesma tela da
-  edição de pedido). Como no pedido, salvar cria um NOVO rascunho no Tiny e o
+- **Editar rascunho (opcional):** `/transferencias/[id]/rascunho/editar`. Salvar cria um NOVO rascunho no Tiny e o
   antigo fica em `tiny_notas_substituidas`, para ser cancelado à mão lá.
 - **DANFE:** `/api/transferencias/[id]/danfe` pega o id da nota no Supabase e
   redireciona para o link do Tiny (antes de emitir, sai como prévia sem valor
@@ -168,7 +170,7 @@ src/
     sysinfo/page.js                  Diagnóstico das integrações -> features/sysinfo
     pedidos/page.js                  Tela única de atacado -> features/pedidos
     pedidos/[id]/rascunho/page.js            Conferência e inclusão do rascunho -> features/rascunhos
-    pedidos/[id]/rascunho/editar/page.js     Edição do rascunho -> features/rascunhos
+    pedidos/[id]/rascunho/editar/page.js     Redireciona para /pedidos (rascunho enviado não é editado)
     rascunhos/page.js                Redireciona para /pedidos (endereço antigo)
     layout.js                        Cabeçalho + CSS global
     api/saude/route.js               Testa Shopify, Tiny e Supabase

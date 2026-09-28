@@ -5,7 +5,7 @@ import { ITENS_POR_PAGINA } from '@/lib/constants';
 import { recalcularParcelas } from '@/lib/fiscal/pagamento';
 
 /**
- * /pedidos/[id]/rascunho/editar — corrige um rascunho já criado no Tiny.
+ * /transferencias/[id]/rascunho/editar — corrige um rascunho já criado no Tiny.
  *
  * A API 2.0 do Tiny não tem endpoint para alterar nem excluir uma nota — só
  * para incluir. Por isso "editar" aqui significa criar um NOVO rascunho com
@@ -16,8 +16,8 @@ import { recalcularParcelas } from '@/lib/fiscal/pagamento';
  * REALMENTE enviado ao Tiny da última vez (payload_enviado no Supabase), não
  * recalculados a partir do pedido no Shopify.
  *
- * `urlApi` é o endpoint GET/PUT do rascunho — o de pedido ou o de
- * transferência (/api/transferencias/[id]/rascunho); os dois respondem igual.
+ * `urlApi` é o endpoint GET/PUT do rascunho (/api/transferencias/[id]/rascunho).
+ * Rascunho de pedido de atacado não é editado depois de enviado ao Tiny.
  */
 export function useEditarRascunho(urlApi) {
   const [dados, setDados] = useState(null);

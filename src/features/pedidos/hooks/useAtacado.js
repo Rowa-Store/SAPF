@@ -57,8 +57,6 @@ export function useAtacado() {
   // { [id]: { fase: 'confirmar-rascunho'|'confirmar-emissao-direta'|'confirmar-emissao'|'enviando'|'erro',
   //           preview?: { carregando, dados?, erro? }, erro? } }
   const [acoes, setAcoes] = useState({});
-  // ids com conferência no Tiny em andamento
-  const [conferindo, setConferindo] = useState(() => new Set());
   // ids já conferidos automaticamente nesta carga — não repete a cada render.
   const conferidos = useRef(new Set());
 
@@ -215,7 +213,6 @@ export function useAtacado() {
   const precisaConferir = (p) => !!p.tinyNotaId && p.status === 'rascunho_criado' && (!p.notaEmitida || !p.numeroNf);
 
   async function conferirNoTiny(p) {
-    setConferindo((atual) => new Set(atual).add(p.id));
     try {
       const corpo = await lerJson(await fetch(`/api/pedidos/${p.id}/situacao`), 'Falha ao consultar a nota no Tiny.');
       atualizarLinha(p.id, {
@@ -224,12 +221,6 @@ export function useAtacado() {
       });
     } catch (e) {
       definirAcao(p.id, { fase: 'erro', erro: e.message });
-    } finally {
-      setConferindo((atual) => {
-        const nova = new Set(atual);
-        nova.delete(p.id);
-        return nova;
-      });
     }
   }
 
@@ -289,8 +280,5 @@ export function useAtacado() {
     criarRascunho,
     criarEEmitir,
     emitir,
-    conferindo,
-    precisaConferir,
-    conferirNoTiny,
   };
 }

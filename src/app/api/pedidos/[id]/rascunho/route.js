@@ -1,18 +1,15 @@
-// /api/pedidos/[id]/rascunho — inclusão e edição do rascunho da nota no Tiny.
+// /api/pedidos/[id]/rascunho — inclusão do rascunho da nota no Tiny.
 //
-// ESTES ENDPOINTS ESCREVEM EM PRODUÇÃO.
+// ESTE ENDPOINT ESCREVE EM PRODUÇÃO.
 //
-//   - POST cria o rascunho pela primeira vez. Exige `confirmacaoTeste: true`.
-//   - GET  devolve o rascunho já criado (o payload realmente enviado ao Tiny),
-//     para a tela de edição carregar.
-//   - PUT  "edita" um rascunho já existente. A API 2.0 do Tiny não tem
-//     endpoint para alterar nem excluir uma nota, então editar aqui significa
-//     criar um NOVO rascunho com os dados corrigidos — o antigo precisa ser
-//     cancelado/excluído manualmente dentro do Tiny. Por isso o retorno
-//     sempre inclui o id da nota antiga, para a tela deixar isso explícito.
+//   - POST cria o rascunho. Exige `confirmacaoTeste: true`.
+//   - GET  devolve o rascunho já criado (o payload realmente enviado ao Tiny).
 //
-// Nenhum dos dois trata emissão fiscal (nota.fiscal.emitir) — isso mora em
-// /api/pedidos/[id]/emitir.
+// Não existe edição: depois de enviado ao Tiny, o rascunho do pedido não é
+// alterado por este sistema — cliente e itens se ajustam antes, na tela de
+// conferência (/pedidos/[id]/rascunho).
+//
+// Emissão fiscal (nota.fiscal.emitir) mora em /api/pedidos/[id]/emitir.
 
 import { garantirContribuinteIcms, incluirNotaRascunho, obterNota } from '@/lib/integrations/tiny';
 import {
@@ -45,88 +42,6 @@ export async function GET(request, { params }) {
     notaEmitida: rascunho.nota_emitida,
     tinyNotasSubstituidas: rascunho.tiny_notas_substituidas ?? [],
   });
-}
-
-export async function PUT(request, { params }) {
-  const { id } = await params;
-  const gid = paraGid(id);
-
-  let corpo;
-  try {
-    corpo = await request.json();
-  } catch {
-    return erroJson('Corpo da requisição inválido: era esperado um JSON.', 400);
-  }
-
-  const { payload, confirmacaoTeste } = corpo ?? {};
-
-  if (confirmacaoTeste !== true) {
-    return erroJson(
-      'Confirmação ausente. Marque a caixa de confirmação na tela: isto cria um NOVO rascunho no ' +
-        'Tiny com os dados corrigidos — o rascunho antigo precisa ser cancelado/excluído manualmente ' +
-        'dentro do Tiny, porque a API não permite fazer isso.',
-      400
-    );
-  }
-
-  if (!payload?.nota_fiscal?.itens?.length) {
-    return erroJson('Payload sem itens. Volte e confira os dados antes de salvar.', 400);
-  }
-
-  const atual = await obterRascunhoCriado(gid);
-  if (!atual.ok) return erroJson(`Não foi possível confirmar o rascunho atual: ${atual.erro}`, 502);
-  if (!atual.rascunho) {
-    return erroJson('Este pedido ainda não tem rascunho criado no Tiny — use a inclusão normal.', 404);
-  }
-  if (atual.rascunho.nota_emitida) {
-    return erroJson('Esta nota já foi emitida no Tiny. Uma nota emitida não pode ser recriada por aqui.', 409);
-  }
-
-  const tinyNotaIdAnterior = atual.rascunho.tiny_nota_id;
-  const { classificacao, shopify_order_name: orderName } = atual.rascunho;
-
-  try {
-    const { idNota, retorno } = await incluirNotaRascunho(payload);
-
-    let confirmacao = null;
-    if (idNota) {
-      confirmacao = await obterNota(idNota).catch((erro) => ({ aviso: erro.message }));
-    }
-
-    // Acumula: um rascunho corrigido duas vezes deixa dois antigos para remover no Tiny.
-    const notasSubstituidas = [...(atual.rascunho.tiny_notas_substituidas ?? [])];
-    if (tinyNotaIdAnterior) notasSubstituidas.push(tinyNotaIdAnterior);
-
-    const registro = await registrarRascunhoCriado({
-      orderId: gid,
-      orderName,
-      classificacao,
-      payload,
-      tinyNotaId: idNota,
-      respostaTiny: retorno,
-      notasSubstituidas,
-    });
-    if (!registro.ok) {
-      console.error(
-        `[rascunho] Novo rascunho ${idNota} (corrigindo ${tinyNotaIdAnterior}) criado no Tiny, mas falhou ao registrar no Supabase:`,
-        registro.erro
-      );
-    }
-
-    return Response.json({
-      ok: true,
-      tinyNotaId: idNota,
-      tinyNotaIdAnterior,
-      confirmacao,
-      mensagem:
-        `Novo rascunho ${idNota ?? ''} criado no Tiny com os dados corrigidos. ` +
-        `Cancele ou exclua o rascunho ${tinyNotaIdAnterior} dentro do Tiny — a API não faz isso ` +
-        'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.',
-    });
-  } catch (erro) {
-    console.error(`[rascunho] Tiny recusou a recriação do pedido ${gid} (substituindo ${tinyNotaIdAnterior}):`, erro);
-    return erroJson(`O Tiny recusou a inclusão da nota corrigida: ${erro.message}`, 502);
-  }
 }
 
 export async function POST(request, { params }) {

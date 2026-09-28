@@ -1,6 +1,6 @@
-// /pedidos/[id]/rascunho/editar e /transferencias/[id]/rascunho/editar —
-// corrige um rascunho já criado no Tiny. `tipo` escolhe a API e para onde
-// voltar; o resto da tela é igual para os dois.
+// /transferencias/[id]/rascunho/editar — corrige um rascunho já criado no
+// Tiny. `tipo` escolhe a API e para onde voltar. Rascunho de pedido de
+// atacado não passa por aqui: depois de enviado ao Tiny, não é editado.
 //
 // A tela deixa explícito, antes e depois de salvar, que o rascunho antigo
 // não some sozinho: ver useEditarRascunho para o porquê.
@@ -18,12 +18,6 @@ import { useEditarRascunho } from '../hooks/useEditarRascunho';
 const DURACAO_ANIMACAO_MS = 250;
 
 const TIPOS = {
-  pedido: {
-    api: (id) => `/api/pedidos/${id}/rascunho`,
-    rotulo: 'pedido',
-    tituloCliente: 'Dados do cliente na nota',
-    voltar: ['/pedidos', 'Voltar para a tela de atacado'],
-  },
   transferencia: {
     api: (id) => `/api/transferencias/${id}/rascunho`,
     rotulo: 'transferência',
@@ -32,7 +26,7 @@ const TIPOS = {
   },
 };
 
-export default function EditarRascunho({ params, tipo = 'pedido' }) {
+export default function EditarRascunho({ params, tipo = 'transferencia' }) {
   const { id } = params;
   const config = TIPOS[tipo];
   const [hrefVoltar, rotuloVoltar] = config.voltar;

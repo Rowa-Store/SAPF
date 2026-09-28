@@ -1,6 +1,8 @@
 // /pedidos — tela única de atacado: pedidos de atacado e franquia do Shopify
-// e a nota fiscal de cada um no Tiny — rascunho (criar e editar), emissão,
-// nº da NF e DANFE. Também é onde fica a trava "Permitir emissão".
+// e a nota fiscal de cada um no Tiny — rascunho, emissão, nº da NF e DANFE.
+// Também é onde fica a trava "Permitir emissão". O rascunho, depois de
+// enviado ao Tiny, não é mais editado: cliente e itens se ajustam antes, na
+// conferência (/pedidos/[id]/rascunho).
 
 'use client';
 
@@ -93,9 +95,6 @@ export default function ControleAtacado() {
     criarRascunho,
     criarEEmitir,
     emitir,
-    conferindo,
-    precisaConferir,
-    conferirNoTiny,
   } = useAtacado();
 
   if (erro) {
@@ -279,41 +278,22 @@ export default function ControleAtacado() {
                                 <a
                                   className="botao-link"
                                   href={`/pedidos/${p.id}/rascunho`}
-                                  title="Confere item a item e ajusta cliente e itens antes de criar o rascunho"
+                                  title="Confere item a item e ajusta cliente e itens antes de criar o rascunho — depois de enviado, não dá mais para editar"
                                 >
                                   Conferir itens
                                 </a>
                               </>
                             )}
 
+                            {/* Rascunho já enviado ao Tiny não é editado por aqui: só emitir. */}
                             {temRascunho && !p.notaEmitida && (
-                              <>
-                                <button
-                                  className="pequeno"
-                                  onClick={() => definirAcao(p.id, { fase: 'confirmar-emissao' })}
-                                  disabled={!permitirEmissao || enviando || acao?.fase === 'confirmar-emissao'}
-                                  title={permitirEmissao ? undefined : DICA_TRAVA}
-                                >
-                                  {permitirEmissao ? 'Emitir nota' : 'Emissão bloqueada'}
-                                </button>
-                                <a
-                                  className="botao-link"
-                                  href={`/pedidos/${p.id}/rascunho/editar`}
-                                  title="Ajusta à mão o cliente e os itens — cria um novo rascunho no Tiny"
-                                >
-                                  Editar rascunho
-                                </a>
-                              </>
-                            )}
-
-                            {precisaConferir(p) && (
                               <button
-                                className="pequeno secundario"
-                                onClick={() => conferirNoTiny(p)}
-                                disabled={conferindo.has(p.id) || enviando}
-                                title="Busca no Tiny se a nota já foi autorizada e o número da NF"
+                                className="pequeno"
+                                onClick={() => definirAcao(p.id, { fase: 'confirmar-emissao' })}
+                                disabled={!permitirEmissao || enviando || acao?.fase === 'confirmar-emissao'}
+                                title={permitirEmissao ? undefined : DICA_TRAVA}
                               >
-                                {conferindo.has(p.id) ? 'Conferindo…' : 'Conferir no Tiny'}
+                                {permitirEmissao ? 'Emitir nota' : 'Emissão bloqueada'}
                               </button>
                             )}
                           </div>

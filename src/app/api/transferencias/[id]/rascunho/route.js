@@ -15,7 +15,7 @@
 //     valendo até ser cancelada à mão no Tiny.
 //   - GET  devolve o rascunho já criado (o payload realmente enviado ao Tiny),
 //     para a tela de edição carregar.
-//   - PUT  "edita" o rascunho: como no pedido, a API 2.0 do Tiny não altera
+//   - PUT  "edita" o rascunho: a API 2.0 do Tiny não altera
 //     nem exclui nota, então cria um NOVO rascunho com o payload corrigido
 //     vindo da tela; o antigo precisa ser cancelado/excluído à mão no Tiny e
 //     fica registrado em tiny_notas_substituidas.
