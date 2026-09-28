@@ -31,7 +31,7 @@ const DESCONTO_FRANQUIA = 0.5454;
  * inglês: `${prefixo}_street_name`, `_street_number`, `_street_complement`,
  * `_neighborhood`, `_city`, `_province` — confirmado direto em pedidos reais.
  * Isso é mais confiável que separar `address1` na unha, e é a única fonte de
- * bairro (o Shopify não tem esse campo estruturado). Devolve null quando o
+ * bairro (o Shopify não tem esse campo estruturado; ver extrairBairro). Devolve null quando o
  * pedido não tem esses atributos (pedidos antigos, ou o outro lado do
  * endereço) — nesse caso quem chama cai para `separarLogradouro`.
  */
@@ -43,10 +43,28 @@ function enderecoDosAtributos(customAttributes, prefixo) {
     logradouro,
     numero: mapa[`${prefixo}_street_number`] ?? '',
     complemento: mapa[`${prefixo}_street_complement`] ?? '',
-    bairro: mapa[`${prefixo}_neighborhood`] ?? '',
     cidade: mapa[`${prefixo}_city`] ?? '',
     uf: mapa[`${prefixo}_province`] ?? '',
   };
+}
+
+const BAIRRO_PADRAO = 'Centro';
+
+/**
+ * Bairro do cliente, lido dos customAttributes do checkout
+ * (`billing_neighborhood` / `shipping_neighborhood`). O lado do endereço que
+ * a nota usa vem primeiro, e o outro serve de reserva. O checkout grava o
+ * texto "null" quando o cliente não preenche (aparece assim no
+ * `_full_address`), então isso e o vazio contam como sem bairro. Sem bairro,
+ * volta null e quem chama usa BAIRRO_PADRAO.
+ */
+function extrairBairro(customAttributes, prefixos) {
+  const mapa = Object.fromEntries((customAttributes ?? []).map((a) => [a.key, a.value ?? '']));
+  for (const prefixo of prefixos) {
+    const valor = String(mapa[`${prefixo}_neighborhood`] ?? '').trim();
+    if (valor && !/^(bairro\s+)?(null|undefined)$/i.test(valor)) return valor;
+  }
+  return null;
 }
 
 export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
@@ -71,19 +89,29 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
 
   let logradouro, numero, bairro, complemento, cidade, uf;
   if (atributosEndereco) {
-    ({ logradouro, numero, bairro, complemento, cidade, uf } = atributosEndereco);
+    ({ logradouro, numero, complemento, cidade, uf } = atributosEndereco);
     if (!numero) {
       alertas.push('Número do endereço veio em branco nos dados do checkout. Preencha o campo à mão.');
     }
   } else {
     ({ logradouro, numero } = separarLogradouro(endereco.address1));
-    bairro = '';
     complemento = endereco.address2 ?? '';
     cidade = endereco.city ?? '';
     uf = endereco.provinceCode ?? '';
     if (logradouro && !numero) {
       alertas.push(`Não foi possível separar o número de "${endereco.address1}". Preencha o campo à mão.`);
     }
+  }
+
+  // O bairro não depende do resto do endereço ter vindo dos atributos: mesmo
+  // quando a rua sai de address1, o bairro só existe no checkout.
+  bairro = extrairBairro(
+    pedidoShopify.customAttributes,
+    usaCobranca ? ['billing', 'shipping'] : ['shipping', 'billing']
+  );
+  if (!bairro) {
+    bairro = BAIRRO_PADRAO;
+    alertas.push(`Bairro não informado no pedido — a nota vai com o bairro "${BAIRRO_PADRAO}".`);
   }
 
   const { cnpj } = extrairCnpj(pedidoShopify); // isso aqui não é aqui nao ein
