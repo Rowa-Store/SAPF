@@ -45,12 +45,7 @@ query Transferencia($id: ID!, $cursor: String) {
         inventoryItem {
           sku
           unitCost { amount }
-          variants(first: 1) {
-            nodes {
-              price barcode displayName
-              product { ncm: metafield(namespace: "custom", key: "ncm") { value } }
-            }
-          }
+          variants(first: 1) { nodes { price barcode displayName } }
         }
       }
     }

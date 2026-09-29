@@ -26,7 +26,7 @@
 //         Sem id, o rascunho não é criado.
 //   - Sem frete, sem transportadora, sem pagamento, sem desconto no rodapé.
 
-import { dataBr, formatarNcm, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
+import { dataBr, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
 
 /** `frete_por_conta` "S" = sem ocorrência de transporte (a própria empresa leva). */
 const SEM_FRETE = 'S';
@@ -129,7 +129,6 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
   }
 
   const semCusto = [];
-  const semNcm = [];
   const itens = (transferencia.lineItems ?? []).map((linha) => {
     const inventario = linha.inventoryItem ?? {};
     const variante = inventario.variants?.nodes?.[0];
@@ -139,8 +138,6 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
     if (!baseVenda && !(custo > 0)) semCusto.push(inventario.sku || linha.title);
     const valorUnitario = base * fator;
     if (!inventario.sku) alertas.push(`Item "${linha.title}" está sem SKU no Shopify.`);
-    const ncm = formatarNcm(variante?.product?.ncm?.value);
-    if (!ncm) semNcm.push(inventario.sku || linha.title);
 
     return {
       item: {
@@ -150,7 +147,6 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
         quantidade: Number(linha.totalQuantity ?? 0),
         valor_unitario: valorMonetario(valorUnitario),
         tipo: 'P',
-        ncm,
         gtin_ean: variante?.barcode || 'SEM GTIN',
         gtin_ean_embalagem: 'SEM GTIN',
       },
@@ -161,12 +157,6 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
     alertas.push(
       `${semCusto.length} item(ns) sem custo cadastrado no Shopify — usado o preço de venda: ` +
         `${semCusto.slice(0, 10).join(', ')}${semCusto.length > 10 ? '…' : ''}.`
-    );
-  }
-  if (semNcm.length) {
-    alertas.push(
-      `${semNcm.length} item(ns) sem NCM válido no produto do Shopify (metafield custom.ncm): ` +
-        `${semNcm.slice(0, 10).join(', ')}${semNcm.length > 10 ? '…' : ''}.`
     );
   }
   if (itens.length === 0) alertas.push('Transferência sem itens. Verifique se a leitura do Shopify foi completa.');

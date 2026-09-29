@@ -5,7 +5,7 @@
 // chamada de rede, nenhum process.env além da natureza da operação. Assim dá
 // para testar a transformação sozinha, com exemplos/pedido-exemplo.json.
 
-import { dataBr, formatarNcm, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
+import { dataBr, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
 import { extrairCnpj } from './classificacao.js';
 import { CAMPO_DESCONTO_TINY, montarDesconto } from './desconto.js';
 import { extrairIe } from './inscricaoEstadual.js';
@@ -139,13 +139,10 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
     );
   }
 
-  const semNcm = [];
   const itens = (pedidoShopify.lineItems ?? []).map((linha) => {
     if (!linha.sku) {
       alertas.push(`Item "${linha.title}" está sem SKU no Shopify.`);
     }
-    const ncm = formatarNcm(linha.product?.ncm?.value);
-    if (!ncm) semNcm.push(linha.sku || linha.title);
 
 
     let valorUnitario; 
@@ -169,19 +166,11 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
         quantidade: Number(linha.quantity ?? 0),
         valor_unitario: valorMonetario(valorUnitario),
         tipo: 'P',
-        ncm,
         gtin_ean: 'SEM GTIN',
         gtin_ean_embalagem: 'SEM GTIN',
       },
     };
   });
-
-  if (semNcm.length) {
-    alertas.push(
-      `${semNcm.length} item(ns) sem NCM válido no produto do Shopify (metafield custom.ncm): ` +
-        `${semNcm.slice(0, 10).join(', ')}${semNcm.length > 10 ? '…' : ''}.`
-    );
-  }
 
   if (itens.length === 0) {
     alertas.push('Pedido sem itens. Verifique se a leitura do Shopify foi completa.');

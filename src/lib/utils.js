@@ -19,15 +19,6 @@ export function valorMonetario(valor) {
   return n.toFixed(2);
 }
 
-/** NCM no formato do Tiny (0000.00.00). O metafield `custom.ncm` do produto
- *  no Shopify é texto livre, então aceita com ou sem pontos; o que não tiver
- *  8 dígitos volta vazio, para a nota não sair com NCM inválido. */
-export function formatarNcm(valor) {
-  const digitos = somenteDigitos(valor);
-  if (digitos.length !== 8) return '';
-  return `${digitos.slice(0, 4)}.${digitos.slice(4, 6)}.${digitos.slice(6)}`;
-}
-
 /** Converte uma data ISO (Shopify) para dd/mm/aaaa (Tiny). */
 export function dataBr(iso) {
   const d = iso ? new Date(iso) : new Date();
