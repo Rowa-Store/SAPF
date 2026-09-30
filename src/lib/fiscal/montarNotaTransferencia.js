@@ -84,7 +84,7 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
   if (!origem) {
     alertas.push(
       `A loja de origem "${nomeOrigem}" não está cadastrada em lojas_fiscais. A nota sai com o CNPJ ` +
-        'da conta do Tiny como emitente — confira se é mesmo o da loja de origem.'
+        'da conta do Tiny da loja de origem como emitente, sem como conferir se o token é mesmo o dela.'
     );
   }
 

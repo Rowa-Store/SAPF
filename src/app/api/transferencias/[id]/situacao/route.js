@@ -6,6 +6,7 @@
 // lê o Tiny: nada é emitido aqui.
 
 import { obterSituacaoNota } from '@/lib/integrations/tiny';
+import { contaTinyDaTransferencia, lerNaContaDaNota } from '@/lib/integrations/tinyContas';
 import { paraGidTransferencia } from '@/lib/integrations/shopifyTransferencias';
 import { atualizarNotaEmitida, registrarNumeroNf, statusPorPedido } from '@/lib/db';
 import { erroJson } from '@/lib/utils';
@@ -22,9 +23,14 @@ export async function GET(request, { params }) {
     return Response.json({ notaEmitida: !!situacao?.nota_emitida, numeroNf: situacao?.numero_nf ?? null });
   }
 
+  // A nota mora na conta do Tiny da loja de origem (ou na da matriz, se for
+  // anterior às contas por loja).
+  const conta = await contaTinyDaTransferencia(id);
+  if (!conta.ok) return erroJson(conta.erro, 422);
+
   let tiny;
   try {
-    tiny = await obterSituacaoNota(situacao.tiny_nota_id);
+    tiny = await lerNaContaDaNota(conta.conta, (c) => obterSituacaoNota(situacao.tiny_nota_id, c));
   } catch (erro) {
     return erroJson(`Não foi possível consultar a nota no Tiny: ${erro.message}`, 502);
   }

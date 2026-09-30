@@ -5,6 +5,7 @@ import { obterTransferenciaCompleta, paraGidTransferencia } from '@/lib/integrat
 import { montarNotaTransferencia } from '@/lib/fiscal/montarNotaTransferencia';
 import { totalDaNota } from '@/lib/fiscal/montarNota';
 import { jaProcessado, lojasFiscaisPorLocal } from '@/lib/db';
+import { contaTinyDaLoja } from '@/lib/integrations/tinyContas';
 import { erroJson } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +31,10 @@ export async function GET(request, { params }) {
     });
     alertas.push(...alertasNota);
 
+    // A nota sai da conta do Tiny da loja de origem; sem o token dela não sai.
+    const conta = contaTinyDaLoja(transferencia.origin?.name);
+    if (!conta.ok) alertas.push(conta.erro);
+
     if (transferencia.status === 'DRAFT') {
       alertas.push('Esta transferência ainda é rascunho no Shopify — os itens podem mudar.');
     }
@@ -51,6 +56,8 @@ export async function GET(request, { params }) {
         destino: transferencia.destination?.name,
         destinoId,
       },
+      // Conta do Tiny em que a nota vai ser criada (a da loja de origem).
+      contaTiny: conta.ok ? { variavel: conta.conta.variavel, matriz: conta.conta.matriz } : null,
       // Regras de preço da loja de destino, para a tela explicar de onde veio o valor.
       regrasDestino: cadastro.lojas[destinoId]
         ? {
@@ -62,7 +69,7 @@ export async function GET(request, { params }) {
       totalNota: totalDaNota(payload),
       alertas,
       // Sem cadastro do destino a nota vai sem CNPJ — o Tiny recusaria.
-      podeCriar: !!cadastro.lojas[destinoId] && payload.nota_fiscal.itens.length > 0,
+      podeCriar: !!cadastro.lojas[destinoId] && conta.ok && payload.nota_fiscal.itens.length > 0,
       jaProcessado: processado.processado,
       tinyNotaId: processado.tinyNotaId ?? null,
     });

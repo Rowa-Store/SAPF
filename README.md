@@ -64,7 +64,8 @@ commitada no repositório.
 | `SHOPIFY_STORE_DOMAIN` | Domínio `.myshopify.com` da loja |
 | `SHOPIFY_API_TOKEN` | Token da Admin API (leitura de pedidos e escopos `read_inventory_transfers`, `read_locations`, `read_inventory`, `read_products` para as transferências) |
 | `SHOPIFY_API_VERSION` | Versão da Admin API, ex.: `2025-07` |
-| `TINY_API_TOKEN` | Token em Configurações > Geral > Tokens no Tiny |
+| `TINY_API_TOKEN` | Token em Configurações > Geral > Tokens no Tiny (conta da matriz — pedidos de atacado) |
+| `TINY_API_TOKEN_<LOJA>` | Token da conta do Tiny de cada loja, com o nome do local no Shopify no nome da variável (sem acento, maiúsculas, espaços e pontuação viram `_` — ex.: `TINY_API_TOKEN_ROWA_CENTRO_DE_DISTRIBUICAO_1`). Usado nas transferências — ver abaixo. A matriz/CD também precisa da sua, com o mesmo valor de `TINY_API_TOKEN`. |
 | `TINY_API_BASE` | `https://api.tiny.com.br/api2` |
 | `SUPABASE_URL` | Project Settings > API > Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings > API > `service_role`. Nunca exponha no navegador. |
@@ -119,6 +120,16 @@ pedidos (confirmação na tela e `permitir_emissao`). O registro fica em
   estar em `lojas_fiscais` (id do local no Shopify, razão social, CNPJ, IE e
   endereço com bairro) — sem a loja de destino cadastrada, o rascunho é
   recusado. Cadastre direto no SQL Editor, como `cnpjs_franquia`.
+- **Emitente / conta do Tiny:** a nota sai da conta do Tiny da loja de
+  **origem**, não da matriz. O token vem de `TINY_API_TOKEN_<nome do local de
+  origem no Shopify>`; sem essa variável, o rascunho é recusado (nunca cai no
+  token da matriz). Se a origem estiver em `lojas_fiscais`, o sistema confere
+  no Tiny (`info.php`) se o token é mesmo da conta daquele CNPJ antes de criar.
+  Nada é gravado sobre a conta: emitir, DANFE e situação usam de novo a conta
+  da loja de origem. DANFE e situação de notas antigas (criadas pela matriz)
+  caem na conta da matriz se a nota não for achada na da loja; a emissão não —
+  rascunho antigo de transferência entre lojas precisa de "Novo rascunho".
+  Atenção: renomear o local no Shopify muda o nome da variável.
 - **Regras por loja de destino** (colunas de `lojas_fiscais`):
   - `natureza_operacao`: nome da natureza no Tiny, de onde sai o CFOP. Tem que
     ser **idêntico** ao cadastro de naturezas do Tiny (acentos e maiúsculas

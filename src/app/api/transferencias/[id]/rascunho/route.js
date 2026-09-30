@@ -19,8 +19,11 @@
 //     nem exclui nota, então cria um NOVO rascunho com o payload corrigido
 //     vindo da tela; o antigo precisa ser cancelado/excluído à mão no Tiny e
 //     fica registrado em tiny_notas_substituidas.
+//
+// A nota é criada na conta do Tiny da loja de ORIGEM (tinyContas.js).
 
-import { conferirNatureza, incluirNotaRascunho, obterNota } from '@/lib/integrations/tiny';
+import { conferirNatureza, incluirNotaRascunho, obterCnpjDaConta, obterNota } from '@/lib/integrations/tiny';
+import { contaTinyDaLoja, contaTinyDaTransferencia } from '@/lib/integrations/tinyContas';
 import { obterTransferenciaCompleta, paraGidTransferencia } from '@/lib/integrations/shopifyTransferencias';
 import { montarNotaTransferencia } from '@/lib/fiscal/montarNotaTransferencia';
 import {
@@ -32,7 +35,7 @@ import {
   statusPorPedido,
 } from '@/lib/db';
 import { totalDaNota } from '@/lib/fiscal/montarNota';
-import { erroJson } from '@/lib/utils';
+import { erroJson, somenteDigitos } from '@/lib/utils';
 
 /** Aviso para anexar à mensagem quando o Tiny trocou a natureza pedida. */
 function avisoNatureza(confirmacao, payload) {
@@ -44,6 +47,31 @@ function avisoNatureza(confirmacao, payload) {
     `"${natureza.esperada}". Confira natureza_operacao_id em lojas_fiscais (id da natureza no Tiny). ` +
     'A emissão desta nota vai ser recusada até o cadastro ser corrigido e o rascunho refeito.'
   );
+}
+
+/**
+ * Confere se o token é mesmo da conta da loja de origem — token colado na
+ * variável da loja errada faria a nota sair com outro emitente. Compara o
+ * CNPJ da conta (info.php) com o da origem em lojas_fiscais; sem um dos dois,
+ * segue. Devolve a mensagem de erro, ou null.
+ */
+async function conferirTokenDaConta(conta, cnpjOrigem) {
+  const esperado = somenteDigitos(cnpjOrigem);
+  if (esperado.length !== 14) return null;
+  let cnpjDoToken;
+  try {
+    cnpjDoToken = await obterCnpjDaConta(conta);
+  } catch (erro) {
+    console.warn(`[transferencia] Não foi possível conferir o CNPJ da conta de ${conta.variavel}:`, erro.message);
+    return null;
+  }
+  if (cnpjDoToken && cnpjDoToken !== esperado) {
+    return (
+      `O token em ${conta.variavel} é da conta do Tiny do CNPJ ${cnpjDoToken}, mas a loja de origem ` +
+      `"${conta.nome}" tem o CNPJ ${esperado} em lojas_fiscais. Corrija a variável de ambiente antes de criar a nota.`
+    );
+  }
+  return null;
 }
 
 export const dynamic = 'force-dynamic';
@@ -114,9 +142,13 @@ export async function PUT(request, { params }) {
   const tinyNotaIdAnterior = atual.rascunho.tiny_nota_id;
   const orderName = atual.rascunho.shopify_order_name;
 
+  const lida = await contaTinyDaTransferencia(id);
+  if (!lida.ok) return erroJson(lida.erro, 422);
+  const conta = lida.conta;
+
   try {
-    const { idNota, retorno } = await incluirNotaRascunho(payload);
-    const confirmacao = idNota ? await obterNota(idNota).catch((erro) => ({ aviso: erro.message })) : null;
+    const { idNota, retorno } = await incluirNotaRascunho(payload, conta);
+    const confirmacao = idNota ? await obterNota(idNota, conta).catch((erro) => ({ aviso: erro.message })) : null;
 
     // Acumula: um rascunho corrigido duas vezes deixa dois antigos para remover no Tiny.
     const notasSubstituidas = [...(atual.rascunho.tiny_notas_substituidas ?? [])];
@@ -144,7 +176,7 @@ export async function PUT(request, { params }) {
       tinyNotaIdAnterior,
       confirmacao,
       mensagem:
-        `Novo rascunho ${idNota ?? ''} criado no Tiny com os dados corrigidos. ` +
+        `Novo rascunho ${idNota ?? ''} criado na conta do Tiny de "${conta.nome}" com os dados corrigidos. ` +
         `Cancele ou exclua o rascunho ${tinyNotaIdAnterior} dentro do Tiny — a API não faz isso ` +
         'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.' +
         avisoNatureza(confirmacao, payload),
@@ -210,13 +242,21 @@ export async function POST(request, { params }) {
     anterior = atual.rascunho;
   }
 
-  let transferencia, payload;
+  let transferencia, payload, conta, cnpjOrigem;
   try {
     transferencia = await obterTransferenciaCompleta(id);
     const origemId = transferencia.origin?.location?.id ?? null;
     const destinoId = transferencia.destination?.location?.id ?? null;
     const cadastro = await lojasFiscaisPorLocal([origemId, destinoId]);
     if (!cadastro.ok) return erroJson(`Não foi possível ler o cadastro de lojas: ${cadastro.erro}`, 502);
+
+    // A nota sai da conta do Tiny da loja de origem — nunca cai na da matriz
+    // por falta de token.
+    const resolvida = contaTinyDaLoja(transferencia.origin?.name);
+    if (!resolvida.ok) return erroJson(resolvida.erro, 422);
+    conta = resolvida.conta;
+    cnpjOrigem = cadastro.lojas[origemId]?.cnpj;
+
     if (!cadastro.lojas[destinoId]) {
       return erroJson(
         `A loja de destino "${transferencia.destination?.name}" não está cadastrada em lojas_fiscais — ` +
@@ -250,9 +290,12 @@ export async function POST(request, { params }) {
     return erroJson('Transferência sem itens — nada para enviar ao Tiny.', 400);
   }
 
+  const erroToken = await conferirTokenDaConta(conta, cnpjOrigem);
+  if (erroToken) return erroJson(erroToken, 422);
+
   try {
-    const { idNota, retorno } = await incluirNotaRascunho(payload);
-    const confirmacao = idNota ? await obterNota(idNota).catch((erro) => ({ aviso: erro.message })) : null;
+    const { idNota, retorno } = await incluirNotaRascunho(payload, conta);
+    const confirmacao = idNota ? await obterNota(idNota, conta).catch((erro) => ({ aviso: erro.message })) : null;
 
     // Acumula: um rascunho refeito duas vezes deixa dois antigos para remover no Tiny.
     const notasSubstituidas = anterior
@@ -282,6 +325,7 @@ export async function POST(request, { params }) {
         `Cancele ou exclua o rascunho ${anterior.tiny_nota_id} dentro do Tiny — a API não faz isso ` +
         'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.'
       : `Rascunho ${idNota ?? ''} criado no Tiny para a transferência ${transferencia.name}.`;
+    const naConta = ` Nota criada na conta do Tiny de "${conta.nome}".`;
 
     return Response.json({
       ok: true,
@@ -289,7 +333,7 @@ export async function POST(request, { params }) {
       tinyNotaIdAnterior: anterior?.tiny_nota_id ?? null,
       tinyNotasSubstituidas: notasSubstituidas ?? null,
       confirmacao,
-      mensagem: mensagem + avisoNatureza(confirmacao, payload),
+      mensagem: mensagem + naConta + avisoNatureza(confirmacao, payload),
     });
   } catch (erro) {
     console.error(`[transferencia] Tiny recusou a inclusão da transferência ${gid}:`, erro);

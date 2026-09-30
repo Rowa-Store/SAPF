@@ -8,8 +8,12 @@
 // Antes de emitir, lê a nota no Tiny e confere a natureza de operação contra
 // a do payload enviado: nome que não existe no cadastro do Tiny vira "Venda
 // para contribuinte" sem erro nenhum, e aí a nota sairia com CFOP de venda.
+//
+// Tudo na conta do Tiny da loja de origem (tinyContas.js) — e só nela: um
+// rascunho que ficou na conta da matriz não é emitido, é refeito.
 
 import { conferirNatureza, emitirNota, obterNota, obterSituacaoNota } from '@/lib/integrations/tiny';
+import { contaTinyDaTransferencia } from '@/lib/integrations/tinyContas';
 import { paraGidTransferencia } from '@/lib/integrations/shopifyTransferencias';
 import {
   atualizarNotaEmitida,
@@ -41,6 +45,10 @@ export async function POST(request, { params }) {
 
   const tinyNotaId = situacao.tiny_nota_id;
 
+  const lida = await contaTinyDaTransferencia(id);
+  if (!lida.ok) return erroJson(lida.erro, 422);
+  const conta = lida.conta;
+
   const rascunho = await obterRascunhoCriado(gid);
   if (!rascunho.ok) return erroJson(`Não foi possível ler o rascunho no Supabase: ${rascunho.erro}`, 502);
   const esperada = rascunho.rascunho?.payload_enviado?.nota_fiscal?.natureza_operacao;
@@ -49,9 +57,15 @@ export async function POST(request, { params }) {
   }
   let natureza;
   try {
-    natureza = conferirNatureza(await obterNota(tinyNotaId), esperada);
+    natureza = conferirNatureza(await obterNota(tinyNotaId, conta), esperada);
   } catch (erro) {
-    return erroJson(`Não foi possível conferir a natureza da nota no Tiny: ${erro.message}`, 502);
+    // Não achar a nota aqui costuma ser rascunho criado em outra conta (a da
+    // matriz, antes das contas por loja) — emitir por lá é o erro fiscal.
+    return erroJson(
+      `Não foi possível ler a nota ${tinyNotaId} na conta do Tiny de "${conta.nome}": ${erro.message}. ` +
+        'Se o rascunho foi criado pela matriz, use "Novo rascunho" para refazê-lo na conta da loja de origem.',
+      502
+    );
   }
   if (!natureza.ok) {
     return erroJson(
@@ -64,7 +78,7 @@ export async function POST(request, { params }) {
   }
 
   try {
-    await emitirNota(tinyNotaId);
+    await emitirNota(tinyNotaId, conta);
   } catch (erro) {
     return erroJson(erro.message, 502);
   }
@@ -79,7 +93,7 @@ export async function POST(request, { params }) {
   // (/api/transferencias/[id]/situacao). Falhar aqui não é erro da emissão.
   let numeroNf = null;
   try {
-    numeroNf = (await obterSituacaoNota(tinyNotaId)).numero;
+    numeroNf = (await obterSituacaoNota(tinyNotaId, conta)).numero;
     if (numeroNf) {
       await registrarNumeroNf({ orderId: gid, numeroNf });
     }

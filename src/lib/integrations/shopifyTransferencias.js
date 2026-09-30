@@ -52,6 +52,11 @@ query Transferencia($id: ID!, $cursor: String) {
   }
 }`;
 
+const QUERY_ORIGEM = `
+query OrigemTransferencia($id: ID!) {
+  inventoryTransfer(id: $id) { id name origin { name location { id } } }
+}`;
+
 /** Teto de páginas por consulta — 4 x 250 = 1000 transferências. */
 const MAX_PAGINAS = 4;
 
@@ -149,6 +154,14 @@ export async function obterTransferenciaCompleta(id) {
   }
 
   return { ...transferencia, lineItems: itens };
+}
+
+/** Só a loja de origem da transferência — sem ler os itens. */
+export async function obterOrigemTransferencia(id) {
+  const gid = paraGidTransferencia(id);
+  const dados = await shopifyGraphQL(QUERY_ORIGEM, { id: gid });
+  if (!dados.inventoryTransfer) throw new Error(`Transferência ${gid} não encontrada no Shopify.`);
+  return dados.inventoryTransfer.origin ?? null;
 }
 
 /** Ping usado pelo /api/saude. */

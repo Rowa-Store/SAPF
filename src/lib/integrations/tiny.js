@@ -19,6 +19,12 @@
 //     um pedido fictício. A tela do rascunho exige uma confirmação explícita.
 //   - emitirNota: dá valor fiscal à nota. Bloqueada por "permitir_emissao"
 //     (Supabase — ver lib/db.js::obterPermitirEmissao).
+//
+// CONTAS — cada loja tem a sua conta no Tiny. Pedidos de atacado saem da conta
+// da matriz (TINY_API_TOKEN). Nota de transferência sai da conta da loja de
+// ORIGEM — emitir pela matriz uma transferência entre duas lojas é errado
+// fiscalmente. As funções de nota aceitam uma `conta` (ver tinyContas.js);
+// sem ela, vale a conta da matriz.
 
 import { obterPermitirEmissao } from '../db.js';
 import { somenteDigitos } from '../utils.js';
@@ -67,11 +73,30 @@ function paraArray(valor) {
   return [];
 }
 
-/** POST no formato que a API 2.0 espera, já desembrulhando `retorno`. */
-async function chamarTiny(endpoint, params= {}) {
-  const token = process.env.TINY_API_TOKEN;
+/**
+ * Variável de ambiente com o token da conta Tiny de uma loja, pelo nome do
+ * local no Shopify: sem acento, maiúsculas, e o que não for letra ou número
+ * vira "_". "Rowa Centro de Distribuição 1" -> TINY_API_TOKEN_ROWA_CENTRO_DE_DISTRIBUICAO_1.
+ */
+export function variavelTokenDaLoja(nomeLoja) {
+  const chave = String(nomeLoja ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  return chave ? `TINY_API_TOKEN_${chave}` : null;
+}
+
+/**
+ * POST no formato que a API 2.0 espera, já desembrulhando `retorno`.
+ * `conta` ({ token, variavel }) escolhe a conta do Tiny; sem ela, a da matriz.
+ */
+async function chamarTiny(endpoint, params = {}, conta = null) {
+  const variavel = conta?.variavel ?? 'TINY_API_TOKEN';
+  const token = conta ? conta.token : process.env.TINY_API_TOKEN;
   if (!token) {
-    throw new Error('TINY_API_TOKEN não configurado. Preencha o .env.local.');
+    throw new Error(`${variavel} não configurado. Preencha o .env.local / as variáveis do Vercel.`);
   }
 
   const corpo = new URLSearchParams({ token, formato: 'JSON', ...params });
@@ -103,7 +128,7 @@ async function chamarTiny(endpoint, params= {}) {
     dados = JSON.parse(texto);
   } catch {
     // O Tiny às vezes devolve HTML quando o token é inválido.
-    throw new Error(`Tiny devolveu uma resposta que não é JSON em ${endpoint}. Verifique o TINY_API_TOKEN.`);
+    throw new Error(`Tiny devolveu uma resposta que não é JSON em ${endpoint}. Verifique o ${variavel}.`);
   }
 
   const retorno = dados.retorno ?? {};
@@ -140,8 +165,8 @@ async function chamarTiny(endpoint, params= {}) {
  * Cria a nota como RASCUNHO no Tiny (sem valor fiscal).
  * Isto escreve em produção — só chame depois da confirmação na interface.
  */
-export async function incluirNotaRascunho(payload) {
-  const retorno = await chamarTiny('nota.fiscal.incluir.php', { nota: JSON.stringify(payload) });
+export async function incluirNotaRascunho(payload, conta = null) {
+  const retorno = await chamarTiny('nota.fiscal.incluir.php', { nota: JSON.stringify(payload) }, conta);
 
   const registro = paraArray(retorno.registros)[0]?.registro ?? null;
   const idNota = registro?.id ?? retorno.idNotaFiscal ?? null;
@@ -150,8 +175,8 @@ export async function incluirNotaRascunho(payload) {
 }
 
 /** Consulta uma nota já criada — usado para confirmar a inclusão. */
-export async function obterNota(id) {
-  const retorno = await chamarTiny('nota.fiscal.obter.php', { id: String(id) });
+export async function obterNota(id, conta = null) {
+  const retorno = await chamarTiny('nota.fiscal.obter.php', { id: String(id) }, conta);
   return retorno.nota_fiscal ?? retorno;
 }
 
@@ -190,8 +215,8 @@ function notaEstaEmitida(notaTiny) {
  * número da NF. O número só é devolvido para nota autorizada — o de um
  * rascunho não é o número fiscal definitivo.
  */
-export async function obterSituacaoNota(id) {
-  const nota = await obterNota(id);
+export async function obterSituacaoNota(id, conta = null) {
+  const nota = await obterNota(id, conta);
   const emitida = notaEstaEmitida(nota);
   const numero = emitida && nota?.numero ? String(nota.numero) : null;
   return { emitida, numero, situacao: nota?.situacao ?? null };
@@ -204,8 +229,8 @@ export async function obterSituacaoNota(id) {
  * `notaEmitida` antes de oferecer o botão, mas a chamada em si não falha.
  * https://tiny.com.br/api-docs/api2-notas-fiscais-obter-link
  */
-export async function obterLinkDanfe(id) {
-  const retorno = await chamarTiny('nota.fiscal.obter.link.php', { id: String(id) });
+export async function obterLinkDanfe(id, conta = null) {
+  const retorno = await chamarTiny('nota.fiscal.obter.link.php', { id: String(id) }, conta);
   if (!retorno.link_nfe) {
     throw new Error('Tiny não devolveu o link do DANFE — confira se a nota já foi emitida.');
   }
@@ -218,14 +243,27 @@ export async function obterLinkDanfe(id) {
  * atacado) — checada aqui de novo, e não só na rota, porque essa trava
  * precisa valer mesmo se algum dia esta função for chamada de outro lugar.
  */
-export async function emitirNota(id) {
+export async function emitirNota(id, conta = null) {
   const permitido = await obterPermitirEmissao();
   if (!permitido) {
     throw new Error(
       'Emissão bloqueada. Ligue "Permitir emissão" na tela de atacado antes de tentar de novo.'
     );
   }
-  return chamarTiny('nota.fiscal.emitir.php', { id: String(id) });
+  return chamarTiny('nota.fiscal.emitir.php', { id: String(id) }, conta);
+}
+
+/**
+ * CNPJ da conta dona do token (info.php). Serve para pegar token trocado —
+ * colado na variável da loja errada, a nota sairia com outro emitente.
+ * Devolve null quando o Tiny não informa o CNPJ; quem chama decide o que
+ * fazer sem a confirmação.
+ */
+export async function obterCnpjDaConta(conta = null) {
+  const retorno = await chamarTiny('info.php', {}, conta);
+  const dados = retorno.conta ?? retorno;
+  const cnpj = somenteDigitos(dados?.cnpj_cpf ?? dados?.cnpj ?? dados?.cpf_cnpj);
+  return cnpj.length === 14 ? cnpj : null;
 }
 
 /** Ping usado pelo /api/saude. Faz só uma leitura inofensiva. */
