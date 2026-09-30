@@ -72,6 +72,13 @@ alter table itens_pendentes  enable row level security;
 alter table configuracoes    enable row level security;
 alter table cnpjs_franquia   enable row level security;
 
+-- Markup de cada franquia (ver src/lib/fiscal/markup.js): o valor do item na
+-- nota é o preço do Shopify ÷ markup. Vazio = markup padrão de franquia (2,2).
+-- Os limites são os mesmos da tela do rascunho (MARKUP_MINIMO/MARKUP_MAXIMO).
+--   update cnpjs_franquia set markup = 2.6 where cnpj = '00000000000000';
+alter table cnpjs_franquia add column if not exists markup numeric(6,4)
+  check (markup is null or (markup >= 1 and markup <= 10));
+
 -- ---------------------------------------------------------------------------
 -- Transferências entre lojas (tela /transferencias)
 --

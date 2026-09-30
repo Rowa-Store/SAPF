@@ -179,8 +179,9 @@ export default function IncluirRascunho({ params }) {
         )}
       </h3>
       {/* Markup da nota inteira: valor unitário = preço do Shopify ÷ markup
-          (ver markup.js). O padrão vem da classificação; trocar aqui refaz
-          todos os itens, inclusive os que foram editados à mão. */}
+          (ver markup.js). O padrão vem do cadastro da franquia, quando ela
+          tem markup próprio, ou da classificação; trocar aqui refaz todos os
+          itens, inclusive os que foram editados à mão. */}
       <div className="cartao" style={{ marginBottom: '1rem' }}>
         <div>
           <strong>
@@ -189,7 +190,8 @@ export default function IncluirRascunho({ params }) {
           </strong>
         </div>
         <div className="fraco">
-          Padrão para {dados.classificacao}: {formatarMarkup(markupOriginal)} (
+          {dados.markupProprio ? 'Padrão desta franquia' : `Padrão para ${dados.classificacao}`}:{' '}
+          {formatarMarkup(markupOriginal)} (
           {formatarMarkup(descontoDoMarkup(markupOriginal))}%).
         </div>
         {markup !== markupOriginal && (

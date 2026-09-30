@@ -91,6 +91,14 @@ Editor:
 insert into cnpjs_franquia (cnpj, apelido) values ('00000000000000', 'Nome da franquia');
 ```
 
+A coluna `markup` define o markup da franquia na nota (valor do item = preço
+do Shopify ÷ markup). Vazia, vale o padrão de franquia (2,2). A tela do
+rascunho já abre com esse markup, e ele ainda pode ser trocado nota a nota:
+
+```sql
+update cnpjs_franquia set markup = 2.6 where cnpj = '00000000000000';
+```
+
 ---
 
 ## Como publicar no Vercel

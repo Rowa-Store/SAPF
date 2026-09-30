@@ -5,7 +5,8 @@
 import { obterPedidoCompleto } from '@/lib/integrations/shopify';
 import { classificarPedido, extrairCnpj } from '@/lib/fiscal/classificacao';
 import { descontoDaNota, montarNotaAtacado, totalDaNota } from '@/lib/fiscal/montarNota';
-import { registrarPreview, jaProcessado } from '@/lib/db';
+import { registrarPreview, jaProcessado, markupDaFranquia } from '@/lib/db';
+import { lerMarkup } from '@/lib/fiscal/markup';
 import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -72,15 +73,31 @@ export async function GET(request, { params }) {
     // número é desconto.js; aqui o valor segue cru, como os outros metafields.
     const descontoPedido = getMetafield("desconto");
 
-    // 3. Nota montada a partir do pedido.
+    // 3. Franquia pode ter markup próprio no cadastro (cnpjs_franquia.markup);
+    // sem ele, montarNotaAtacado usa o padrão da classificação.
+    let markupFranquia;
+    if (classificacao === 'franquia') {
+      const resp = await markupDaFranquia(cnpj);
+      if (!resp.ok) {
+        console.error(`[preview] Falha ao buscar o markup da franquia ${cnpj} no Supabase:`, resp.erro);
+        alertas.push(
+          'Não foi possível ler o markup desta franquia no cadastro — a nota saiu com o markup padrão de franquia. ' +
+            'Confira antes de continuar.'
+        );
+      }
+      markupFranquia = lerMarkup(resp.markup) ?? undefined;
+    }
+
+    // 4. Nota montada a partir do pedido.
     const { payload, alertas: alertasNota, markup, precosVarejo } = montarNotaAtacado(pedido, classificacao, {
       volumes: volumePedido,
       metodoPagamento: metodoPagamento,
       desconto: descontoPedido,
+      markup: markupFranquia,
     });
     alertas.push(...alertasNota);
 
-    // 4. Já existe rascunho para este pedido?
+    // 5. Já existe rascunho para este pedido?
     const processado = await jaProcessado(paraGid(id));
     if (processado.processado) {
       alertas.push(
@@ -89,7 +106,7 @@ export async function GET(request, { params }) {
       );
     }
 
-    // 5. Histórico (não bloqueia se o Supabase não estiver configurado).
+    // 6. Histórico (não bloqueia se o Supabase não estiver configurado).
     const registro = await registrarPreview({
       orderId: pedido.id,
       orderName: pedido.name,
@@ -124,10 +141,14 @@ export async function GET(request, { params }) {
       },
       classificacao,
       payload,
-      // Markup padrão da classificação e o preço do Shopify de cada item (na
-      // ordem de payload.nota_fiscal.itens) — a tela usa os dois para
-      // recalcular a nota quando alguém troca o markup (ver markup.js).
+      // Markup padrão (da franquia, se ela tem um cadastrado, ou da
+      // classificação) e o preço do Shopify de cada item (na ordem de
+      // payload.nota_fiscal.itens) — a tela usa os dois para recalcular a
+      // nota quando alguém troca o markup (ver markup.js).
       markup,
+      // true quando o markup veio de cnpjs_franquia.markup — a tela mostra
+      // "Padrão desta franquia" em vez do padrão da classificação.
+      markupProprio: markupFranquia !== undefined,
       precosVarejo,
       totalNota: totalDaNota(payload),
       alertas,

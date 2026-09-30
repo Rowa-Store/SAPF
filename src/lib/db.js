@@ -327,6 +327,23 @@ export async function listarCnpjsFranquia() {
   return { ok: true, cnpjs: (data ?? []).map((r) => somenteDigitos(r.cnpj)) };
 }
 
+/** Markup cadastrado para a franquia deste CNPJ (coluna `markup` de
+ *  cnpjs_franquia). `markup: null` quando a franquia não tem markup próprio,
+ *  não está cadastrada ou a consulta falha — quem chama usa o padrão. */
+export async function markupDaFranquia(cnpj) {
+  const db = obterCliente();
+  if (!db) return { ok: false, erro: SEM_CONFIG.erro, markup: null };
+
+  // Mesmo motivo de listarCnpjsFranquia: o cadastro pode ter vindo com
+  // máscara, então a comparação é feita em dígitos, do lado de cá.
+  const { data, error } = await db.from('cnpjs_franquia').select('cnpj, markup').eq('ativo', true);
+  if (error) return { ok: false, erro: error.message, markup: null };
+
+  const linha = (data ?? []).find((r) => somenteDigitos(r.cnpj) === somenteDigitos(cnpj));
+  const markup = linha?.markup == null ? null : Number(linha.markup);
+  return { ok: true, markup: Number.isFinite(markup) ? markup : null };
+}
+
 /** Ping usado pelo /api/saude. */
 export async function verificarSupabase() {
   const db = obterCliente();
