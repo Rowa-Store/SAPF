@@ -2,7 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
+import { lerMarkup, valorComMarkup } from '@/lib/fiscal/markup';
 import { recalcularParcelas } from '@/lib/fiscal/pagamento';
+
+/** O preço de varejo anda junto com o item na tela, mas não vai para o Tiny. */
+function semPrecoVarejo({ preco_varejo, ...item }) {
+  return item;
+}
+
+/** Refaz o valor unitário a partir do preço do Shopify. Item sem preço de
+ *  varejo conhecido (valor 0 no Shopify) fica como está. */
+function aplicarMarkupNoItem(item, markup) {
+  if (!(item.preco_varejo > 0)) return item;
+  return { ...item, valor_unitario: valorComMarkup(item.preco_varejo, markup).toFixed(2) };
+}
 
 /** /pedidos/[id]/rascunho — grava o rascunho da nota no Tiny pela primeira vez. */
 export function useIncluirRascunho(id) {
@@ -17,6 +30,11 @@ export function useIncluirRascunho(id) {
   const [itensOriginais, setItensOriginais] = useState(null);
   const [itensRemovidos, setItensRemovidos] = useState([]);
 
+  // Markup em uso nos itens — começa no padrão da classificação e pode ser
+  // trocado para a nota inteira (ver markup.js).
+  const [markup, setMarkup] = useState(null);
+  const [markupOriginal, setMarkupOriginal] = useState(null);
+
   const [pedindoConfirmacao, setPedindoConfirmacao] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState(null);
@@ -30,12 +48,18 @@ export function useIncluirRascunho(id) {
         return corpo;
       })
       .then((corpo) => {
-        const itens = (corpo.payload?.nota_fiscal?.itens ?? []).map((i) => ({ ...i.item }));
+        const precos = corpo.precosVarejo ?? [];
+        const itens = (corpo.payload?.nota_fiscal?.itens ?? []).map((i, indice) => ({
+          ...i.item,
+          preco_varejo: precos[indice] ?? 0,
+        }));
 
         setDados(corpo);
         setClienteEditado(corpo.payload?.nota_fiscal?.cliente ?? {});
         setItensEditados(itens);
         setItensOriginais(itens);
+        setMarkup(corpo.markup);
+        setMarkupOriginal(corpo.markup);
       })
       .catch((e) => setErroCarregamento(e.message));
   }, [id]);
@@ -51,6 +75,22 @@ export function useIncluirRascunho(id) {
   function restaurarItens() {
     setItensEditados(itensOriginais);
     setItensRemovidos([]);
+    setMarkup(markupOriginal);
+  }
+
+  /**
+   * Troca o markup de TODOS os itens da nota, inclusive os removidos (que
+   * voltam com o markup certo se forem restaurados). Valor unitário editado à
+   * mão é sobrescrito — o markup vale para a nota inteira.
+   * Devolve false quando o valor digitado não é um markup válido.
+   */
+  function alterarMarkup(texto) {
+    const novo = lerMarkup(texto);
+    if (novo === null) return false;
+    setMarkup(novo);
+    setItensEditados((atual) => atual.map((it) => aplicarMarkupNoItem(it, novo)));
+    setItensRemovidos((atual) => atual.map((it) => aplicarMarkupNoItem(it, novo)));
+    return true;
   }
 
   function removerItem(indiceGlobal) {
@@ -82,7 +122,7 @@ export function useIncluirRascunho(id) {
             cliente: clienteEditado,
             itens: itensEditados.map((it) => ({
               item: {
-                ...it,
+                ...semPrecoVarejo(it),
                 quantidade: Number(it.quantidade || 0),
                 valor_unitario: Number(it.valor_unitario || 0).toFixed(2),
               },
@@ -144,6 +184,9 @@ export function useIncluirRascunho(id) {
     itensForamEditados,
     podeIncluir,
     itensRemovidos,
+    markup,
+    markupOriginal,
+    alterarMarkup,
     atualizarCliente,
     atualizarItem,
     removerItem,

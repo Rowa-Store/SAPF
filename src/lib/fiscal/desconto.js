@@ -11,9 +11,9 @@
 // ("1200,45", "1200.00", "1200.5"). Quando vêm os dois, o último manda —
 // "1.200,45" é mil e duzentos e quarenta e cinco centavos.
 //
-// O desconto é da NOTA, não do item: os descontos percentuais de atacado
-// (50%) e franquia (54,54%) continuam sendo aplicados no valor unitário dentro
-// de montarNota.js. Este aqui entra uma vez só, no rodapé da nota.
+// O desconto é da NOTA, não do item: o markup de atacado e franquia (ver
+// markup.js) continua sendo aplicado no valor unitário dentro de
+// montarNota.js. Este aqui entra uma vez só, no rodapé da nota.
 //
 // `valor_desconto` é campo documentado de nota.fiscal.incluir (API 2.0), no
 // mesmo bloco de `valor_frete`, `valor_seguro` e `valor_despesas`, e vai como

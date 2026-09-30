@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import Paginacao from '@/components/ui/Paginacao';
 import { CAMPOS_CLIENTE } from '@/lib/fiscal/camposCliente';
+import { MARKUPS_SUGERIDOS, MARKUP_MAXIMO, MARKUP_MINIMO, descontoDoMarkup, formatarMarkup } from '@/lib/fiscal/markup';
 import { CATEGORIA_PADRAO, rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
 import { ROTULO_FORMA_FRETE, ROTULO_TRANSPORTADORA } from '@/lib/fiscal/transporte';
 import { formatarMoeda } from '@/lib/format';
@@ -40,6 +41,9 @@ export default function IncluirRascunho({ params }) {
     itensForamEditados,
     podeIncluir,
     itensRemovidos,
+    markup,
+    markupOriginal,
+    alterarMarkup,
     atualizarCliente,
     atualizarItem,
     removerItem,
@@ -49,6 +53,19 @@ export default function IncluirRascunho({ params }) {
   } = useIncluirRascunho(id);
 
   const [saindoIndices, setSaindoIndices] = useState(() => new Set());
+  const [markupDigitado, setMarkupDigitado] = useState('');
+  const [erroMarkup, setErroMarkup] = useState(null);
+
+  function handleMarkup(valor) {
+    if (alterarMarkup(valor)) {
+      setErroMarkup(null);
+      setMarkupDigitado('');
+    } else {
+      setErroMarkup(
+        `Markup inválido — use um número entre ${formatarMarkup(MARKUP_MINIMO)} e ${formatarMarkup(MARKUP_MAXIMO)}, como 2,4.`
+      );
+    }
+  }
 
   function handleRemover(indiceGlobal) {
     setSaindoIndices((atual) => new Set(atual).add(indiceGlobal));
@@ -161,9 +178,63 @@ export default function IncluirRascunho({ params }) {
           </button>
         )}
       </h3>
+      {/* Markup da nota inteira: valor unitário = preço do Shopify ÷ markup
+          (ver markup.js). O padrão vem da classificação; trocar aqui refaz
+          todos os itens, inclusive os que foram editados à mão. */}
+      <div className="cartao" style={{ marginBottom: '1rem' }}>
+        <div>
+          <strong>
+            Markup dos itens: {formatarMarkup(markup)} ({formatarMarkup(descontoDoMarkup(markup))}% de
+            desconto sobre o preço do Shopify)
+          </strong>
+        </div>
+        <div className="fraco">
+          Padrão para {dados.classificacao}: {formatarMarkup(markupOriginal)} (
+          {formatarMarkup(descontoDoMarkup(markupOriginal))}%).
+        </div>
+        {markup !== markupOriginal && (
+          <p style={{ margin: '0.5rem 0 0' }}>
+            <strong>Esta nota vai com markup diferente do padrão.</strong> Todos os itens foram
+            recalculados com o novo markup.
+          </p>
+        )}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.5rem' }}>
+          {MARKUPS_SUGERIDOS.map((m) => (
+            <button
+              key={m}
+              className={m === markup ? undefined : 'secundario'}
+              style={{ padding: '0.15rem 0.6rem', fontSize: '0.85rem' }}
+              onClick={() => handleMarkup(m)}
+              disabled={!!resultado}
+            >
+              {formatarMarkup(m)}
+            </button>
+          ))}
+          <input
+            aria-label="Outro markup"
+            placeholder="Outro (ex.: 2,35)"
+            inputMode="decimal"
+            style={{ width: '9rem' }}
+            value={markupDigitado}
+            onChange={(e) => setMarkupDigitado(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleMarkup(markupDigitado)}
+            disabled={!!resultado}
+          />
+          <button
+            className="secundario"
+            style={{ padding: '0.15rem 0.6rem', fontSize: '0.85rem' }}
+            onClick={() => handleMarkup(markupDigitado)}
+            disabled={!!resultado || !markupDigitado.trim()}
+          >
+            Aplicar
+          </button>
+        </div>
+        {erroMarkup && <p style={{ margin: '0.5rem 0 0' }}>{erroMarkup}</p>}
+      </div>
+
       <p className="fraco">
-        Quantidade e valor unitário aqui são os que vão para o Tiny — já incluem o desconto do
-        Shopify e, se for atacado, o desconto adicional. Corrija diretamente se algo estiver errado.
+        Quantidade e valor unitário aqui são os que vão para o Tiny — já incluem o markup acima.
+        Corrija item a item se algo estiver errado; trocar o markup depois refaz todos os valores.
       </p>
 
       <table>

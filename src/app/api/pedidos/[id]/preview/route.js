@@ -73,7 +73,7 @@ export async function GET(request, { params }) {
     const descontoPedido = getMetafield("desconto");
 
     // 3. Nota montada a partir do pedido.
-    const { payload, alertas: alertasNota } = montarNotaAtacado(pedido, classificacao, {
+    const { payload, alertas: alertasNota, markup, precosVarejo } = montarNotaAtacado(pedido, classificacao, {
       volumes: volumePedido,
       metodoPagamento: metodoPagamento,
       desconto: descontoPedido,
@@ -124,6 +124,11 @@ export async function GET(request, { params }) {
       },
       classificacao,
       payload,
+      // Markup padrão da classificação e o preço do Shopify de cada item (na
+      // ordem de payload.nota_fiscal.itens) — a tela usa os dois para
+      // recalcular a nota quando alguém troca o markup (ver markup.js).
+      markup,
+      precosVarejo,
       totalNota: totalDaNota(payload),
       alertas,
       jaProcessado: processado.processado,

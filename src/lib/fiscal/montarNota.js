@@ -9,21 +9,23 @@ import { dataBr, separarLogradouro, somenteDigitos, valorMonetario } from '../ut
 import { extrairCnpj } from './classificacao.js';
 import { CAMPO_DESCONTO_TINY, montarDesconto } from './desconto.js';
 import { extrairIe } from './inscricaoEstadual.js';
+import { markupPadrao, valorComMarkup } from './markup.js';
 import { montarPagamento } from './pagamento.js';
 import { TRANSPORTE_PADRAO, quantidadeDeVolumes } from './transporte.js';
 
 /**
  * @param {object} pedidoShopify pedido já completo (com todos os lineItems)
  * @param {"atacado"|"franquia"} classificacao
- * @param {{ volumes?: string|number, metodoPagamento?: string, desconto?: string|number }} [opcoes]
+ * @param {{ volumes?: string|number, metodoPagamento?: string, desconto?: string|number, markup?: number }} [opcoes]
  *   `volumes`, `metodoPagamento` e `desconto` são os metafields
  *   `volume_pedido`, `metodo_pagamento` e `desconto` do Shopify, crus — quem
- *   lê os metafields é a rota do preview.
- * @returns {{ payload: object, alertas: string[] }}
+ *   lê os metafields é a rota do preview. `markup` troca o markup padrão da
+ *   classificação (ver markup.js).
+ * @returns {{ payload: object, alertas: string[], markup: number, precosVarejo: number[] }}
+ *   `precosVarejo` é o preço do Shopify de cada item, na mesma ordem de
+ *   `itens` — fica FORA do payload (o Tiny não conhece o campo) e serve para a
+ *   tela recalcular os itens quando alguém troca o markup.
  */
-
-const DESCONTO_ATACADO = 0.5;
-const DESCONTO_FRANQUIA = 0.5454;
 
 /**
  * O checkout desta loja grava o endereço já separado em campos (rua, número,
@@ -70,11 +72,10 @@ function extrairBairro(customAttributes, prefixos) {
 export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
   const alertas = [];
 
-  if (classificacao === 'atacado') {
-    alertas.push(`Desconto adicional de ${DESCONTO_ATACADO * 100}% aplicado nos itens por ser atacado.`);
-  }else if (classificacao === 'franquia') {
-    alertas.push(`Desconto adicional de ${DESCONTO_FRANQUIA * 100}% aplicado nos itens por ser franquia.`);
-  }
+  // O markup em uso aparece no quadro de markup da tela do rascunho, e não
+  // como alerta: lá ele muda junto quando a pessoa troca o valor.
+  const markup = opcoes.markup ?? markupPadrao(classificacao);
+  const precosVarejo = [];
 
   const usaCobranca = !!pedidoShopify.billingAddress;
   const endereco = pedidoShopify.billingAddress ?? pedidoShopify.shippingAddress ?? {};
@@ -144,19 +145,9 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
       alertas.push(`Item "${linha.title}" está sem SKU no Shopify.`);
     }
 
-
-    let valorUnitario; 
-    switch (classificacao) {
-      case 'atacado':
-        valorUnitario = Number(linha.originalUnitPriceSet?.shopMoney?.amount ?? 0) * (1 - DESCONTO_ATACADO );
-        break;
-      case 'franquia':
-        valorUnitario = Number(linha.originalUnitPriceSet?.shopMoney?.amount ?? 0) * (1 - DESCONTO_FRANQUIA);
-        break;
-
-      default:
-        valorUnitario = Number(linha.originalUnitPriceSet?.shopMoney?.amount ?? 0);  
-    } 
+    const precoVarejo = Number(linha.originalUnitPriceSet?.shopMoney?.amount ?? 0);
+    precosVarejo.push(precoVarejo);
+    const valorUnitario = valorComMarkup(precoVarejo, markup);
 
     return {
       item: {
@@ -249,7 +240,7 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
     },
   };
 
-  return { payload, alertas };
+  return { payload, alertas, markup, precosVarejo };
 }
 
 /** Soma dos itens da nota, para conferência visual na tela do rascunho. */
