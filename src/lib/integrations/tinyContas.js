@@ -7,9 +7,8 @@
 // O token de cada conta mora numa variável de ambiente com o nome do local de
 // origem no Shopify: TINY_API_TOKEN_<NOME_DA_LOJA> (ver variavelTokenDaLoja).
 // Sem a variável da loja de origem, a nota NÃO é criada — cair no token da
-// matriz seria justamente o erro fiscal que isto corrige. A matriz/CD também
-// precisa da sua variável (com o mesmo valor de TINY_API_TOKEN) para as
-// transferências que partem dela.
+// matriz seria justamente o erro fiscal que isto corrige. A exceção são os
+// locais da própria matriz (LOCAIS_DA_MATRIZ), que usam TINY_API_TOKEN.
 //
 // Nada disso é gravado: a conta de uma nota é sempre a da loja de origem da
 // transferência, lida de novo no Shopify. As notas criadas antes disto estão
@@ -20,6 +19,14 @@ import { obterOrigemTransferencia } from './shopifyTransferencias.js';
 import { variavelTokenDaLoja } from './tiny.js';
 
 /**
+ * Locais que emitem pela conta da matriz (TINY_API_TOKEN), sem variável
+ * própria. Comparados pelo nome normalizado, igual ao da variável — espaço
+ * duplo e acento no Shopify não atrapalham.
+ */
+const LOCAIS_DA_MATRIZ = ['Rowa Centro de Distribuição 1', 'Rowa Centro de Distribuição 2'];
+const VARIAVEIS_DA_MATRIZ = new Set(LOCAIS_DA_MATRIZ.map(variavelTokenDaLoja));
+
+/**
  * Conta do Tiny de uma loja, pelo nome do local no Shopify.
  * Devolve { ok: true, conta } ou { ok: false, erro } — nunca lança.
  * `conta.matriz` diz se o token é o mesmo da matriz (TINY_API_TOKEN).
@@ -28,6 +35,12 @@ export function contaTinyDaLoja(nomeLoja) {
   const variavel = variavelTokenDaLoja(nomeLoja);
   if (!variavel) {
     return { ok: false, erro: 'A transferência não tem loja de origem — sem ela não dá para saber de qual conta do Tiny a nota sai.' };
+  }
+
+  if (VARIAVEIS_DA_MATRIZ.has(variavel)) {
+    const token = (process.env.TINY_API_TOKEN ?? '').trim();
+    if (!token) return { ok: false, erro: 'TINY_API_TOKEN não configurado. Preencha as variáveis do Vercel.' };
+    return { ok: true, conta: { token, variavel: 'TINY_API_TOKEN', matriz: true, nome: nomeLoja } };
   }
 
   const token = (process.env[variavel] ?? '').trim();
