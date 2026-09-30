@@ -23,7 +23,11 @@ import { variavelTokenDaLoja } from './tiny.js';
  * própria. Comparados pelo nome normalizado, igual ao da variável — espaço
  * duplo e acento no Shopify não atrapalham.
  */
-const LOCAIS_DA_MATRIZ = ['Rowa Centro de Distribuição 1', 'Rowa Centro de Distribuição 2'];
+const LOCAIS_DA_MATRIZ = [
+  'Rowa Centro de Distribuição 1',
+  'Rowa Centro de Distribuição 2',
+  'Rowa - Centro de Distribuição [PRÉ-VENDA]',
+];
 const VARIAVEIS_DA_MATRIZ = new Set(LOCAIS_DA_MATRIZ.map(variavelTokenDaLoja));
 
 /**

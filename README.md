@@ -65,7 +65,7 @@ commitada no repositório.
 | `SHOPIFY_API_TOKEN` | Token da Admin API (leitura de pedidos e escopos `read_inventory_transfers`, `read_locations`, `read_inventory`, `read_products` para as transferências) |
 | `SHOPIFY_API_VERSION` | Versão da Admin API, ex.: `2025-07` |
 | `TINY_API_TOKEN` | Token em Configurações > Geral > Tokens no Tiny (conta da matriz — pedidos de atacado) |
-| `TINY_API_TOKEN_<LOJA>` | Token da conta do Tiny de cada loja, com o nome do local no Shopify no nome da variável (sem acento, maiúsculas, espaços e pontuação viram `_` — ex.: `TINY_API_TOKEN_ROWA_CENTRO_DE_DISTRIBUICAO_1`). Usado nas transferências — ver abaixo. Rowa Centro de Distribuição 1 e 2 não têm variável própria: usam `TINY_API_TOKEN`. |
+| `TINY_API_TOKEN_<LOJA>` | Token da conta do Tiny de cada loja, com o nome do local no Shopify no nome da variável (sem acento, maiúsculas, espaços e pontuação viram `_` — ex.: `TINY_API_TOKEN_ROWA_CENTRO_DE_DISTRIBUICAO_1`). Usado nas transferências — ver abaixo. Os CDs (Rowa Centro de Distribuição 1, 2 e [PRÉ-VENDA]) não têm variável própria: usam `TINY_API_TOKEN`. |
 | `TINY_API_BASE` | `https://api.tiny.com.br/api2` |
 | `SUPABASE_URL` | Project Settings > API > Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings > API > `service_role`. Nunca exponha no navegador. |
@@ -123,7 +123,7 @@ pedidos (confirmação na tela e `permitir_emissao`). O registro fica em
 - **Emitente / conta do Tiny:** a nota sai da conta do Tiny da loja de
   **origem**, não da matriz. O token vem de `TINY_API_TOKEN_<nome do local de
   origem no Shopify>`; sem essa variável, o rascunho é recusado (nunca cai no
-  token da matriz). Exceção: Rowa Centro de Distribuição 1 e 2 emitem pela
+  token da matriz). Exceção: os CDs (Centro de Distribuição 1, 2 e [PRÉ-VENDA]) emitem pela
   conta da matriz (`TINY_API_TOKEN`) — lista `LOCAIS_DA_MATRIZ` em
   `src/lib/integrations/tinyContas.js`. Se a origem estiver em `lojas_fiscais`, o sistema confere
   no Tiny (`info.php`) se o token é mesmo da conta daquele CNPJ antes de criar.
