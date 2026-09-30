@@ -44,7 +44,7 @@ function avisoNatureza(confirmacao, payload) {
   if (natureza.ok) return '';
   return (
     ` ATENÇÃO: o Tiny gravou a natureza "${natureza.naNota ?? '(não informada)'}" em vez de ` +
-    `"${natureza.esperada}". Confira natureza_operacao_id em lojas_fiscais (id da natureza no Tiny). ` +
+    `"${natureza.esperada}". Confira o id e o nome da natureza em lojas_fiscais (naturezas_tiny da loja de origem). ` +
     'A emissão desta nota vai ser recusada até o cadastro ser corrigido e o rascunho refeito.'
   );
 }
@@ -264,24 +264,15 @@ export async function POST(request, { params }) {
         422
       );
     }
-    if (!cadastro.lojas[destinoId].natureza_operacao?.trim()) {
-      return erroJson(
-        `A loja de destino "${transferencia.destination?.name}" está sem natureza de operação em ` +
-          'lojas_fiscais — sem ela o Tiny usaria a natureza padrão da conta.',
-        422
-      );
-    }
-    if (!String(cadastro.lojas[destinoId].natureza_operacao_id ?? '').trim()) {
-      return erroJson(
-        `A loja de destino "${transferencia.destination?.name}" está sem natureza_operacao_id em ` +
-          'lojas_fiscais — só pelo nome o Tiny cai na natureza padrão da conta.',
-        422
-      );
-    }
-    ({ payload } = montarNotaTransferencia(transferencia, {
+    // Sem natureza (nome + id na conta que emite), o Tiny cairia na natureza
+    // padrão da conta e a nota sairia com CFOP de venda.
+    let natureza;
+    ({ payload, natureza } = montarNotaTransferencia(transferencia, {
       origem: cadastro.lojas[origemId] ?? null,
       destino: cadastro.lojas[destinoId],
+      contaMatriz: conta.matriz,
     }));
+    if (!natureza.ok) return erroJson(`Natureza de operação: ${natureza.erro}`, 422);
   } catch (erro) {
     return erroJson(`Não foi possível montar a nota: ${erro.message}`, 502);
   }

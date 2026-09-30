@@ -71,7 +71,7 @@ export async function POST(request, { params }) {
     return erroJson(
       `Emissão recusada: a nota ${tinyNotaId} está no Tiny com a natureza ` +
         `"${natureza.naNota ?? '(não informada)'}", mas foi pedida "${esperada}". Confira ` +
-        'natureza_operacao_id em lojas_fiscais (id da natureza no Tiny) e use "Novo rascunho".',
+        'o id e o nome da natureza em lojas_fiscais (naturezas_tiny da loja de origem) e use "Novo rascunho".',
       422,
       { naturezaNaNota: natureza.naNota, naturezaEsperada: esperada }
     );

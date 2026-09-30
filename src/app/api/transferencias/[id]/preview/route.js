@@ -25,15 +25,16 @@ export async function GET(request, { params }) {
       alertas.push(`Não foi possível ler o cadastro fiscal das lojas no Supabase: ${cadastro.erro}`);
     }
 
-    const { payload, alertas: alertasNota } = montarNotaTransferencia(transferencia, {
-      origem: cadastro.lojas[origemId] ?? null,
-      destino: cadastro.lojas[destinoId] ?? null,
-    });
-    alertas.push(...alertasNota);
-
     // A nota sai da conta do Tiny da loja de origem; sem o token dela não sai.
     const conta = contaTinyDaLoja(transferencia.origin?.name);
     if (!conta.ok) alertas.push(conta.erro);
+
+    const { payload, alertas: alertasNota, natureza } = montarNotaTransferencia(transferencia, {
+      origem: cadastro.lojas[origemId] ?? null,
+      destino: cadastro.lojas[destinoId] ?? null,
+      contaMatriz: conta.ok && conta.conta.matriz,
+    });
+    alertas.push(...alertasNota);
 
     if (transferencia.status === 'DRAFT') {
       alertas.push('Esta transferência ainda é rascunho no Shopify — os itens podem mudar.');
@@ -69,7 +70,7 @@ export async function GET(request, { params }) {
       totalNota: totalDaNota(payload),
       alertas,
       // Sem cadastro do destino a nota vai sem CNPJ — o Tiny recusaria.
-      podeCriar: !!cadastro.lojas[destinoId] && conta.ok && payload.nota_fiscal.itens.length > 0,
+      podeCriar: !!cadastro.lojas[destinoId] && conta.ok && natureza.ok && payload.nota_fiscal.itens.length > 0,
       jaProcessado: processado.processado,
       tinyNotaId: processado.tinyNotaId ?? null,
     });

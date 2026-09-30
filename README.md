@@ -140,8 +140,18 @@ pedidos (confirmação na tela e `permitir_emissao`). O registro fica em
   caem na conta da matriz se a nota não for achada na da loja; a emissão não —
   rascunho antigo de transferência entre lojas precisa de "Novo rascunho".
   Atenção: renomear o local no Shopify muda o nome da variável.
+- **Natureza de operação:** escolhida pelo par origem x destino
+  (`src/lib/fiscal/naturezaTransferencia.js`): *consignação* se a
+  `natureza_operacao` do destino for de consignação; senão *mesmo estado* ou
+  *interestadual*, comparando a `uf` das duas lojas em `lojas_fiscais`. Nome e
+  id vêm da conta do Tiny da **origem**, na coluna jsonb
+  `lojas_fiscais.naturezas_tiny` da linha dela
+  (`{"mesmo_estado": {"id", "nome"}, "interestadual": {...}, "consignacao": {...}}`).
+  Os CDs, sem `naturezas_tiny`, seguem usando `natureza_operacao` /
+  `natureza_operacao_id` do destino. Sem natureza, o rascunho é recusado.
+  Modelo de preenchimento em `supabase/naturezas-por-conta.sql`.
 - **Regras por loja de destino** (colunas de `lojas_fiscais`):
-  - `natureza_operacao`: nome da natureza no Tiny, de onde sai o CFOP. Tem que
+  - `natureza_operacao`: (usado pelos CDs e para marcar consignação) nome da natureza no Tiny, de onde sai o CFOP. Tem que
     ser **idêntico** ao cadastro de naturezas do Tiny (acentos e maiúsculas
     inclusos) — um nome que não existe lá vira, em silêncio, a natureza padrão
     da conta ("Venda para contribuinte"). Vazia, o rascunho é recusado.

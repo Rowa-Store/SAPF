@@ -131,4 +131,11 @@ alter table lojas_fiscais add column if not exists base_valor text not null defa
 alter table lojas_fiscais add column if not exists desconto_percentual numeric(5,2) not null default 0
   check (desconto_percentual >= 0 and desconto_percentual < 100);
 
+-- Naturezas da conta do Tiny de cada loja de ORIGEM (quem emite a nota) —
+-- o id muda de conta para conta. Ver supabase/naturezas-por-conta.sql e
+-- src/lib/fiscal/naturezaTransferencia.js. Formato:
+--   { "mesmo_estado": { "id": 0, "nome": "..." }, "interestadual": {...}, "consignacao": {...} }
+-- Vazio nos CDs (conta da matriz) = natureza_operacao/_id do destino, como antes.
+alter table lojas_fiscais add column if not exists naturezas_tiny jsonb;
+
 alter table lojas_fiscais enable row level security;

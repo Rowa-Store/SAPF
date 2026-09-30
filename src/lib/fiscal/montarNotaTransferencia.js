@@ -9,24 +9,22 @@
 //   - O destinatário é a LOJA de destino, não um cliente. O Shopify não guarda
 //     CNPJ/IE de local, então esses dados vêm da tabela `lojas_fiscais` do
 //     Supabase (ver schema.sql), chaveada pelo id do local no Shopify.
-//   - Valor do item, natureza de operação e desconto dependem da loja de
-//     DESTINO, e vêm do cadastro dela em `lojas_fiscais`:
+//   - Natureza de operação: escolhida em naturezaTransferencia.js, pelo par
+//     origem x destino e com o id da conta do Tiny da ORIGEM (quem emite).
+//   - Valor do item e desconto dependem da loja de DESTINO, e vêm do cadastro
+//     dela em `lojas_fiscais`:
 //       · `base_valor`: 'custo' (padrão, `unitCost` do inventoryItem) ou
 //         'venda' (preço da variante). Custo em branco cai no preço de venda,
 //         com aviso.
 //       · `desconto_percentual`: % abatido do valor unitário de cada item
 //         (0 = sem desconto).
-//       · `natureza_operacao`: nome da natureza no Tiny, de onde sai o CFOP.
-//         Tem que ser IGUAL ao cadastro de naturezas da conta: um nome que não
-//         existe lá é trocado em silêncio pela natureza padrão ("Venda para
-//         contribuinte"). Em branco, a nota não é criada.
-//       · `natureza_operacao_id`: id da natureza no Tiny. É ele que vai na
-//         nota (`id_natureza_operacao`) — o Tiny ignorou o nome mesmo idêntico
-//         ao cadastro. O nome continua indo junto e é o que a emissão confere.
-//         Sem id, o rascunho não é criado.
+//     O id vai na nota (`id_natureza_operacao`) — o Tiny ignorou o nome mesmo
+//     idêntico ao cadastro. O nome vai junto e é o que a emissão confere. Sem
+//     natureza, o rascunho não é criado.
 //   - Sem frete, sem transportadora, sem pagamento, sem desconto no rodapé.
 
 import { dataBr, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
+import { escolherNatureza, PAPEIS_NATUREZA } from './naturezaTransferencia.js';
 
 /** `frete_por_conta` "S" = sem ocorrência de transporte (a própria empresa leva). */
 const SEM_FRETE = 'S';
@@ -60,12 +58,13 @@ function enderecoDestino(loja, snapshot) {
 
 /**
  * @param {object} transferencia transferência completa (com todos os lineItems)
- * @param {{ origem: object|null, destino: object|null }} lojas linhas de `lojas_fiscais`
- * @returns {{ payload: object, alertas: string[] }}
+ * @param {{ origem: object|null, destino: object|null, contaMatriz?: boolean }} lojas linhas de
+ *   `lojas_fiscais`; `contaMatriz` = a origem emite pela conta da matriz (ver naturezaTransferencia.js)
+ * @returns {{ payload: object, alertas: string[], natureza: object }} `natureza.ok` false = não criar o rascunho
  */
 export function montarNotaTransferencia(transferencia, lojas = {}) {
   const alertas = [];
-  const { origem, destino } = lojas;
+  const { origem, destino, contaMatriz = false } = lojas;
   const nomeOrigem = transferencia.origin?.name ?? 'origem desconhecida';
   const nomeDestino = transferencia.destination?.name ?? 'destino desconhecido';
 
@@ -112,20 +111,11 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
   }
   const fator = Number.isFinite(desconto) && desconto > 0 && desconto < 100 ? 1 - desconto / 100 : 1;
 
-  const natureza = destino?.natureza_operacao?.trim() ?? '';
-  if (destino && !natureza) {
-    alertas.push(
-      `Loja "${nomeDestino}" sem natureza de operação no cadastro (lojas_fiscais) — o rascunho não ` +
-        'será criado até ela ser preenchida com o nome exato da natureza no Tiny.'
-    );
-  }
-
-  const naturezaId = String(destino?.natureza_operacao_id ?? '').trim();
-  if (destino && !naturezaId) {
-    alertas.push(
-      `Loja "${nomeDestino}" sem natureza_operacao_id no cadastro (lojas_fiscais) — o rascunho não ` +
-        'será criado até ele ser preenchido com o id da natureza no Tiny.'
-    );
+  const natureza = escolherNatureza(transferencia, { origem, destino, contaMatriz });
+  if (natureza.ok) {
+    alertas.push(`Natureza de ${PAPEIS_NATUREZA[natureza.papel]}: "${natureza.nome}" (id ${natureza.id}).`);
+  } else if (destino) {
+    alertas.push(`Natureza de operação: ${natureza.erro} O rascunho não será criado até isso ser corrigido.`);
   }
 
   const semCusto = [];
@@ -165,8 +155,8 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
   const payload = {
     nota_fiscal: {
       tipo: 'S',
-      ...(naturezaId ? { id_natureza_operacao: Number(naturezaId) } : {}),
-      natureza_operacao: natureza,
+      ...(natureza.ok ? { id_natureza_operacao: Number(natureza.id) } : {}),
+      natureza_operacao: natureza.ok ? natureza.nome : '',
       frete_por_conta: SEM_FRETE,
       // A nota é emitida no dia em que for criada, não na data da transferência.
       data_emissao: dataBr(),
@@ -184,5 +174,5 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
     },
   };
 
-  return { payload, alertas };
+  return { payload, alertas, natureza };
 }
