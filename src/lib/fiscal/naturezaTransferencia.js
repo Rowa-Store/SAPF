@@ -65,7 +65,9 @@ export function escolherNatureza(transferencia, { origem, destino, contaMatriz =
   if (daConta) {
     const nome = String(daConta.nome ?? '').trim();
     const id = String(daConta.id ?? '').trim();
-    if (!nome || !/^\d+$/.test(id)) {
+    // id 0 e nome "NOME" são os valores do modelo em supabase/naturezas-por-conta.sql:
+    // update rodado sem trocar não pode virar natureza válida.
+    if (!nome || nome.toUpperCase() === 'NOME' || !/^\d+$/.test(id) || Number(id) === 0) {
       return {
         ok: false,
         erro: `naturezas_tiny.${papel} da loja de origem "${nomeOrigem}" precisa de "id" (número) e "nome" (igual ao Tiny).`,
