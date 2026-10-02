@@ -31,3 +31,11 @@ export function formatarDataHoraCurta(iso) {
       })
     : '—';
 }
+
+/** 00.000.000/0000-00 — aceita com ou sem máscara; o que não tem 14 dígitos
+ *  volta como veio, para a pessoa ver o que foi digitado. */
+export function formatarCnpj(valor) {
+  const d = String(valor ?? '').replace(/\D+/g, '');
+  if (d.length !== 14) return String(valor ?? '');
+  return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+}

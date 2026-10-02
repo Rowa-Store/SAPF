@@ -1,5 +1,7 @@
-// transporte.js — o bloco de transporte da nota, que hoje é sempre o mesmo:
-// Correios, Sedex Contrato AG.
+// transporte.js — o bloco de transporte da nota. O padrão é Correios, Sedex
+// Contrato AG; cliente anexado a uma transportadora do cadastro
+// (/pedidos/transportadoras) usa a dela, com os dados do nosso cadastro — ver
+// transporteDaTransportadora.
 //
 // Os nomes dos campos e os códigos vêm da documentação da API 2.0
 // (nota.fiscal.incluir + tabela de forma de envio):
@@ -20,16 +22,46 @@
 //   - `frete_por_conta` fica no montarNota.js, junto do resto da nota, porque
 //     é dado da operação (quem paga) e não da transportadora.
 
-/** Transportadora e serviço usados em toda nota de atacado/franquia hoje. */
+/** Transportadora e serviço da nota de atacado/franquia quando o cliente não
+ *  tem transportadora anexada. */
 export const TRANSPORTE_PADRAO = {
   forma_envio: 'C',
   forma_frete: 'SEDEX CONTRATO AG (03220)',
   transportador: { nome: 'EMPRESA BRASILEIRA DE CORREIOS E TELEGRAFOS' },
 };
 
-/** Rótulos para a tela de conferência — o que a pessoa vê tem que ser o que vai. */
-export const ROTULO_TRANSPORTADORA = TRANSPORTE_PADRAO.transportador.nome;
-export const ROTULO_FORMA_FRETE = TRANSPORTE_PADRAO.forma_frete;
+/** `forma_envio` 'T' = Transportadora (tabela de forma de envio do Tiny). */
+const FORMA_ENVIO_TRANSPORTADORA = 'T';
+
+/**
+ * Bloco de transporte para uma linha da tabela `transportadoras`. Diferente
+ * dos Correios, a transportadora não precisa existir no Tiny, e este sistema
+ * não procura nem cadastra nada lá: a nota leva os dados do nosso cadastro.
+ * Pela doc do nota.fiscal.incluir, o Tiny só procura o transportador pelo
+ * `nome` (ou `codigo`) e, sem cadastro com esse nome, fica com os campos
+ * enviados — por isso eles vão completos (a tela exige todos, menos a IE).
+ * Se um dia existir no Tiny uma transportadora com o mesmo nome, o Tiny passa
+ * a usar os dados de lá.
+ * `forma_frete` só vai quando preenchida — um rótulo que não existe na Olist
+ * cai como "Não definida".
+ */
+export function transporteDaTransportadora(t) {
+  const transportador = { nome: t.nome };
+  if (t.cnpj) {
+    transportador.tipo_pessoa = 'J';
+    transportador.cpf_cnpj = t.cnpj;
+  }
+  if (t.ie) transportador.ie = t.ie;
+  if (t.endereco) transportador.endereco = t.endereco;
+  if (t.cidade) transportador.cidade = t.cidade;
+  if (t.uf) transportador.uf = t.uf;
+
+  return {
+    forma_envio: FORMA_ENVIO_TRANSPORTADORA,
+    ...(t.forma_frete ? { forma_frete: t.forma_frete } : {}),
+    transportador,
+  };
+}
 
 /**
  * A quantidade de volumes vem do metafield `volume_pedido` do Shopify, que é

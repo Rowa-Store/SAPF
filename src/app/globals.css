@@ -297,3 +297,25 @@ tr.linha-detalhe table { border: 1px solid var(--linha); border-radius: var(--ra
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---- Modal (components/ui/Modal.js) ---- */
+
+dialog.modal {
+  width: calc(100% - 2rem);
+  padding: 0;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--papel-alt);
+  color: var(--tinta);
+}
+dialog.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
+.modal-caixa { padding: 1rem 1.25rem 1.25rem; }
+.modal-topo { display: flex; gap: 1rem; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+.modal-topo h3 { margin: 0; }
+.modal .aviso { margin: 0.75rem 0; }
+.modal .rodape-modal { display: flex; gap: 0.6rem; flex-wrap: wrap; justify-content: flex-end; margin-top: 1rem; }
+.modal table { border: 1px solid var(--linha); }
+.modal .lista-rolavel { max-height: 50vh; overflow-y: auto; }
+.campo-check { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; font-size: 0.9rem; color: var(--tinta); }
+.campo-check input { width: auto; }
+.campo-largo { grid-column: 1 / -1; }

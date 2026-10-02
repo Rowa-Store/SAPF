@@ -79,9 +79,11 @@ serviço não está configurado ou fora do ar.
 ### Criando as tabelas no Supabase
 
 No painel do Supabase: **SQL Editor > New query**, cole o conteúdo de
-`supabase/schema.sql` e clique em **Run**. São cinco tabelas:
-`notas_processadas`, `itens_pendentes`, `configuracoes`, `cnpjs_franquia` e
-`lojas_fiscais`.
+`supabase/schema.sql` e clique em **Run**. São sete tabelas:
+`notas_processadas`, `itens_pendentes`, `configuracoes`, `cnpjs_franquia`,
+`lojas_fiscais`, `transportadoras` e `clientes_transportadora`. Quem já tinha
+rodado o schema antes das transportadoras existirem roda só
+`supabase/transportadoras.sql`.
 
 `cnpjs_franquia` não vem com dados — é cadastro sensível de cliente, então
 fica de fora do controle de versão de propósito. Cadastre direto no SQL
@@ -98,6 +100,36 @@ rascunho já abre com esse markup, e ele ainda pode ser trocado nota a nota:
 ```sql
 update cnpjs_franquia set markup = 2.6 where cnpj = '00000000000000';
 ```
+
+---
+
+## Transportadoras do atacado
+
+Por padrão a nota de atacado/franquia sai pelos Correios (Sedex Contrato AG —
+`TRANSPORTE_PADRAO` em `src/lib/fiscal/transporte.js`). A tela
+`/pedidos/transportadoras` (link "Transportadoras" na tela de atacado)
+cadastra outras transportadoras e anexa clientes a elas pelo CNPJ:
+
+- **Cadastro / editar:** nome (razão social), CNPJ, IE (opcional, para
+  isenta), forma de frete (rótulo inteiro do serviço, como na Olist; vazio
+  não vai na nota), endereço, cidade (escrita como na tabela de cidades do
+  Tiny), UF e "ativa". A transportadora **não precisa existir no Tiny**: o
+  sistema não procura nem cadastra nada lá, os dados daqui vão direto na nota.
+  Por isso nome, CNPJ, endereço, cidade e UF são obrigatórios. Se um dia
+  houver no Tiny uma transportadora com o mesmo nome, o Tiny usa os dados do
+  cadastro dele no lugar dos nossos.
+- **Ver clientes:** janela com os CNPJs anexados; dá para remover um anexo ali.
+- **Anexar cliente:** só o CNPJ (validado com dígito verificador) e um nome
+  opcional, para referência. O CNPJ é chave única: cada cliente tem uma
+  transportadora só. Se ele já estiver em outra, a janela avisa qual e oferece
+  "Mover para esta".
+- **Na nota:** o preview do pedido (`/api/pedidos/[id]/preview`) procura o
+  CNPJ do cliente em `clientes_transportadora`. Achou uma transportadora
+  ativa, o bloco de transporte vira `forma_envio: 'T'`, `forma_frete` dela e
+  `transportador` com nome, tipo de pessoa, CNPJ, IE (se houver), endereço,
+  cidade e UF. Sem anexo, transportadora inativa ou falha no Supabase, fica com os
+  Correios (os dois últimos com alerta na tela). A tela do rascunho mostra a
+  transportadora que vai na nota. Rascunhos já enviados ao Tiny não mudam.
 
 ---
 
@@ -219,6 +251,10 @@ src/
     api/pedidos/[id]/danfe/          Resolve e redireciona pro link do DANFE
     api/pedidos/[id]/emitir/         Emite a nota (irreversível, travado)
     api/config/permitir-emissao/     Liga/desliga a trava de emissão
+    pedidos/transportadoras/page.js  Cadastro de transportadoras -> features/transportadoras
+    api/transportadoras/             Lista/cria transportadoras; [id] edita;
+                                      [id]/clientes lista/anexa CNPJs e
+                                      [id]/clientes/[cnpj] remove o anexo
     transferencias/page.js           Controle de transferências -> features/transferencias
     api/transferencias/              Lista transferências + situação fiscal; subrotas
                                       [id]/preview, [id]/rascunho, [id]/emitir
@@ -226,7 +262,8 @@ src/
 
   components/
     layouts/SiteHeader.js            Cabeçalho de navegação
-    ui/Paginacao.js, ui/IconePdf.js   Componentes de UI reaproveitáveis
+    ui/Paginacao.js, ui/IconePdf.js,
+    ui/Modal.js                      Componentes de UI reaproveitáveis
 
   features/
     inicio/
@@ -242,6 +279,9 @@ src/
     transferencias/
       components/ControleTransferencias.js  Filtros, lista, rascunho e emissão das transferências
       hooks/useTransferencias.js
+    transportadoras/
+      components/CadastroTransportadoras.js  Lista, cadastro/edição e clientes anexados
+      hooks/useTransportadoras.js
 
   lib/
     constants.js                     Constantes de UI compartilhadas
@@ -253,14 +293,18 @@ src/
       camposCliente.js                Lista dos campos do cliente exibidos nas telas de rascunho
       montarNota.js                  Pedido do Shopify -> JSON do nota.fiscal.incluir
       montarNotaTransferencia.js     Transferência do Shopify -> JSON do nota.fiscal.incluir
+      transporte.js                  Bloco de transporte: Correios ou transportadora do cliente
+      transportadoras.js             Validação do cadastro de transportadoras
     integrations/
       shopify.js                     Admin GraphQL API — fonte real dos pedidos
       shopifyTransferencias.js       Transferências e locais
       tiny.js                        API 2.0 do Tiny, com as travas de segurança
 
 supabase/
-  schema.sql                         As cinco tabelas: notas, pendências,
-                                      configurações, CNPJs de franquia e lojas
+  schema.sql                         As sete tabelas: notas, pendências,
+                                      configurações, CNPJs de franquia, lojas,
+                                      transportadoras e clientes anexados
+  transportadoras.sql                Só as tabelas de transportadoras (migração)
 ```
 
 Novos fluxos fiscais (transferência entre lojas, devolução) entram como uma

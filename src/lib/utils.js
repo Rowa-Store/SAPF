@@ -12,6 +12,27 @@ export function pareceCnpj(valor) {
   return somenteDigitos(valor).length === 14;
 }
 
+/** true quando o CNPJ tem 14 dígitos e os dígitos verificadores conferem.
+ *  Usado onde o CNPJ é digitado à mão (anexo de cliente à transportadora):
+ *  um dígito trocado ali faria o anexo nunca casar com o pedido. */
+export function cnpjValido(valor) {
+  const d = somenteDigitos(valor);
+  if (d.length !== 14 || /^(\d)\1+$/.test(d)) return false;
+  const digito = (base) => {
+    let soma = 0;
+    let peso = base.length - 7;
+    for (const c of base) {
+      soma += Number(c) * peso--;
+      if (peso < 2) peso = 9;
+    }
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+  const d1 = digito(d.slice(0, 12));
+  const d2 = digito(d.slice(0, 12) + d1);
+  return d.endsWith(`${d1}${d2}`);
+}
+
 /** Formata um número no padrão que o Tiny espera: ponto decimal, 2 casas. */
 export function valorMonetario(valor) {
   const n = Number(valor);

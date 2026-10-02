@@ -54,6 +54,9 @@ function ResumoPreview({ preview }) {
         Cliente na nota: {nota.cliente.nome}
         {nota.cliente.cpf_cnpj && <span className="mono"> · CNPJ {nota.cliente.cpf_cnpj}</span>} ·{' '}
         {nota.itens.length} item(ns) · <strong>Total da nota: {formatarMoeda(dados.totalNota)}</strong>
+        <br />
+        Transporte: {nota.transportador?.nome ?? '—'}
+        {dados.transportadora ? ' (transportadora do cliente)' : ' (padrão)'}
       </p>
       {dados.alertas.length > 0 && (
         <div className="aviso">
@@ -115,6 +118,9 @@ export default function ControleAtacado() {
     <>
       <div className="cabecalho-pagina">
         <h2>Notas de atacado</h2>
+        <a href="/pedidos/transportadoras" className="marca marca-atacado">
+          Transportadoras
+        </a>
       </div>
 
       <div className={permitirEmissao ? 'aviso aviso-ok' : 'aviso'}>

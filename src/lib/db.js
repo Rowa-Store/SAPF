@@ -389,3 +389,166 @@ export async function lojasFiscaisPorLocal(locationIds) {
   if (error) return { ok: false, erro: error.message, lojas: {} };
   return { ok: true, lojas: Object.fromEntries((data ?? []).map((l) => [l.shopify_location_id, l])) };
 }
+
+// ---------------------------------------------------------------------------
+// Transportadoras do atacado (tela /pedidos/transportadoras). Cliente com o
+// CNPJ anexado a uma transportadora ativa tem a nota com o transporte dela em
+// vez dos Correios — ver transporte.js e a rota do preview.
+// ---------------------------------------------------------------------------
+
+const CAMPOS_TRANSPORTADORA = ['nome', 'cnpj', 'ie', 'forma_frete', 'endereco', 'cidade', 'uf', 'ativo'];
+
+/** Só os campos editáveis, já normalizados (CNPJ em dígitos, texto aparado,
+ *  vazio vira null). Quem valida o conteúdo é a rota. */
+function linhaTransportadora(dados) {
+  const linha = {};
+  for (const campo of CAMPOS_TRANSPORTADORA) {
+    if (!(campo in (dados ?? {}))) continue;
+    const valor = dados[campo];
+    if (campo === 'ativo') linha.ativo = valor !== false;
+    else if (campo === 'cnpj') linha.cnpj = somenteDigitos(valor) || null;
+    else if (campo === 'uf') linha.uf = String(valor ?? '').trim().toUpperCase() || null;
+    else linha[campo] = String(valor ?? '').trim() || null;
+  }
+  return linha;
+}
+
+/** Mensagem legível para as violações de unicidade do Postgres. */
+function erroDeGravacao(error, duplicado) {
+  return error.code === '23505' ? duplicado : error.message;
+}
+
+/** Todas as transportadoras, com quantos clientes cada uma tem anexados. */
+export async function listarTransportadoras() {
+  const db = obterCliente();
+  if (!db) return { ok: false, erro: SEM_CONFIG.erro, transportadoras: [] };
+
+  const { data, error } = await db
+    .from('transportadoras')
+    .select('*, clientes:clientes_transportadora(count)')
+    .order('nome', { ascending: true });
+
+  if (error) return { ok: false, erro: error.message, transportadoras: [] };
+  return {
+    ok: true,
+    transportadoras: (data ?? []).map(({ clientes, ...t }) => ({ ...t, totalClientes: clientes?.[0]?.count ?? 0 })),
+  };
+}
+
+export async function criarTransportadora(dados) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { data, error } = await db.from('transportadoras').insert(linhaTransportadora(dados)).select().single();
+  if (error) return { ok: false, erro: erroDeGravacao(error, 'Já existe uma transportadora com este CNPJ.') };
+  return { ok: true, transportadora: data };
+}
+
+export async function atualizarTransportadora(id, dados) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { data, error } = await db
+    .from('transportadoras')
+    .update({ ...linhaTransportadora(dados), atualizado_em: new Date().toISOString() })
+    .eq('id', id)
+    .select()
+    .maybeSingle();
+  if (error) return { ok: false, erro: erroDeGravacao(error, 'Já existe outra transportadora com este CNPJ.') };
+  if (!data) return { ok: false, erro: 'Transportadora não encontrada.', naoEncontrada: true };
+  return { ok: true, transportadora: data };
+}
+
+/** Clientes anexados a uma transportadora, por ordem de anexo. */
+export async function listarClientesDaTransportadora(transportadoraId) {
+  const db = obterCliente();
+  if (!db) return { ok: false, erro: SEM_CONFIG.erro, clientes: [] };
+
+  const { data, error } = await db
+    .from('clientes_transportadora')
+    .select('cnpj, nome, criado_em')
+    .eq('transportadora_id', transportadoraId)
+    .order('criado_em', { ascending: true });
+
+  if (error) return { ok: false, erro: error.message, clientes: [] };
+  return { ok: true, clientes: data ?? [] };
+}
+
+/**
+ * Anexa o CNPJ à transportadora. O CNPJ é a chave: cada cliente tem uma
+ * transportadora só. Se ele já estiver em outra, nada é gravado e volta
+ * `emOutra` com ela — a pessoa decide na tela, e só com `mover: true` o anexo
+ * troca de transportadora.
+ */
+export async function anexarClienteTransportadora({ transportadoraId, cnpj, nome, mover = false }) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const chave = somenteDigitos(cnpj);
+  const { data: atual, error: erroLeitura } = await db
+    .from('clientes_transportadora')
+    .select('transportadora_id, transportadora:transportadoras(id, nome)')
+    .eq('cnpj', chave)
+    .maybeSingle();
+  if (erroLeitura) return { ok: false, erro: erroLeitura.message };
+
+  if (atual && String(atual.transportadora_id) === String(transportadoraId)) {
+    return { ok: false, erro: 'Este CNPJ já está anexado a esta transportadora.', jaAnexado: true };
+  }
+  if (atual && !mover) {
+    return {
+      ok: false,
+      erro: `Este CNPJ já está anexado à transportadora ${atual.transportadora?.nome ?? atual.transportadora_id}.`,
+      emOutra: atual.transportadora ?? { id: atual.transportadora_id },
+    };
+  }
+
+  const { data, error } = await db
+    .from('clientes_transportadora')
+    .upsert(
+      {
+        cnpj: chave,
+        nome: String(nome ?? '').trim() || null,
+        transportadora_id: transportadoraId,
+        criado_em: new Date().toISOString(),
+      },
+      { onConflict: 'cnpj' }
+    )
+    .select('cnpj, nome, criado_em')
+    .single();
+  if (error) {
+    // 23503 = a transportadora não existe (chave estrangeira).
+    return { ok: false, erro: error.code === '23503' ? 'Transportadora não encontrada.' : error.message };
+  }
+  return { ok: true, cliente: data, movido: !!atual };
+}
+
+export async function desanexarClienteTransportadora({ transportadoraId, cnpj }) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { error } = await db
+    .from('clientes_transportadora')
+    .delete()
+    .eq('cnpj', somenteDigitos(cnpj))
+    .eq('transportadora_id', transportadoraId);
+  return error ? { ok: false, erro: error.message } : { ok: true };
+}
+
+/** Transportadora anexada ao CNPJ do cliente, ou `transportadora: null` se não
+ *  há anexo. Volta também quando ela está inativa — quem chama decide. */
+export async function transportadoraDoCliente(cnpj) {
+  const db = obterCliente();
+  if (!db) return { ok: false, erro: SEM_CONFIG.erro, transportadora: null };
+
+  const chave = somenteDigitos(cnpj);
+  if (!chave) return { ok: true, transportadora: null };
+
+  const { data, error } = await db
+    .from('clientes_transportadora')
+    .select('transportadora:transportadoras(*)')
+    .eq('cnpj', chave)
+    .maybeSingle();
+  if (error) return { ok: false, erro: error.message, transportadora: null };
+  return { ok: true, transportadora: data?.transportadora ?? null };
+}

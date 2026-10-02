@@ -5,8 +5,9 @@
 import { obterPedidoCompleto } from '@/lib/integrations/shopify';
 import { classificarPedido, extrairCnpj } from '@/lib/fiscal/classificacao';
 import { descontoDaNota, montarNotaAtacado, totalDaNota } from '@/lib/fiscal/montarNota';
-import { registrarPreview, jaProcessado, markupDaFranquia } from '@/lib/db';
+import { registrarPreview, jaProcessado, markupDaFranquia, transportadoraDoCliente } from '@/lib/db';
 import { lerMarkup } from '@/lib/fiscal/markup';
+import { transporteDaTransportadora } from '@/lib/fiscal/transporte';
 import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -88,12 +89,38 @@ export async function GET(request, { params }) {
       markupFranquia = lerMarkup(resp.markup) ?? undefined;
     }
 
+    // 3b. Cliente anexado a uma transportadora (/pedidos/transportadoras) sai
+    // com o transporte dela; sem anexo, a nota fica com os Correios. Falha na
+    // consulta também cai nos Correios, mas avisa — a pessoa pode estar
+    // esperando a transportadora.
+    let transporte;
+    let transportadora = null;
+    if (cnpj) {
+      const resp = await transportadoraDoCliente(cnpj);
+      if (!resp.ok) {
+        console.error(`[preview] Falha ao buscar a transportadora do cliente ${cnpj} no Supabase:`, resp.erro);
+        alertas.push(
+          'Não foi possível ler a transportadora deste cliente no cadastro — a nota saiu com os Correios. ' +
+            'Confira antes de continuar.'
+        );
+      } else if (resp.transportadora && !resp.transportadora.ativo) {
+        alertas.push(
+          `O cliente está anexado à transportadora ${resp.transportadora.nome}, mas ela está inativa — ` +
+            'a nota saiu com os Correios.'
+        );
+      } else if (resp.transportadora) {
+        transportadora = { id: resp.transportadora.id, nome: resp.transportadora.nome };
+        transporte = transporteDaTransportadora(resp.transportadora);
+      }
+    }
+
     // 4. Nota montada a partir do pedido.
     const { payload, alertas: alertasNota, markup, precosVarejo } = montarNotaAtacado(pedido, classificacao, {
       volumes: volumePedido,
       metodoPagamento: metodoPagamento,
       desconto: descontoPedido,
       markup: markupFranquia,
+      transporte,
     });
     alertas.push(...alertasNota);
 
@@ -150,6 +177,8 @@ export async function GET(request, { params }) {
       // "Padrão desta franquia" em vez do padrão da classificação.
       markupProprio: markupFranquia !== undefined,
       precosVarejo,
+      // Transportadora anexada ao cliente que entrou na nota; null = Correios.
+      transportadora,
       totalNota: totalDaNota(payload),
       alertas,
       jaProcessado: processado.processado,

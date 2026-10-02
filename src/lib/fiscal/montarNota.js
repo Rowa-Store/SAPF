@@ -16,11 +16,13 @@ import { TRANSPORTE_PADRAO, quantidadeDeVolumes } from './transporte.js';
 /**
  * @param {object} pedidoShopify pedido já completo (com todos os lineItems)
  * @param {"atacado"|"franquia"} classificacao
- * @param {{ volumes?: string|number, metodoPagamento?: string, desconto?: string|number, markup?: number }} [opcoes]
+ * @param {{ volumes?: string|number, metodoPagamento?: string, desconto?: string|number, markup?: number, transporte?: object }} [opcoes]
  *   `volumes`, `metodoPagamento` e `desconto` são os metafields
  *   `volume_pedido`, `metodo_pagamento` e `desconto` do Shopify, crus — quem
  *   lê os metafields é a rota do preview. `markup` troca o markup padrão da
- *   classificação (ver markup.js).
+ *   classificação (ver markup.js). `transporte` troca o bloco de transporte
+ *   padrão (Correios) — é o da transportadora anexada ao cliente, lido pela
+ *   rota do preview (ver transporteDaTransportadora em transporte.js).
  * @returns {{ payload: object, alertas: string[], markup: number, precosVarejo: number[] }}
  *   `precosVarejo` é o preço do Shopify de cada item, na mesma ordem de
  *   `itens` — fica FORA do payload (o Tiny não conhece o campo) e serve para a
@@ -208,8 +210,9 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
       natureza_operacao: `Venda para contribuinte`,
       frete_por_conta: 'D',
       ...frete,
-      // Transporte: sempre Correios / Sedex Contrato AG — ver transporte.js.
-      ...TRANSPORTE_PADRAO,
+      // Transporte: Correios / Sedex Contrato AG, ou a transportadora anexada
+      // ao cliente — ver transporte.js.
+      ...(opcoes.transporte ?? TRANSPORTE_PADRAO),
       quantidade_volumes: volumes ?? 1,
       data_emissao: dataBr(pedidoShopify.createdAt),
       numero_pedido_ecommerce: String(pedidoShopify.name ?? '').replace('#', ''),

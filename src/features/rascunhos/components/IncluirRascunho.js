@@ -12,7 +12,6 @@ import Paginacao from '@/components/ui/Paginacao';
 import { CAMPOS_CLIENTE } from '@/lib/fiscal/camposCliente';
 import { MARKUPS_SUGERIDOS, MARKUP_MAXIMO, MARKUP_MINIMO, descontoDoMarkup, formatarMarkup } from '@/lib/fiscal/markup';
 import { CATEGORIA_PADRAO, rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
-import { ROTULO_FORMA_FRETE, ROTULO_TRANSPORTADORA } from '@/lib/fiscal/transporte';
 import { formatarMoeda } from '@/lib/format';
 import { useIncluirRascunho } from '../hooks/useIncluirRascunho';
 
@@ -381,8 +380,17 @@ export default function IncluirRascunho({ params }) {
           Categoria: preencher como &quot;{CATEGORIA_PADRAO}&quot; dentro do Tiny — a API não aceita
           esse campo.
         </div>
-        <div>Transportadora: {ROTULO_TRANSPORTADORA}</div>
-        <div>Forma de frete: {ROTULO_FORMA_FRETE}</div>
+        {/* Lido do payload: os Correios por padrão, ou a transportadora
+            anexada ao CNPJ do cliente (/pedidos/transportadoras). */}
+        <div>
+          Transportadora: {dados.payload?.nota_fiscal?.transportador?.nome ?? '—'}
+          {dados.transportadora ? (
+            <span className="fraco"> (anexada ao cliente)</span>
+          ) : (
+            <span className="fraco"> (padrão)</span>
+          )}
+        </div>
+        <div>Forma de frete: {dados.payload?.nota_fiscal?.forma_frete ?? 'não informada'}</div>
         {/* O que vai na nota é o número já lido do payload, não o texto cru do
             metafield — se o Shopify não mandou nada, a nota vai com 1 volume e
             o alerta lá em cima avisa. */}

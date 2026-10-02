@@ -139,3 +139,44 @@ alter table lojas_fiscais add column if not exists desconto_percentual numeric(5
 alter table lojas_fiscais add column if not exists naturezas_tiny jsonb;
 
 alter table lojas_fiscais enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Transportadoras do atacado (tela /pedidos/transportadoras)
+--
+-- Por padrão a nota de atacado/franquia sai pelos Correios (ver
+-- src/lib/fiscal/transporte.js). Cliente com CNPJ anexado a uma
+-- transportadora ATIVA tem o bloco de transporte da nota trocado pelo dela.
+-- Cadastro e anexos são feitos pela tela; a carga real não fica no repositório.
+-- ---------------------------------------------------------------------------
+
+-- Os dados vão direto no bloco de transporte da nota: a transportadora não
+-- precisa estar cadastrada no Tiny, e o sistema não procura nem cadastra lá.
+-- forma_frete  serviço contratado, com o rótulo inteiro do cadastro da Olist.
+--              Vazio = o campo não vai na nota.
+create table if not exists transportadoras (
+  id bigserial primary key,
+  nome text not null,
+  cnpj text unique,                      -- só dígitos
+  ie text,
+  forma_frete text,
+  endereco text,
+  cidade text,
+  uf text,
+  ativo boolean not null default true,
+  criado_em timestamptz default now(),
+  atualizado_em timestamptz default now()
+);
+
+-- Cliente (CNPJ, só dígitos) -> transportadora. A chave primária no CNPJ
+-- garante uma transportadora por cliente; apagar a transportadora solta os
+-- anexos dela (os clientes voltam para os Correios).
+create table if not exists clientes_transportadora (
+  cnpj text primary key,
+  nome text,                              -- só para referência humana
+  transportadora_id bigint not null references transportadoras (id) on delete cascade,
+  criado_em timestamptz default now()
+);
+create index if not exists idx_clientes_transportadora on clientes_transportadora (transportadora_id);
+
+alter table transportadoras         enable row level security;
+alter table clientes_transportadora enable row level security;
