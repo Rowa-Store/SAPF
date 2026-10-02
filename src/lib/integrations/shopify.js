@@ -96,7 +96,7 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
       id name createdAt tags
       currentTotalPriceSet { shopMoney { amount } }
       note
-      customAttributes { key value }entao
+      customAttributes { key value }
       customer {
         id displayName email
         metafields(first: 20) { nodes { namespace key value } }
