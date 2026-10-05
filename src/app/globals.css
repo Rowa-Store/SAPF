@@ -235,6 +235,20 @@ a.botao-link:hover { background: var(--realce); border-color: var(--tinta-fraca)
 
 /* ---- /transferencias ---- */
 
+/* Abas de uma área (ex.: atacado → notas | transportadoras). */
+.abas { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--linha); margin: 2rem 0 1rem; overflow-x: auto; }
+.abas a {
+  padding: 0.6rem 1rem;
+  color: var(--tinta-fraca);
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.abas a:hover { color: var(--tinta); text-decoration: none; }
+.abas a.ativa { color: var(--azul); border-bottom-color: var(--azul); }
+.abas + .cabecalho-pagina { margin-top: 1rem; }
+
 .cabecalho-pagina { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: center; justify-content: space-between; margin: 2rem 0 1rem; }
 .cabecalho-pagina h2 { margin: 0; }
 .cabecalho-pagina a.marca { font-size: 0.82rem; padding: 0.3rem 0.8rem; }

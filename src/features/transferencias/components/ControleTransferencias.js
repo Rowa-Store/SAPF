@@ -4,9 +4,10 @@
 
 'use client';
 
-import { Fragment } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import IconePdf from '@/components/ui/IconePdf';
 import Paginacao from '@/components/ui/Paginacao';
+import { hoje, mesDoIntervalo, somarMeses } from '@/lib/datas';
 import { formatarDataCurta, formatarMoeda } from '@/lib/format';
 import { useTransferencias } from '../hooks/useTransferencias';
 
@@ -19,8 +20,6 @@ const STATUS_SHOPIFY = {
 };
 
 const COLUNAS = 7;
-
-const DICA_TRAVA = 'Ligue "Permitir emissão" na tela de atacado';
 
 function StatusShopify({ status }) {
   const [rotulo, classe] = STATUS_SHOPIFY[status] ?? [status, ''];
@@ -145,6 +144,7 @@ export default function ControleTransferencias() {
     filtros,
     atualizarFiltro,
     aplicarFiltros,
+    aplicarMes,
     limparFiltros,
     filtrosAlterados,
     transferencias,
@@ -153,7 +153,6 @@ export default function ControleTransferencias() {
     erro,
     aviso,
     setAviso,
-    permitirEmissao,
     produtos,
     alternarProdutos,
     acoes,
@@ -181,23 +180,17 @@ export default function ControleTransferencias() {
     emitirSelecionadas,
   } = useTransferencias();
 
+  // Mês corrente de São Paulo — calculado depois de montar, para o HTML
+  // pré-renderizado no build não carregar o mês da data do deploy.
+  const [mesAtual, setMesAtual] = useState(null);
+  useEffect(() => setMesAtual(hoje().slice(0, 7)), []);
+
   const emitiveisDaPagina = transferenciasDaPagina.filter(podeEmitir).map((t) => t.id);
 
   return (
     <>
       <div className="cabecalho-pagina">
         <h2>Controle de transferências do fiscal</h2>
-        <a
-          href="/pedidos"
-          className={`marca ${permitirEmissao ? 'marca-ok' : 'marca-erro'}`}
-          title={
-            permitirEmissao
-              ? '"Emitir nota" grava valor fiscal de verdade, sem volta. A trava fica na tela de atacado.'
-              : 'A trava de emissão fica na tela de atacado'
-          }
-        >
-          Emissão fiscal: {permitirEmissao === null ? 'verificando…' : permitirEmissao ? 'LIBERADA' : 'BLOQUEADA'}
-        </a>
       </div>
 
       <details className="cartao filtros-cartao" open>
@@ -231,6 +224,37 @@ export default function ControleTransferencias() {
               aoMudar={(v) => atualizarFiltro('excluir', v)}
               vazio="Nenhuma"
             />
+          </div>
+          {/* Atalho para fechamento mensal: preenche as duas datas com o mês
+              inteiro (do dia 1 ao último dia) e já filtra. */}
+          <div>
+            <label htmlFor="mes">Mês</label>
+            <input
+              id="mes"
+              type="month"
+              value={mesDoIntervalo(filtros.de, filtros.ate)}
+              max={mesAtual ?? undefined}
+              onChange={(e) => aplicarMes(e.target.value)}
+              disabled={carregando}
+            />
+            <div className="grupo-botoes" style={{ marginTop: '0.35rem' }}>
+              <button
+                type="button"
+                className="pequeno secundario"
+                onClick={() => aplicarMes(mesAtual)}
+                disabled={carregando || !mesAtual}
+              >
+                Este mês
+              </button>
+              <button
+                type="button"
+                className="pequeno secundario"
+                onClick={() => aplicarMes(somarMeses(mesAtual, -1))}
+                disabled={carregando || !mesAtual}
+              >
+                Mês passado
+              </button>
+            </div>
           </div>
           <div>
             <label htmlFor="de">Data inicial</label>
@@ -335,25 +359,15 @@ export default function ControleTransferencias() {
               <button
                 className="secundario"
                 onClick={emitirTodasComRascunho}
-                disabled={!permitirEmissao || carregando || !!lote || !!loteAConfirmar || comRascunho.length === 0}
-                title={
-                  permitirEmissao
-                    ? 'Emite no Tiny todas as notas com rascunho da lista filtrada (todas as páginas)'
-                    : DICA_TRAVA
-                }
+                disabled={carregando || !!lote || !!loteAConfirmar || comRascunho.length === 0}
+                title="Emite no Tiny todas as notas com rascunho da lista filtrada (todas as páginas)"
               >
                 Emitir todas com rascunho ({comRascunho.length})
               </button>
               <button
                 onClick={emitirSelecionadas}
-                disabled={
-                  !permitirEmissao || carregando || !!lote || !!loteAConfirmar || selecionadasEmitiveis.length === 0
-                }
-                title={
-                  permitirEmissao
-                    ? 'Cria o rascunho quando falta e emite as transferências marcadas — as já emitidas são reemitidas com um novo rascunho'
-                    : DICA_TRAVA
-                }
+                disabled={carregando || !!lote || !!loteAConfirmar || selecionadasEmitiveis.length === 0}
+                title="Cria o rascunho quando falta e emite as transferências marcadas — as já emitidas são reemitidas com um novo rascunho"
               >
                 Emitir selecionadas ({selecionadasEmitiveis.length})
               </button>
@@ -489,10 +503,8 @@ export default function ControleTransferencias() {
                                 <button
                                   className="pequeno secundario"
                                   onClick={() => definirAcao(t.id, { fase: 'confirmar-emissao-direta' })}
-                                  disabled={
-                                    !permitirEmissao || enviando || !!lote || acao?.fase === 'confirmar-emissao-direta'
-                                  }
-                                  title={permitirEmissao ? 'Cria o rascunho no Tiny e emite em seguida' : DICA_TRAVA}
+                                  disabled={enviando || !!lote || acao?.fase === 'confirmar-emissao-direta'}
+                                  title="Cria o rascunho no Tiny e emite em seguida"
                                 >
                                   Criar e emitir
                                 </button>
@@ -503,14 +515,8 @@ export default function ControleTransferencias() {
                               <button
                                 className="pequeno secundario"
                                 onClick={() => definirAcao(t.id, { fase: 'confirmar-reemissao' })}
-                                disabled={
-                                  !permitirEmissao || enviando || !!lote || acao?.fase === 'confirmar-reemissao'
-                                }
-                                title={
-                                  permitirEmissao
-                                    ? 'Cria um novo rascunho a partir do Shopify e do cadastro da loja e emite uma nova nota'
-                                    : DICA_TRAVA
-                                }
+                                disabled={enviando || !!lote || acao?.fase === 'confirmar-reemissao'}
+                                title="Cria um novo rascunho a partir do Shopify e do cadastro da loja e emite uma nova nota"
                               >
                                 Reemitir
                               </button>
@@ -521,10 +527,9 @@ export default function ControleTransferencias() {
                                 <button
                                   className="pequeno"
                                   onClick={() => definirAcao(t.id, { fase: 'confirmar-emissao' })}
-                                  disabled={!permitirEmissao || enviando || !!lote || acao?.fase === 'confirmar-emissao'}
-                                  title={permitirEmissao ? undefined : DICA_TRAVA}
+                                  disabled={enviando || !!lote || acao?.fase === 'confirmar-emissao'}
                                 >
-                                  {permitirEmissao ? 'Emitir nota' : 'Emissão bloqueada'}
+                                  Emitir nota
                                 </button>
                                 <button
                                   className="pequeno secundario"

@@ -1,19 +1,17 @@
 // /pedidos — tela única de atacado: pedidos de atacado e franquia do Shopify
 // e a nota fiscal de cada um no Tiny — rascunho, emissão, nº da NF e DANFE.
-// Também é onde fica a trava "Permitir emissão". O rascunho, depois de
-// enviado ao Tiny, não é mais editado: cliente e itens se ajustam antes, na
-// conferência (/pedidos/[id]/rascunho).
+// Cliente e itens se ajustam na conferência (/pedidos/[id]/rascunho).
 
 'use client';
 
 import { Fragment } from 'react';
+import AbasAtacado from '@/components/ui/AbasAtacado';
 import IconePdf from '@/components/ui/IconePdf';
+import { formatarDia } from '@/lib/datas';
 import { formatarDataCurta, formatarMoeda, formatarMoedaOuTraco } from '@/lib/format';
 import { useAtacado } from '../hooks/useAtacado';
 
 const COLUNAS = 6;
-
-const DICA_TRAVA = 'Ligue "Permitir emissão" no topo da tela';
 
 function StatusFiscal({ p }) {
   if (p.notaEmitida) {
@@ -87,13 +85,15 @@ export default function ControleAtacado() {
     carregando,
     visiveis,
     pagina,
+    dia,
+    diaDeHoje,
+    diaCompleto,
+    irParaDia,
+    diaAnterior,
+    diaSeguinte,
     temProxima,
     proximaPagina,
     paginaAnterior,
-    permitirEmissao,
-    alternandoTrava,
-    erroTrava,
-    alternarPermitirEmissao,
     acoes,
     definirAcao,
     pedirCriacao,
@@ -102,7 +102,36 @@ export default function ControleAtacado() {
     emitir,
   } = useAtacado();
 
-  const paginacao = (pagina > 1 || temProxima) && (
+  // Sem busca, a lista é de um dia só (abre em hoje): os botões andam um dia
+  // por vez e o campo de data pula direto. Numa busca, páginas de 50.
+  const paginacao = dia ? (
+    <div className="paginacao">
+      <button className="secundario" onClick={diaAnterior} disabled={carregando}>
+        ← Dia anterior
+      </button>
+      <span>
+        <strong>{dia === diaDeHoje ? 'Hoje' : formatarDia(dia)}</strong>
+        {dia === diaDeHoje && <span className="fraco"> — {formatarDia(dia)}</span>}
+      </span>
+      <button className="secundario" onClick={diaSeguinte} disabled={carregando || dia === diaDeHoje}>
+        Dia seguinte →
+      </button>
+      <input
+        type="date"
+        aria-label="Ir para o dia"
+        value={dia}
+        max={diaDeHoje ?? undefined}
+        onChange={(e) => irParaDia(e.target.value)}
+        disabled={carregando}
+      />
+      {dia !== diaDeHoje && (
+        <button className="secundario pequeno" onClick={() => irParaDia(diaDeHoje)} disabled={carregando}>
+          Voltar para hoje
+        </button>
+      )}
+    </div>
+  ) : (
+    (pagina > 1 || temProxima) && (
     <div className="paginacao">
       <button className="secundario" onClick={paginaAnterior} disabled={pagina === 1 || carregando}>
         Anterior
@@ -112,35 +141,12 @@ export default function ControleAtacado() {
         Próxima
       </button>
     </div>
+    )
   );
 
   return (
     <>
-      <div className="cabecalho-pagina">
-        <h2>Notas de atacado</h2>
-        <a href="/pedidos/transportadoras" className="marca marca-atacado">
-          Transportadoras
-        </a>
-      </div>
-
-      <div className={permitirEmissao ? 'aviso aviso-ok' : 'aviso'}>
-        <strong>
-          Emissão fiscal: {permitirEmissao === null ? 'verificando…' : permitirEmissao ? 'LIBERADA' : 'BLOQUEADA'}
-        </strong>
-        <p>
-          {permitirEmissao
-            ? 'Os botões de emitir gravam valor fiscal de verdade no Tiny, de forma irreversível. Vale também para as transferências.'
-            : 'Os botões de emitir ficam desabilitados até esta trava ser ligada. Vale também para as transferências.'}
-        </p>
-        {erroTrava && <p>Não foi possível salvar: {erroTrava}</p>}
-        <button
-          className={permitirEmissao ? 'secundario' : ''}
-          onClick={alternarPermitirEmissao}
-          disabled={permitirEmissao === null || alternandoTrava}
-        >
-          {alternandoTrava ? 'Salvando…' : permitirEmissao ? 'Bloquear emissão' : 'Permitir emissão'}
-        </button>
-      </div>
+      <AbasAtacado />
 
       <div className="cartao">
         <div className="campos">
@@ -158,14 +164,6 @@ export default function ControleAtacado() {
         </div>
         <div className="filtros-rodape">
           <div className="filtros">
-            <label>
-              <input
-                type="checkbox"
-                checked={filtros.soAtacado}
-                onChange={(e) => atualizarFiltro('soAtacado', e.target.checked)}
-              />
-              Mostrar só atacado e franquia
-            </label>
             <label>
               <input
                 type="checkbox"
@@ -203,11 +201,20 @@ export default function ControleAtacado() {
         </div>
       )}
 
+      {pedidos && dia && !diaCompleto && (
+        <div className="aviso">
+          <strong>Este dia tem pedidos demais — a lista veio cortada.</strong>
+          <p>Use a busca para achar um pedido específico.</p>
+        </div>
+      )}
+
       {!pedidos ? (
         !erro && <p className="fraco">Carregando pedidos…</p>
       ) : visiveis.length === 0 ? (
         <>
-          <div className="vazio">Nenhum pedido corresponde aos filtros nesta página.</div>
+          <div className="vazio">
+            {dia ? 'Nenhum pedido de atacado ou franquia neste dia.' : 'Nenhum pedido corresponde aos filtros nesta página.'}
+          </div>
           {paginacao}
         </>
       ) : (
@@ -292,10 +299,8 @@ export default function ControleAtacado() {
                                 <button
                                   className="pequeno"
                                   onClick={() => pedirCriacao(p, 'confirmar-emissao-direta')}
-                                  disabled={
-                                    !permitirEmissao || enviando || acao?.fase === 'confirmar-emissao-direta'
-                                  }
-                                  title={permitirEmissao ? 'Cria o rascunho no Tiny e emite em seguida' : DICA_TRAVA}
+                                  disabled={enviando || acao?.fase === 'confirmar-emissao-direta'}
+                                  title="Cria o rascunho no Tiny e emite em seguida"
                                 >
                                   Criar e emitir
                                 </button>
@@ -332,10 +337,9 @@ export default function ControleAtacado() {
                               <button
                                 className="pequeno"
                                 onClick={() => definirAcao(p.id, { fase: 'confirmar-emissao' })}
-                                disabled={!permitirEmissao || enviando || acao?.fase === 'confirmar-emissao'}
-                                title={permitirEmissao ? undefined : DICA_TRAVA}
+                                disabled={enviando || acao?.fase === 'confirmar-emissao'}
                               >
-                                {permitirEmissao ? 'Emitir nota' : 'Emissão bloqueada'}
+                                Emitir nota
                               </button>
                             )}
                           </div>

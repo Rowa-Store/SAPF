@@ -41,12 +41,6 @@ export default function SysInfo() {
           </tbody>
         </table>
       )}
-
-      {saude && (
-        <p className="fraco">
-          Emissão fiscal: {saude.permitirEmissao ? 'liberada (PERMITIR_EMISSAO=true)' : 'bloqueada por PERMITIR_EMISSAO'}.
-        </p>
-      )}
     </>
   );
 }

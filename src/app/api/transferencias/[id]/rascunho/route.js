@@ -11,7 +11,7 @@
 //     vai para tiny_notas_substituidas e precisa ser removido à mão no Tiny.
 //     Com `reemitir: true`, faz o mesmo mesmo que a nota atual já tenha sido
 //     EMITIDA: o registro volta a "não emitida" para a nota nova ser emitida
-//     em seguida (exige a trava de emissão ligada). A NF antiga continua
+//     em seguida. A NF antiga continua
 //     valendo até ser cancelada à mão no Tiny.
 //   - GET  devolve o rascunho já criado (o payload realmente enviado ao Tiny),
 //     para a tela de edição carregar.
@@ -28,7 +28,6 @@ import { obterTransferenciaCompleta, paraGidTransferencia } from '@/lib/integrat
 import { montarNotaTransferencia } from '@/lib/fiscal/montarNotaTransferencia';
 import {
   lojasFiscaisPorLocal,
-  obterPermitirEmissao,
   obterRascunhoCriado,
   registrarErro,
   registrarRascunhoCriado,
@@ -221,10 +220,6 @@ export async function POST(request, { params }) {
   }
   if (reemitir && !situacao?.nota_emitida) {
     return erroJson('Esta transferência não tem nota emitida — use "Novo rascunho" ou "Emitir nota".', 409);
-  }
-  // Sem a trava ligada, a reemissão pararia no meio: registro zerado e nota nova sem emitir.
-  if (reemitir && !(await obterPermitirEmissao())) {
-    return erroJson('Emissão bloqueada. Ligue "Permitir emissão" na tela de atacado.', 403);
   }
   if (situacao?.status === 'rascunho_criado' && !substituir) {
     return erroJson(`Esta transferência já tem o rascunho ${situacao.tiny_nota_id} no Tiny.`, 409, {

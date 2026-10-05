@@ -19,6 +19,6 @@ export const AREAS = [
   {
     href: '/sysinfo',
     rotulo: 'Sys Info',
-    descricao: 'Diagnóstico das integrações (Shopify, Tiny, Supabase) e da trava de emissão.',
+    descricao: 'Diagnóstico das integrações (Shopify, Tiny, Supabase).',
   },
 ];

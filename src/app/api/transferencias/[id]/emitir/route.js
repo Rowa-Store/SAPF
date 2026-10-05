@@ -1,7 +1,6 @@
 // POST /api/transferencias/[id]/emitir — emite a nota da transferência no Tiny.
 //
-// IRREVERSÍVEL. Mesma trava "permitir_emissao" da emissão de pedidos (checada
-// aqui e de novo dentro de emitirNota). Depois de emitir, lê o número da NF
+// IRREVERSÍVEL — a tela pede confirmação antes. Depois de emitir, lê o número da NF
 // da nota autorizada no Tiny e grava no Supabase, para a tela mostrar e para
 // a busca por nº.
 //
@@ -17,7 +16,6 @@ import { contaTinyDaTransferencia } from '@/lib/integrations/tinyContas';
 import { paraGidTransferencia } from '@/lib/integrations/shopifyTransferencias';
 import {
   atualizarNotaEmitida,
-  obterPermitirEmissao,
   obterRascunhoCriado,
   registrarNumeroNf,
   statusPorPedido,
@@ -38,10 +36,6 @@ export async function POST(request, { params }) {
     return erroJson('Esta transferência ainda não tem rascunho criado no Tiny.', 400);
   }
   if (situacao.nota_emitida) return erroJson('Esta nota já foi emitida.', 409);
-
-  if (!(await obterPermitirEmissao())) {
-    return erroJson('Emissão bloqueada. Ligue "Permitir emissão" na tela de atacado.', 403);
-  }
 
   const tinyNotaId = situacao.tiny_nota_id;
 

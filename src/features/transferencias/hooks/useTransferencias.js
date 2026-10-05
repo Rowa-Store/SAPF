@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
+import { intervaloDoMes } from '@/lib/datas';
 
 export const FILTROS_VAZIOS = {
   origem: '',
@@ -56,7 +57,6 @@ export function useTransferencias() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
-  const [permitirEmissao, setPermitirEmissao] = useState(null);
 
   // { [id]: { aberto, carregando, dados?, erro? } }
   const [produtos, setProdutos] = useState({});
@@ -99,10 +99,6 @@ export function useTransferencias() {
       // Só aplica se o usuário ainda não escolheu outra origem enquanto carregava.
       if (corpo?.origemId) setFiltros((atual) => (atual.origem ? atual : { ...atual, origem: corpo.origemId }));
     });
-    fetch('/api/config/permitir-emissao')
-      .then((r) => r.json())
-      .then((d) => setPermitirEmissao(!!d.permitirEmissao))
-      .catch(() => setPermitirEmissao(false));
   }, [carregar]);
 
   function atualizarFiltro(campo, valor) {
@@ -111,6 +107,13 @@ export function useTransferencias() {
 
   function aplicarFiltros() {
     carregar(filtros);
+  }
+
+  /** Preenche "de"–"ate" com o mês AAAA-MM inteiro e já filtra. Vazio limpa as datas. */
+  function aplicarMes(mes) {
+    const novos = { ...filtros, ...(mes ? intervaloDoMes(mes) : { de: '', ate: '' }) };
+    setFiltros(novos);
+    carregar(novos);
   }
 
   function limparFiltros() {
@@ -370,6 +373,7 @@ export function useTransferencias() {
     filtros,
     atualizarFiltro,
     aplicarFiltros,
+    aplicarMes,
     limparFiltros,
     filtrosAlterados,
     transferencias,
@@ -379,7 +383,6 @@ export function useTransferencias() {
     erro,
     aviso,
     setAviso,
-    permitirEmissao,
     produtos,
     alternarProdutos,
     acoes,

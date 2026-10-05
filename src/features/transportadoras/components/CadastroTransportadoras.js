@@ -7,6 +7,7 @@
 
 'use client';
 
+import AbasAtacado from '@/components/ui/AbasAtacado';
 import Modal from '@/components/ui/Modal';
 import { formatarCnpj, formatarDataCurta } from '@/lib/format';
 import { useTransportadoras } from '../hooks/useTransportadoras';
@@ -228,12 +229,10 @@ export default function CadastroTransportadoras() {
 
   return (
     <>
+      <AbasAtacado />
       <div className="cabecalho-pagina">
         <h2>Transportadoras do atacado</h2>
         <div className="grupo-botoes">
-          <a href="/pedidos" className="botao-link">
-            ← Notas de atacado
-          </a>
           <button onClick={abrirNova}>Nova transportadora</button>
         </div>
       </div>

@@ -4,7 +4,7 @@
 import { verificarShopify } from '@/lib/integrations/shopify';
 import { verificarShopifyTransferencias } from '@/lib/integrations/shopifyTransferencias';
 import { verificarTiny } from '@/lib/integrations/tiny';
-import { verificarSupabase, obterPermitirEmissao } from '@/lib/db';
+import { verificarSupabase } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,19 +18,15 @@ async function checar(nome, fn) {
 }
 
 export async function GET() {
-  const [servicos, permitirEmissao] = await Promise.all([
-    Promise.all([
-      checar('Shopify', verificarShopify),
-      checar('Shopify (transferências)', verificarShopifyTransferencias),
-      checar('Tiny', verificarTiny),
-      checar('Supabase', verificarSupabase),
-    ]),
-    obterPermitirEmissao(),
+  const servicos = await Promise.all([
+    checar('Shopify', verificarShopify),
+    checar('Shopify (transferências)', verificarShopifyTransferencias),
+    checar('Tiny', verificarTiny),
+    checar('Supabase', verificarSupabase),
   ]);
 
   return Response.json({
     tudoOk: servicos.every((s) => s.ok),
-    permitirEmissao,
     servicos,
   });
 }

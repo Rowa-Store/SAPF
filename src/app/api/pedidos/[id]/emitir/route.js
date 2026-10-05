@@ -1,15 +1,12 @@
 // POST /api/pedidos/[id]/emitir — emite a nota no Tiny (dá valor fiscal).
 //
-// ESTE ENDPOINT É IRREVERSÍVEL. Só funciona com a trava "permitir_emissao"
-// ligada (tela de atacado) — checada de novo aqui e dentro de
-// lib/integrations/tiny.js::emitirNota, então nenhuma das duas pode ser pulada.
+// ESTE ENDPOINT É IRREVERSÍVEL — a tela de atacado pede confirmação antes.
 // Antes de emitir, garante o cliente como Contribuinte ICMS no cadastro do
 // Tiny (ver tiny.js) — sem isso a nota do atacado não sai. Depois de emitir,
 // lê o número da NF da nota autorizada e grava no Supabase.
 
 import { emitirNota, garantirContribuinteIcms, obterSituacaoNota } from '@/lib/integrations/tiny';
 import {
-  obterPermitirEmissao,
   obterRascunhoCriado,
   atualizarNotaEmitida,
   registrarNumeroNf,
@@ -32,10 +29,6 @@ export async function POST(request, { params }) {
   }
   if (situacao.nota_emitida) return erroJson('Esta nota já foi emitida.', 409);
 
-  const permitido = await obterPermitirEmissao();
-  if (!permitido) {
-    return erroJson('Emissão bloqueada. Ligue "Permitir emissão" no topo da tela de atacado.', 403);
-  }
 
   const tinyNotaId = situacao.tiny_nota_id;
 

@@ -1,9 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { somarDias } from '@/lib/datas';
 
 export const FILTROS_VAZIOS = {
-  soAtacado: true,
   naoEmitidas: false,
   busca: '',
 };
@@ -27,9 +27,10 @@ async function lerJson(resposta, mensagemPadrao) {
  * Para ajustar itens ou cliente antes, a conferência completa continua em
  * /pedidos/[id]/rascunho.
  *
- * A lista vem paginada do servidor, 50 pedidos por vez (cursor do Shopify),
- * e a busca roda lá também — carregar tudo de uma vez deixava a tela lenta.
- * "Só atacado" e "não emitidas" filtram a página já carregada.
+ * A lista vem POR DIA do servidor: abre no dia de hoje e a navegação volta
+ * um dia por vez. Uma busca não se prende a dia — vem paginada por cursor
+ * do Shopify, 50 por vez. Pedidos "outro" e o filtro "não emitidas" são
+ * aplicados na lista já carregada.
  *
  * O nº da NF nunca é digitado: vem da nota autorizada no Tiny. Toda linha da
  * página aberta que tem nota no Tiny mas ainda não tem número é conferida
@@ -46,10 +47,12 @@ export function useAtacado() {
   const [proximoCursor, setProximoCursor] = useState(null);
   // Busca que valeu na última carga — a do campo só vale ao aplicar.
   const [buscaAplicada, setBuscaAplicada] = useState('');
+  // Dia aberto (AAAA-MM-DD; null numa busca) e o "hoje" do servidor, que é
+  // o de São Paulo — o relógio do navegador pode estar em outro fuso.
+  const [dia, setDia] = useState(null);
+  const [diaDeHoje, setDiaDeHoje] = useState(null);
+  const [diaCompleto, setDiaCompleto] = useState(true);
 
-  const [permitirEmissao, setPermitirEmissao] = useState(null);
-  const [alternandoTrava, setAlternandoTrava] = useState(false);
-  const [erroTrava, setErroTrava] = useState(null);
 
   // { [id]: { fase: 'confirmar-rascunho'|'confirmar-emissao-direta'|'confirmar-emissao'|'enviando'|'erro',
   //           preview?: { carregando, dados?, erro? }, erro? } }
@@ -57,16 +60,20 @@ export function useAtacado() {
   // ids já conferidos automaticamente nesta carga — não repete a cada render.
   const conferidos = useRef(new Set());
 
-  const carregar = useCallback(async ({ cursor = null, busca = '' } = {}) => {
+  const carregar = useCallback(async ({ cursor = null, busca = '', dia: diaPedido = null } = {}) => {
     setCarregando(true);
     setErro(null);
     try {
       const query = new URLSearchParams();
       if (cursor) query.set('cursor', cursor);
       if (busca.trim()) query.set('busca', busca.trim());
+      else if (diaPedido) query.set('dia', diaPedido);
       const corpo = await lerJson(await fetch(`/api/pedidos?${query}`), 'Falha ao carregar');
       setPedidos(corpo.pedidos);
       setProximoCursor(corpo.proximoCursor);
+      setDia(corpo.dia ?? null);
+      setDiaDeHoje(corpo.hoje ?? null);
+      setDiaCompleto(corpo.diaCompleto !== false);
       setAcoes({});
       return true;
     } catch (e) {
@@ -79,38 +86,13 @@ export function useAtacado() {
 
   useEffect(() => {
     carregar();
-
-    fetch('/api/config/permitir-emissao')
-      .then((r) => r.json())
-      .then((d) => setPermitirEmissao(!!d.permitirEmissao))
-      .catch(() => setPermitirEmissao(false));
   }, [carregar]);
-
-  async function alternarPermitirEmissao() {
-    setAlternandoTrava(true);
-    setErroTrava(null);
-    try {
-      const corpo = await lerJson(
-        await fetch('/api/config/permitir-emissao', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ permitirEmissao: !permitirEmissao }),
-        }),
-        'Falha ao salvar'
-      );
-      setPermitirEmissao(corpo.permitirEmissao);
-    } catch (e) {
-      setErroTrava(e.message);
-    } finally {
-      setAlternandoTrava(false);
-    }
-  }
 
   function atualizarFiltro(campo, valor) {
     setFiltros((atual) => ({ ...atual, [campo]: valor }));
   }
 
-  // Busca nova, lista nova: volta para a primeira página.
+  // Busca nova, lista nova: volta para a primeira página (sem busca, hoje).
   async function buscar(busca = filtros.busca) {
     if (await carregar({ busca })) {
       setCursores([null]);
@@ -142,6 +124,14 @@ export function useAtacado() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }
+
+  async function irParaDia(novo) {
+    if (!novo || carregando || (diaDeHoje && novo > diaDeHoje)) return;
+    if (await carregar({ dia: novo })) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  const diaAnterior = () => dia && irParaDia(somarDias(dia, -1));
+  const diaSeguinte = () => dia && irParaDia(somarDias(dia, 1));
 
   const filtrosAlterados = JSON.stringify(filtros) !== JSON.stringify(FILTROS_VAZIOS);
 
@@ -265,8 +255,9 @@ export function useAtacado() {
     }
   }
 
+  // Pedido que não é de atacado nem de franquia ("outro") nunca aparece aqui.
   const visiveis = (pedidos ?? []).filter(
-    (p) => (!filtros.soAtacado || p.classificacao !== 'outro') && (!filtros.naoEmitidas || !p.notaEmitida)
+    (p) => p.classificacao !== 'outro' && (!filtros.naoEmitidas || !p.notaEmitida)
   );
 
   const idsParaConferir = visiveis
@@ -299,13 +290,15 @@ export function useAtacado() {
     carregando,
     visiveis,
     pagina,
+    dia,
+    diaDeHoje,
+    diaCompleto,
+    irParaDia,
+    diaAnterior,
+    diaSeguinte,
     temProxima: !!proximoCursor,
     proximaPagina,
     paginaAnterior,
-    permitirEmissao,
-    alternandoTrava,
-    erroTrava,
-    alternarPermitirEmissao,
     acoes,
     definirAcao,
     pedirCriacao,

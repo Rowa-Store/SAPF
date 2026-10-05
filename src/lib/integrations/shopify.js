@@ -121,13 +121,17 @@ function entreAspas(termo) {
  * são nºs de pedido exatos (ex.: vindos de uma busca por nº da NF). Qualquer
  * um que casar entra (OR); sem nenhum, só os pagos.
  */
-function montarBusca({ termos = [], nomes = [] }) {
+function montarBusca({ termos = [], nomes = [], periodo = null }) {
   const partes = [
     ...termos.map((t) => (/^#?\d{1,8}$/.test(t) ? `name:${entreAspas(t.startsWith('#') ? t : `#${t}`)}` : entreAspas(t))),
     ...nomes.map((n) => `name:${entreAspas(n)}`),
   ];
-  if (partes.length === 0) return FILTRO_BASE;
-  return `${FILTRO_BASE} AND (${partes.join(' OR ')})`;
+  // `periodo` (ISO em UTC) recorta por data de criação — ver listarPedidosDoDia.
+  const base = periodo
+    ? `${FILTRO_BASE} AND created_at:>=${periodo.inicio} AND created_at:<${periodo.fim}`
+    : FILTRO_BASE;
+  if (partes.length === 0) return base;
+  return `${base} AND (${partes.join(' OR ')})`;
 }
 
 /**
@@ -135,11 +139,11 @@ function montarBusca({ termos = [], nomes = [] }) {
  * Paginada por cursor no próprio Shopify: pedir tudo de uma vez (com os
  * metafields de cada cliente) deixava a consulta pesada e a tela lenta.
  */
-export async function listarPedidosRecentes({ limite = 50, cursor = null, termos, nomes } = {}) {
+export async function listarPedidosRecentes({ limite = 50, cursor = null, termos, nomes, periodo } = {}) {
   const dados = await shopifyGraphQL(QUERY_PEDIDOS_RECENTES, {
     limite,
     cursor,
-    busca: montarBusca({ termos, nomes }),
+    busca: montarBusca({ termos, nomes, periodo }),
   });
   const pedidos = dados.orders?.nodes ?? [];
 
@@ -157,6 +161,26 @@ export async function listarPedidosRecentes({ limite = 50, cursor = null, termos
       _bruto: pedido,
     })),
   };
+}
+
+// Trava contra laço sem fim: 20 páginas de 50 = 1000 pedidos num dia só.
+const MAXIMO_PAGINAS_DO_DIA = 20;
+
+/**
+ * Todos os pedidos de um dia, mais recentes primeiro. `periodo` vem de
+ * intervaloDoDia (lib/datas.js). O Shopify devolve no máximo uma página por
+ * chamada, então percorre as páginas até o fim do dia.
+ */
+export async function listarPedidosDoDia({ periodo, limitePorPagina = 50 }) {
+  const pedidos = [];
+  let cursor = null;
+  for (let pagina = 0; pagina < MAXIMO_PAGINAS_DO_DIA; pagina += 1) {
+    const resultado = await listarPedidosRecentes({ limite: limitePorPagina, cursor, periodo });
+    pedidos.push(...resultado.pedidos);
+    if (!resultado.pageInfo.hasNextPage) return { pedidos, completo: true };
+    cursor = resultado.pageInfo.endCursor;
+  }
+  return { pedidos, completo: false };
 }
 
 /**

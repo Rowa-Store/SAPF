@@ -17,8 +17,8 @@
 // 
 //   - incluirNotaRascunho: CRIA uma nota de verdade no Tiny, mesmo a partir de
 //     um pedido fictício. A tela do rascunho exige uma confirmação explícita.
-//   - emitirNota: dá valor fiscal à nota. Bloqueada por "permitir_emissao"
-//     (Supabase — ver lib/db.js::obterPermitirEmissao).
+//   - emitirNota: dá valor fiscal à nota, sem volta. Cada tela pede
+//     confirmação antes de chamar.
 //
 // CONTAS — cada loja tem a sua conta no Tiny. Pedidos de atacado saem da conta
 // da matriz (TINY_API_TOKEN). Nota de transferência sai da conta da loja de
@@ -26,7 +26,6 @@
 // fiscalmente. As funções de nota aceitam uma `conta` (ver tinyContas.js);
 // sem ela, vale a conta da matriz.
 
-import { obterPermitirEmissao } from '../db.js';
 import { somenteDigitos } from '../utils.js';
 
 const BASE_PADRAO = 'https://api.tiny.com.br/api2';
@@ -237,19 +236,8 @@ export async function obterLinkDanfe(id, conta = null) {
   return retorno.link_nfe;
 }
 
-/**
- * Emissão fiscal — dá valor tributário à nota, de forma irreversível.
- * Travada por "permitir_emissao" (Supabase, ligado/desligado pela tela de
- * atacado) — checada aqui de novo, e não só na rota, porque essa trava
- * precisa valer mesmo se algum dia esta função for chamada de outro lugar.
- */
+/** Emissão fiscal — dá valor tributário à nota, de forma irreversível. */
 export async function emitirNota(id, conta = null) {
-  const permitido = await obterPermitirEmissao();
-  if (!permitido) {
-    throw new Error(
-      'Emissão bloqueada. Ligue "Permitir emissão" na tela de atacado antes de tentar de novo.'
-    );
-  }
   return chamarTiny('nota.fiscal.emitir.php', { id: String(id) }, conta);
 }
 

@@ -230,32 +230,6 @@ export async function statusPorPedido(orderIds) {
 }
 
 /**
- * Trava de emissão fiscal — mora no Supabase, não no .env, porque precisa
- * mudar em tempo real (variável de ambiente só é lida na inicialização do
- * processo). Sem Supabase configurado, o padrão é bloqueado (mais seguro).
- */
-export async function obterPermitirEmissao() {
-  const db = obterCliente();
-  if (!db) return false;
-
-  const { data, error } = await db.from('configuracoes').select('valor').eq('chave', 'permitir_emissao').maybeSingle();
-  if (error) return false;
-  return data?.valor === true;
-}
-
-/** Liga/desliga a emissão fiscal. Some com o "sem Supabase" — exige config. */
-export async function definirPermitirEmissao(valor) {
-  const db = obterCliente();
-  if (!db) return SEM_CONFIG;
-
-  const { error } = await db
-    .from('configuracoes')
-    .upsert({ chave: 'permitir_emissao', valor: !!valor, atualizado_em: new Date().toISOString() }, { onConflict: 'chave' });
-
-  return error ? { ok: false, erro: error.message } : { ok: true, permitirEmissao: !!valor };
-}
-
-/**
  * Rascunhos de pedido ainda não emitidos, mais recentes primeiro. O filtro de
  * emissão vai na consulta: trazer também os emitidos (cada um com o payload
  * inteiro) só para descartar depois pesava no carregamento da tela. Do

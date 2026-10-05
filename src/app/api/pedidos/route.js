@@ -1,11 +1,16 @@
-// GET /api/pedidos — uma página de pedidos (50 por vez), já classificados e
-// com a situação fiscal de cada um (rascunho, emissão, nº da NF). É a fonte
-// da tela de atacado.
+// GET /api/pedidos — os pedidos da tela de atacado, já classificados e com a
+// situação fiscal de cada um (rascunho, emissão, nº da NF).
 //
-//   ?cursor=  página seguinte (o `endCursor` da resposta anterior)
+// Sem busca, a lista é POR DIA: todos os pedidos de um dia (fuso de São
+// Paulo, ver lib/datas.js), e a tela navega para trás dia a dia. Com busca,
+// o resultado não se prende a dia nenhum e vem paginado por cursor.
+//
+//   ?dia=     AAAA-MM-DD; sem ele, hoje
 //   ?busca=   termos separados por vírgula: nº do pedido, cliente, nº da NF ou CNPJ
+//   ?cursor=  só com busca: página seguinte (o `endCursor` da resposta anterior)
 
-import { listarPedidosRecentes } from '@/lib/integrations/shopify';
+import { listarPedidosDoDia, listarPedidosRecentes } from '@/lib/integrations/shopify';
+import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
 import { classificarComListaFranquia, extrairCnpj } from '@/lib/fiscal/classificacao';
 import { totalDaNota } from '@/lib/fiscal/montarNota';
 import { statusPorPedido, listarCnpjsFranquia, listarRascunhosPendentes, pedidosPorNfOuCnpj } from '@/lib/db';
@@ -53,9 +58,15 @@ export async function GET(request) {
       .map((t) => t.trim())
       .filter(Boolean);
 
-    // Os pendentes antigos só aparecem na primeira página e sem busca — numa
-    // busca, a pessoa quer ver só o que casou.
-    const primeiraPagina = !cursor && termos.length === 0;
+    const diaDeHoje = hoje();
+    const dia = termos.length === 0 ? busca.get('dia') || diaDeHoje : null;
+    if (dia && (!diaValido(dia) || dia > diaDeHoje)) {
+      return erroJson(`Dia inválido: "${dia}". Use AAAA-MM-DD, até hoje.`, 400);
+    }
+
+    // Rascunhos pendentes de outros dias só aparecem no dia de hoje e sem
+    // busca — numa busca, a pessoa quer ver só o que casou.
+    const primeiraPagina = dia === diaDeHoje;
 
     // Franquias e rascunhos pendentes não dependem do Shopify: saem já, em
     // paralelo com a busca, em vez de esperar os pedidos voltarem.
@@ -72,15 +83,28 @@ export async function GET(request) {
     });
     const termosShopify = termos.filter((t) => !ehCnpj(t));
     if (termos.length > 0 && termosShopify.length === 0 && nomes.length === 0) {
-      return Response.json({ pedidos: [], proximoCursor: null });
+      return Response.json({ pedidos: [], proximoCursor: null, dia: null, hoje: diaDeHoje });
     }
 
-    const { pedidos, pageInfo } = await listarPedidosRecentes({
-      limite: ITENS_POR_PAGINA,
-      cursor,
-      termos: termosShopify,
-      nomes,
-    });
+    let pedidos;
+    let proximoCursor = null;
+    let diaCompleto = true;
+    if (dia) {
+      ({ pedidos, completo: diaCompleto } = await listarPedidosDoDia({
+        periodo: intervaloDoDia(dia),
+        limitePorPagina: ITENS_POR_PAGINA,
+      }));
+      if (!diaCompleto) console.error(`[pedidos] Dia ${dia} passou do limite de páginas — lista cortada.`);
+    } else {
+      const pagina = await listarPedidosRecentes({
+        limite: ITENS_POR_PAGINA,
+        cursor,
+        termos: termosShopify,
+        nomes,
+      });
+      pedidos = pagina.pedidos;
+      proximoCursor = pagina.pageInfo.hasNextPage ? pagina.pageInfo.endCursor : null;
+    }
     const [situacoes, cnpjsFranquiaResp, pendentesResp] = await Promise.all([
       statusPorPedido(pedidos.map((p) => p.id)),
       cnpjsFranquiaPromessa,
@@ -122,7 +146,12 @@ export async function GET(request) {
 
     return Response.json({
       pedidos: [...lista, ...antigos],
-      proximoCursor: pageInfo.hasNextPage ? pageInfo.endCursor : null,
+      proximoCursor,
+      // null numa busca. `diaCompleto: false` = o dia tinha pedidos demais e
+      // a lista veio cortada.
+      dia,
+      diaCompleto,
+      hoje: diaDeHoje,
     });
   } catch (erro) {
     return erroJson(`Não foi possível listar os pedidos: ${erro.message}`);
