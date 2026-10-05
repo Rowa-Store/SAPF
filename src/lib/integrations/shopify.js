@@ -171,14 +171,24 @@ const MAXIMO_PAGINAS_DO_DIA = 20;
  * Todos os pedidos de um dia, mais recentes primeiro. `periodo` vem de
  * intervaloDoDia (lib/datas.js). O Shopify devolve no máximo uma página por
  * chamada, então percorre as páginas até o fim do dia.
+ *
+ * O recorte também é conferido aqui pela data de criação: se a busca do
+ * Shopify deixar passar pedido de outro dia, ele não entra na lista. Como as
+ * páginas vêm do mais novo para o mais antigo, para de ler assim que passa
+ * do início do dia.
  */
 export async function listarPedidosDoDia({ periodo, limitePorPagina = 50 }) {
+  const inicio = Date.parse(periodo.inicio);
+  const fim = Date.parse(periodo.fim);
   const pedidos = [];
   let cursor = null;
   for (let pagina = 0; pagina < MAXIMO_PAGINAS_DO_DIA; pagina += 1) {
     const resultado = await listarPedidosRecentes({ limite: limitePorPagina, cursor, periodo });
-    pedidos.push(...resultado.pedidos);
-    if (!resultado.pageInfo.hasNextPage) return { pedidos, completo: true };
+    const criados = resultado.pedidos.map((p) => ({ p, em: Date.parse(p.createdAt) }));
+    pedidos.push(...criados.filter(({ em }) => em >= inicio && em < fim).map(({ p }) => p));
+
+    const passouDoDia = criados.length > 0 && criados[criados.length - 1].em < inicio;
+    if (!resultado.pageInfo.hasNextPage || passouDoDia) return { pedidos, completo: true };
     cursor = resultado.pageInfo.endCursor;
   }
   return { pedidos, completo: false };

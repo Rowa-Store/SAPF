@@ -245,14 +245,9 @@ export default function ControleAtacado() {
                       <tr className={expandida ? 'linha-expandida' : undefined}>
                         <td>
                           <div className="mono forte">
-                            {p.foraDaLista ? p.name : <a href={`/pedidos/${p.id}/rascunho`}>{p.name}</a>}
+                            <a href={`/pedidos/${p.id}/rascunho`}>{p.name}</a>
                           </div>
                           <div className="fraco">{formatarDataCurta(p.createdAt)}</div>
-                          {p.foraDaLista && (
-                            <div className="fraco" title="Pedido mais antigo que esta página, com rascunho ainda não emitido">
-                              rascunho pendente
-                            </div>
-                          )}
                         </td>
                         <td>
                           {p.cliente}
