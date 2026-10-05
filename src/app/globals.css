@@ -236,7 +236,7 @@ a.botao-link:hover { background: var(--realce); border-color: var(--tinta-fraca)
 /* ---- /transferencias ---- */
 
 /* Abas de uma área (ex.: atacado → notas | transportadoras). */
-.abas { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--linha); margin: 2rem 0 1rem; overflow-x: auto; }
+.abas { display: flex; flex-wrap: wrap; gap: 0.25rem; border-bottom: 1px solid var(--linha); margin: 2rem 0 1rem; }
 .abas a {
   padding: 0.6rem 1rem;
   color: var(--tinta-fraca);
