@@ -10,7 +10,14 @@
 import { useState } from 'react';
 import Paginacao from '@/components/ui/Paginacao';
 import { CAMPOS_CLIENTE } from '@/lib/fiscal/camposCliente';
-import { MARKUPS_SUGERIDOS, MARKUP_MAXIMO, MARKUP_MINIMO, descontoDoMarkup, formatarMarkup } from '@/lib/fiscal/markup';
+import {
+  DESCONTO_EXTRA_MAXIMO,
+  MARKUPS_SUGERIDOS,
+  MARKUP_MAXIMO,
+  MARKUP_MINIMO,
+  descontoDoMarkup,
+  formatarMarkup,
+} from '@/lib/fiscal/markup';
 import { CATEGORIA_PADRAO, rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
 import { formatarMoeda } from '@/lib/format';
 import { useIncluirRascunho } from '../hooks/useIncluirRascunho';
@@ -43,6 +50,8 @@ export default function IncluirRascunho({ params }) {
     markup,
     markupOriginal,
     alterarMarkup,
+    descontoExtra,
+    alterarDescontoExtra,
     atualizarCliente,
     atualizarItem,
     removerItem,
@@ -54,6 +63,8 @@ export default function IncluirRascunho({ params }) {
   const [saindoIndices, setSaindoIndices] = useState(() => new Set());
   const [markupDigitado, setMarkupDigitado] = useState('');
   const [erroMarkup, setErroMarkup] = useState(null);
+  const [descontoDigitado, setDescontoDigitado] = useState('');
+  const [erroDesconto, setErroDesconto] = useState(null);
 
   function handleMarkup(valor) {
     if (alterarMarkup(valor)) {
@@ -63,6 +74,15 @@ export default function IncluirRascunho({ params }) {
       setErroMarkup(
         `Markup inválido — use um número entre ${formatarMarkup(MARKUP_MINIMO)} e ${formatarMarkup(MARKUP_MAXIMO)}, como 2,4.`
       );
+    }
+  }
+
+  function handleDesconto(valor) {
+    if (alterarDescontoExtra(valor)) {
+      setErroDesconto(null);
+      setDescontoDigitado('');
+    } else {
+      setErroDesconto(`Desconto inválido — use um percentual entre 0 e ${DESCONTO_EXTRA_MAXIMO}, como 10 ou 7,5.`);
     }
   }
 
@@ -180,62 +200,112 @@ export default function IncluirRascunho({ params }) {
       {/* Markup da nota inteira: valor unitário = preço do Shopify ÷ markup
           (ver markup.js). O padrão vem do cadastro da franquia, quando ela
           tem markup próprio, ou da classificação; trocar aqui refaz todos os
-          itens, inclusive os que foram editados à mão. */}
-      <div className="cartao" style={{ marginBottom: '1rem' }}>
-        <div>
-          <strong>
-            Markup dos itens: {formatarMarkup(markup)} ({formatarMarkup(descontoDoMarkup(markup))}% de
-            desconto sobre o preço do Shopify)
-          </strong>
-        </div>
-        <div className="fraco">
-          {dados.markupProprio ? 'Padrão desta franquia' : `Padrão para ${dados.classificacao}`}:{' '}
-          {formatarMarkup(markupOriginal)} (
-          {formatarMarkup(descontoDoMarkup(markupOriginal))}%).
-        </div>
-        {markup !== markupOriginal && (
-          <p style={{ margin: '0.5rem 0 0' }}>
-            <strong>Esta nota vai com markup diferente do padrão.</strong> Todos os itens foram
-            recalculados com o novo markup.
-          </p>
-        )}
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.5rem' }}>
-          {MARKUPS_SUGERIDOS.map((m) => (
-            <button
-              key={m}
-              className={m === markup ? undefined : 'secundario'}
-              style={{ padding: '0.15rem 0.6rem', fontSize: '0.85rem' }}
-              onClick={() => handleMarkup(m)}
+          itens, inclusive os que foram editados à mão. Ao lado, o desconto
+          extra em % sobre o valor que já saiu do markup. */}
+      <div
+        className="cartao"
+        style={{ marginBottom: '1rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start' }}
+      >
+        <div style={{ flex: '1 1 22rem' }}>
+          <div>
+            <strong>
+              Markup dos itens: {formatarMarkup(markup)} ({formatarMarkup(descontoDoMarkup(markup))}% de
+              desconto sobre o preço do Shopify)
+            </strong>
+          </div>
+          <div className="fraco">
+            {dados.markupProprio ? 'Padrão desta franquia' : `Padrão para ${dados.classificacao}`}:{' '}
+            {formatarMarkup(markupOriginal)} (
+            {formatarMarkup(descontoDoMarkup(markupOriginal))}%).
+          </div>
+          {markup !== markupOriginal && (
+            <p style={{ margin: '0.5rem 0 0' }}>
+              <strong>Esta nota vai com markup diferente do padrão.</strong> Todos os itens foram
+              recalculados com o novo markup.
+            </p>
+          )}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.5rem' }}>
+            {MARKUPS_SUGERIDOS.map((m) => (
+              <button
+                key={m}
+                className={m === markup ? undefined : 'secundario'}
+                style={{ padding: '0.15rem 0.6rem', fontSize: '0.85rem' }}
+                onClick={() => handleMarkup(m)}
+                disabled={!!resultado}
+              >
+                {formatarMarkup(m)}
+              </button>
+            ))}
+            <input
+              aria-label="Outro markup"
+              placeholder="Outro (ex.: 2,35)"
+              inputMode="decimal"
+              style={{ width: '9rem' }}
+              value={markupDigitado}
+              onChange={(e) => setMarkupDigitado(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleMarkup(markupDigitado)}
               disabled={!!resultado}
+            />
+            <button
+              className="secundario"
+              style={{ padding: '0.15rem 0.6rem', fontSize: '0.85rem' }}
+              onClick={() => handleMarkup(markupDigitado)}
+              disabled={!!resultado || !markupDigitado.trim()}
             >
-              {formatarMarkup(m)}
+              Aplicar
             </button>
-          ))}
-          <input
-            aria-label="Outro markup"
-            placeholder="Outro (ex.: 2,35)"
-            inputMode="decimal"
-            style={{ width: '9rem' }}
-            value={markupDigitado}
-            onChange={(e) => setMarkupDigitado(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleMarkup(markupDigitado)}
-            disabled={!!resultado}
-          />
-          <button
-            className="secundario"
-            style={{ padding: '0.15rem 0.6rem', fontSize: '0.85rem' }}
-            onClick={() => handleMarkup(markupDigitado)}
-            disabled={!!resultado || !markupDigitado.trim()}
-          >
-            Aplicar
-          </button>
+          </div>
+          {erroMarkup && <p style={{ margin: '0.5rem 0 0' }}>{erroMarkup}</p>}
         </div>
-        {erroMarkup && <p style={{ margin: '0.5rem 0 0' }}>{erroMarkup}</p>}
+
+        <div style={{ flex: '1 1 16rem' }}>
+          <div>
+            <strong>Desconto extra: {formatarMarkup(descontoExtra)}%</strong>
+          </div>
+          <div className="fraco">Sobre o valor com markup, abatido de cada item.</div>
+          {descontoExtra > 0 && (
+            <p style={{ margin: '0.5rem 0 0' }}>
+              <strong>Esta nota vai com {formatarMarkup(descontoExtra)}% de desconto nos itens.</strong>
+            </p>
+          )}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.5rem' }}>
+            <input
+              aria-label="Desconto extra em percentual"
+              placeholder="% (ex.: 10)"
+              inputMode="decimal"
+              style={{ width: '7rem' }}
+              value={descontoDigitado}
+              onChange={(e) => setDescontoDigitado(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleDesconto(descontoDigitado)}
+              disabled={!!resultado}
+            />
+            <button
+              className="secundario"
+              style={{ padding: '0.15rem 0.6rem', fontSize: '0.85rem' }}
+              onClick={() => handleDesconto(descontoDigitado)}
+              disabled={!!resultado || !descontoDigitado.trim()}
+            >
+              Aplicar
+            </button>
+            {descontoExtra > 0 && (
+              <button
+                className="secundario"
+                style={{ padding: '0.15rem 0.6rem', fontSize: '0.85rem' }}
+                onClick={() => handleDesconto(0)}
+                disabled={!!resultado}
+              >
+                Remover
+              </button>
+            )}
+          </div>
+          {erroDesconto && <p style={{ margin: '0.5rem 0 0' }}>{erroDesconto}</p>}
+        </div>
       </div>
 
       <p className="fraco">
-        Quantidade e valor unitário aqui são os que vão para o Tiny — já incluem o markup acima.
-        Corrija item a item se algo estiver errado; trocar o markup depois refaz todos os valores.
+        Quantidade e valor unitário aqui são os que vão para o Tiny — já incluem o markup e o
+        desconto extra acima. Corrija item a item se algo estiver errado; trocar o markup ou o
+        desconto depois refaz todos os valores.
       </p>
 
       <table>
