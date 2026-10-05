@@ -289,6 +289,12 @@ export async function verificarTiny() {
 //
 // `atualizar_cliente: 'S'` na nota não resolveria: o Tiny só atualizaria o
 // cadastro com os campos que vieram na nota, e contribuinte não é um deles.
+//
+// Cliente que ainda não existe no Tiny seria criado PELA nota — sem
+// contribuinte. Então, nesse caso, o contato é criado antes, já como
+// Contribuinte ICMS, com os mesmos dados do cliente da nota (o Tiny liga a
+// nota a ele). E a emissão confere de novo, porque o cadastro pode ter sido
+// mexido à mão no Tiny depois do rascunho.
 // ---------------------------------------------------------------------------
 
 /** Valores aceitos em `contribuinte` no cadastro de contato do Tiny. */
@@ -327,6 +333,46 @@ async function pesquisarContatosPorCnpj(cnpj) {
 }
 
 /**
+ * Cria o contato no Tiny já como Contribuinte ICMS, a partir do `cliente` do
+ * payload da nota. Devolve o id do contato criado.
+ */
+async function incluirContatoContribuinte(cliente) {
+  const retorno = await chamarTiny('contato.incluir.php', {
+    contato: JSON.stringify({
+      contatos: [
+        {
+          contato: {
+            sequencia: 1,
+            nome: cliente.nome,
+            tipo_pessoa: cliente.tipo_pessoa ?? 'J',
+            cpf_cnpj: cliente.cpf_cnpj,
+            ie: cliente.ie ?? '',
+            endereco: cliente.endereco ?? '',
+            numero: cliente.numero ?? '',
+            complemento: cliente.complemento ?? '',
+            bairro: cliente.bairro ?? '',
+            cep: cliente.cep ?? '',
+            cidade: cliente.cidade ?? '',
+            uf: cliente.uf ?? '',
+            pais: cliente.pais ?? 'BRASIL',
+            situacao: 'A',
+            contribuinte: CONTRIBUINTE_ICMS,
+          },
+        },
+      ],
+    }),
+  });
+
+  // O status geral pode vir OK com o registro recusado.
+  const registro = paraArray(retorno.registros)[0]?.registro ?? null;
+  if (registro?.status === 'Erro') {
+    const erros = paraArray(registro.erros).map((e) => e.erro ?? JSON.stringify(e)).join('; ');
+    throw new Error(`Tiny recusou o cadastro do contato: ${erros || 'erro não detalhado'}`);
+  }
+  return registro?.id ? String(registro.id) : null;
+}
+
+/**
  * Marca o cadastro do cliente como "Contribuinte ICMS" no Tiny.
  *
  * ISTO ESCREVE EM PRODUÇÃO — altera o cadastro de contatos, não a nota. Só é
@@ -338,12 +384,18 @@ async function pesquisarContatosPorCnpj(cnpj) {
  * PRIMEIRO — por isso devolvemos quantos apareceram, para a tela deixar isso
  * à vista em vez de esconder a escolha.
  *
- * Nunca lança: devolve o que aconteceu, porque uma falha aqui não pode
- * derrubar a criação do rascunho.
+ * Sem contato com este CNPJ, cria um já como Contribuinte ICMS quando vier
+ * `clienteNota` (o `cliente` do payload) — senão a nota criaria o contato
+ * sem contribuinte.
  *
+ * Nunca lança: devolve o que aconteceu; quem chama decide se a falha
+ * bloqueia (a emissão bloqueia, a criação do rascunho só avisa).
+ *
+ * @param {string} cnpj
+ * @param {{ clienteNota?: object }} [opcoes]
  * @returns {Promise<{ok: boolean, alterado: boolean, mensagem: string}>}
  */
-export async function garantirContribuinteIcms(cnpj) {
+export async function garantirContribuinteIcms(cnpj, { clienteNota } = {}) {
   const digitos = somenteDigitos(cnpj);
 
   if (digitos.length !== 14) {
@@ -356,6 +408,16 @@ export async function garantirContribuinteIcms(cnpj) {
 
   try {
     const contatos = await pesquisarContatosPorCnpj(digitos);
+    if (contatos.length === 0 && clienteNota?.nome) {
+      const idContato = await incluirContatoContribuinte({ ...clienteNota, cpf_cnpj: digitos });
+      return {
+        ok: true,
+        alterado: true,
+        mensagem:
+          `Cliente "${clienteNota.nome}" não existia no Tiny — cadastrado como Contribuinte ICMS` +
+          `${idContato ? ` (contato ${idContato})` : ''}.`,
+      };
+    }
     if (contatos.length === 0) {
       return {
         ok: false,

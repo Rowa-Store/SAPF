@@ -104,7 +104,9 @@ export async function POST(request, { params }) {
   // inclusão. Falhar aqui não derruba o rascunho: a nota ainda é só rascunho e
   // a emissão é manual dentro do Tiny, então o aviso volta para a tela e a
   // pessoa decide o que fazer.
-  const contribuinte = await garantirContribuinteIcms(payload?.nota_fiscal?.cliente?.cpf_cnpj);
+  const contribuinte = await garantirContribuinteIcms(payload?.nota_fiscal?.cliente?.cpf_cnpj, {
+    clienteNota: payload?.nota_fiscal?.cliente,
+  });
   if (!contribuinte.ok) {
     console.error(`[rascunho] Pedido ${gid}: ${contribuinte.mensagem}`);
   }

@@ -3,10 +3,18 @@
 // ESTE ENDPOINT É IRREVERSÍVEL. Só funciona com a trava "permitir_emissao"
 // ligada (tela de atacado) — checada de novo aqui e dentro de
 // lib/integrations/tiny.js::emitirNota, então nenhuma das duas pode ser pulada.
-// Depois de emitir, lê o número da NF da nota autorizada e grava no Supabase.
+// Antes de emitir, garante o cliente como Contribuinte ICMS no cadastro do
+// Tiny (ver tiny.js) — sem isso a nota do atacado não sai. Depois de emitir,
+// lê o número da NF da nota autorizada e grava no Supabase.
 
-import { emitirNota, obterSituacaoNota } from '@/lib/integrations/tiny';
-import { obterPermitirEmissao, atualizarNotaEmitida, registrarNumeroNf, statusPorPedido } from '@/lib/db';
+import { emitirNota, garantirContribuinteIcms, obterSituacaoNota } from '@/lib/integrations/tiny';
+import {
+  obterPermitirEmissao,
+  obterRascunhoCriado,
+  atualizarNotaEmitida,
+  registrarNumeroNf,
+  statusPorPedido,
+} from '@/lib/db';
 import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +38,26 @@ export async function POST(request, { params }) {
   }
 
   const tinyNotaId = situacao.tiny_nota_id;
+
+  // O cliente vem do payload que foi para o Tiny neste rascunho. Emitir sem
+  // Contribuinte ICMS seria irreversível — então aqui a falha bloqueia.
+  const rascunho = await obterRascunhoCriado(gid);
+  const cliente = rascunho.rascunho?.payload_enviado?.nota_fiscal?.cliente;
+  if (!cliente?.cpf_cnpj) {
+    return erroJson(
+      'Não foi possível ler o cliente do rascunho para conferir o Contribuinte ICMS' +
+        `${rascunho.erro ? `: ${rascunho.erro}` : ''}. A nota não foi emitida.`,
+      502
+    );
+  }
+  const contribuinte = await garantirContribuinteIcms(cliente.cpf_cnpj, { clienteNota: cliente });
+  if (!contribuinte.ok) {
+    return erroJson(
+      `${contribuinte.mensagem} A nota não foi emitida — marque o cliente como Contribuinte ICMS no Tiny e tente de novo.`,
+      502
+    );
+  }
+
   try {
     await emitirNota(tinyNotaId);
   } catch (erro) {
