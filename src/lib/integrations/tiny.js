@@ -152,15 +152,6 @@ async function chamarTiny(endpoint, params = {}, conta = null) {
 }
 
 /**
- * Confere cada SKU no cadastro de produtos do Tiny.
- * O `codigo` do produto no Tiny deve ser igual ao SKU do Shopify.
- * Alguns SKUs têm barra (ex.: G668-B1S/P) — por isso a comparação é feita
- * sobre o texto exato, sem normalizar nem quebrar a string.
- *
- * Retorna { ok, naoEncontrados, multiplos }.
- */
-
-/**
  * Cria a nota como RASCUNHO no Tiny (sem valor fiscal).
  * Isto escreve em produção — só chame depois da confirmação na interface.
  */
@@ -465,4 +456,130 @@ export async function garantirContribuinteIcms(cnpj, { clienteNota } = {}) {
       mensagem: `Contribuinte ICMS não aplicado: ${erro.message}`,
     };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Produto pai — "Um produto pai não pode ser informado"
+//
+// A nota leva o SKU do Shopify como `codigo` do item, e o Tiny procura o
+// produto por esse código. Quando o código é o de um produto COM variações
+// (o "pai"), o Tiny recusa a nota: só aceita a variação. Aqui o pai é
+// trocado pela variação cuja grade (tamanho, cor...) bate com as opções do
+// item no Shopify.
+//
+// Só roda depois de o Tiny recusar com esse erro: conferir todo SKU antes de
+// toda nota estouraria o limite de chamadas por minuto da API.
+// ---------------------------------------------------------------------------
+
+/** true quando o erro do Tiny é o de produto pai informado no item. */
+export function erroDeProdutoPai(mensagem) {
+  return /produto pai/i.test(String(mensagem ?? ''));
+}
+
+function normalizarOpcao(valor) {
+  return String(valor ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+/** Valores da grade de uma variação do Tiny — vem como objeto ou como lista. */
+function valoresDaGrade(grade) {
+  if (!grade) return [];
+  if (Array.isArray(grade)) return grade.map((g) => g?.valor ?? g?.value ?? '').filter(Boolean);
+  return Object.values(grade).filter((v) => typeof v === 'string' && v);
+}
+
+/** Produtos do Tiny com este código exato (a pesquisa também casa por nome). */
+async function produtosPorCodigo(codigo, conta) {
+  let retorno;
+  try {
+    retorno = await chamarTiny('produtos.pesquisa.php', { pesquisa: codigo }, conta);
+  } catch (erro) {
+    if (/não retornou registros|nao retornou registros/i.test(erro.message)) return [];
+    throw erro;
+  }
+  return paraArray(retorno.produtos)
+    .map((p) => p.produto ?? p)
+    .filter((p) => String(p.codigo ?? '') === codigo);
+}
+
+/**
+ * Escolhe a variação cujos valores de grade são os mesmos das opções do item
+ * no Shopify (sem olhar o nome da opção — "Tamanho" lá pode ser "Size" aqui).
+ * Sem opções no Shopify, só decide quando o pai tem uma variação só.
+ */
+function escolherVariacao(variacoes, opcoes) {
+  const alvo = new Set(opcoes.map(normalizarOpcao).filter(Boolean));
+  if (alvo.size === 0) return variacoes.length === 1 ? variacoes[0] : null;
+
+  const valores = (v) => new Set(valoresDaGrade(v.grade).map(normalizarOpcao));
+  const iguais = variacoes.filter((v) => {
+    const g = valores(v);
+    return g.size === alvo.size && [...g].every((x) => alvo.has(x));
+  });
+  if (iguais.length === 1) return iguais[0];
+
+  // Grade com menos atributos que o Shopify (ex.: só tamanho no Tiny).
+  const contidas = variacoes.filter((v) => {
+    const g = valores(v);
+    return g.size > 0 && [...g].every((x) => alvo.has(x));
+  });
+  return contidas.length === 1 ? contidas[0] : null;
+}
+
+/**
+ * Troca, nos itens, o código de produto pai pelo da variação certa.
+ *
+ * @param {object[]} itens `nota_fiscal.itens` do payload ({ item: {...} })
+ * @param {Record<string, string[]>} opcoesPorCodigo opções do Shopify por SKU
+ *   (ex.: { "G668-B1S": ["P", "Azul"] })
+ * @param {{ mensagemErro?: string, conta?: object }} [opcoes] quando a
+ *   mensagem do Tiny cita códigos da nota, só esses são conferidos — poupa
+ *   chamadas num pedido com muitos itens
+ * @returns {Promise<{ itens: object[], trocas: {de: string, para: string, descricao: string}[],
+ *   pendentes: {codigo: string, descricao: string, motivo: string}[] }>}
+ */
+export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemErro = '', conta = null } = {}) {
+  const codigos = [...new Set(itens.map(({ item }) => String(item.codigo ?? '')).filter(Boolean))];
+  const citados = codigos.filter((c) => mensagemErro.includes(c));
+  const conferir = citados.length > 0 ? citados : codigos;
+
+  const descricaoDe = (codigo) => itens.find(({ item }) => item.codigo === codigo)?.item.descricao ?? '';
+  const novoCodigo = {};
+  const trocas = [];
+  const pendentes = [];
+
+  // Uma chamada por vez: a API do Tiny limita chamadas por minuto.
+  for (const codigo of conferir) {
+    const produtos = await produtosPorCodigo(codigo, conta);
+    // Se existe um produto que não é pai com este código, não há o que trocar.
+    if (produtos.length === 0 || produtos.some((p) => p.tipoVariacao !== 'P')) continue;
+
+    const cadastro = await chamarTiny('produto.obter.php', { id: String(produtos[0].id) }, conta);
+    const variacoes = paraArray(cadastro.produto?.variacoes).map((v) => v.variacao ?? v);
+    const opcoes = opcoesPorCodigo[codigo] ?? [];
+    const escolhida = escolherVariacao(variacoes, opcoes);
+
+    if (escolhida?.codigo) {
+      novoCodigo[codigo] = String(escolhida.codigo);
+      trocas.push({ de: codigo, para: String(escolhida.codigo), descricao: descricaoDe(codigo) });
+    } else {
+      pendentes.push({
+        codigo,
+        descricao: descricaoDe(codigo),
+        motivo:
+          variacoes.length === 0
+            ? 'o produto pai não tem variações cadastradas no Tiny'
+            : `nenhuma das ${variacoes.length} variações do Tiny bate com ${opcoes.length ? `"${opcoes.join(' / ')}"` : 'o item (sem tamanho/cor no Shopify)'}`,
+      });
+    }
+  }
+
+  return {
+    itens: itens.map((i) => (novoCodigo[i.item.codigo] ? { item: { ...i.item, codigo: novoCodigo[i.item.codigo] } } : i)),
+    trocas,
+    pendentes,
+  };
 }

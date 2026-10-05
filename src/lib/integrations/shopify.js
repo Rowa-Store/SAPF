@@ -80,7 +80,8 @@ query PedidoAtacado($id: ID!, $cursor: String) {
     lineItems(first: 100, after: $cursor) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        sku title quantity
+        sku title quantity variantTitle
+        variant { selectedOptions { name value } }
         originalUnitPriceSet   { shopMoney { amount } }
         discountedUnitPriceSet { shopMoney { amount } }
       }
