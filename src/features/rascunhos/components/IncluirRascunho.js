@@ -126,14 +126,22 @@ export default function IncluirRascunho({ params }) {
         {dados.pedido.origemCnpj && ` CNPJ encontrado em ${dados.pedido.origemCnpj}.`}
       </p>
 
-      {dados.jaProcessado && (
+      {dados.notaEmitida ? (
         <div className="aviso">
-          <strong>Este pedido já tem rascunho no Tiny.</strong>
-          <p>
-            Nota {dados.tinyNotaId ?? 'sem id retornado'} já existe. Criar outra geraria duplicidade —
-            cancele ou exclua a nota no Tiny antes de tentar de novo.
-          </p>
+          <strong>A nota deste pedido já foi emitida.</strong>
+          <p>Nota {dados.tinyNotaId ?? 'sem id retornado'} já tem valor fiscal — não dá para enviar outro rascunho.</p>
         </div>
+      ) : (
+        dados.jaProcessado && (
+          <div className="aviso">
+            <strong>Este pedido já tem o rascunho {dados.tinyNotaId ?? 'sem id retornado'} no Tiny.</strong>
+            <p>
+              Dá para enviar um rascunho novo no lugar dele — se o Tiny acusar duplicidade, faça uma
+              alteração mínima e envie de novo. O novo passa a ser o que &quot;Emitir nota&quot; emite; o
+              antigo continua no Tiny e precisa ser cancelado ou excluído lá, à mão.
+            </p>
+          </div>
+        )
       )}
 
       {dados.alertas.length > 0 && (
@@ -474,7 +482,7 @@ export default function IncluirRascunho({ params }) {
             onClick={() => setPedindoConfirmacao(true)}
             disabled={!podeIncluir || pedindoConfirmacao}
           >
-            Incluir rascunho no Tiny
+            {dados.jaProcessado ? 'Enviar novo rascunho ao Tiny' : 'Incluir rascunho no Tiny'}
           </button>
 
           {pedindoConfirmacao && (
@@ -484,6 +492,14 @@ export default function IncluirRascunho({ params }) {
                 mesmo que este pedido seja fictício. Depois de criada, cancelar exige uma ação manual
                 dentro do Tiny.
               </p>
+              {dados.jaProcessado && (
+                <p>
+                  <strong>
+                    Isto cria um NOVO rascunho — não altera o {dados.tinyNotaId ?? 'rascunho atual'}.
+                  </strong>{' '}
+                  O antigo fica duplicado no Tiny até ser cancelado ou excluído lá.
+                </p>
+              )}
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button onClick={confirmarInclusao} disabled={enviando}>
                   {enviando ? 'Enviando…' : 'Sim, criar o rascunho'}

@@ -163,6 +163,8 @@ export function useIncluirRascunho(id) {
           classificacao: dados.classificacao,
           orderName: dados.pedido.name,
           confirmacaoTeste: true,
+          // Pedido que já tem rascunho: o novo entra no lugar dele (ver a rota).
+          substituir: Boolean(dados.jaProcessado),
         }),
       });
 
@@ -187,7 +189,9 @@ export function useIncluirRascunho(id) {
     ? itensEditados.reduce((soma, it) => soma + Number(it.valor_unitario || 0) * Number(it.quantidade || 0), 0)
     : 0;
   const itensForamEditados = carregado ? JSON.stringify(itensEditados) !== JSON.stringify(itensOriginais) : false;
-  const podeIncluir = carregado && !dados.jaProcessado && !enviando && !resultado && itensEditados.length > 0;
+  // Já ter rascunho não bloqueia: o Tiny às vezes acusa duplicidade e a saída
+  // é reenviar com uma alteração mínima. Nota emitida, sim.
+  const podeIncluir = carregado && !dados.notaEmitida && !enviando && !resultado && itensEditados.length > 0;
 
   return {
     dados,

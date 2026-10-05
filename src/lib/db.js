@@ -153,7 +153,7 @@ export async function jaProcessado(orderId) {
 
   const { data, error } = await db
     .from('notas_processadas')
-    .select('status, tiny_nota_id')
+    .select('status, tiny_nota_id, nota_emitida')
     .eq('shopify_order_id', orderId)
     .maybeSingle();
 
@@ -162,6 +162,7 @@ export async function jaProcessado(orderId) {
     ok: true,
     processado: data?.status === 'rascunho_criado',
     tinyNotaId: data?.tiny_nota_id ?? null,
+    notaEmitida: Boolean(data?.nota_emitida),
     status: data?.status ?? null,
   };
 }

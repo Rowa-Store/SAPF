@@ -310,14 +310,24 @@ export default function ControleAtacado() {
                                 <a
                                   className="botao-link"
                                   href={`/pedidos/${p.id}/rascunho`}
-                                  title="Confere item a item e ajusta cliente e itens antes de criar o rascunho — depois de enviado, não dá mais para editar"
+                                  title="Confere item a item e ajusta cliente e itens antes de criar o rascunho"
                                 >
                                   Conferir itens
                                 </a>
                               </>
                             )}
 
-                            {/* Rascunho já enviado ao Tiny não é editado por aqui: só emitir. */}
+                            {/* Rascunho já enviado: emitir (sempre o último — o id vem do
+                                Supabase) ou mandar um novo pela conferência. */}
+                            {temRascunho && !p.notaEmitida && (
+                              <a
+                                className="botao-link"
+                                href={`/pedidos/${p.id}/rascunho`}
+                                title="Envia um rascunho novo no lugar deste (ex.: Tiny acusou duplicidade) — o antigo precisa ser removido à mão no Tiny"
+                              >
+                                Novo rascunho
+                              </a>
+                            )}
                             {temRascunho && !p.notaEmitida && (
                               <button
                                 className="pequeno"

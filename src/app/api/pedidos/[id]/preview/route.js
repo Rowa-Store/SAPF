@@ -126,10 +126,12 @@ export async function GET(request, { params }) {
 
     // 5. Já existe rascunho para este pedido?
     const processado = await jaProcessado(paraGid(id));
-    if (processado.processado) {
+    if (processado.notaEmitida) {
+      alertas.push(`A nota deste pedido (${processado.tinyNotaId}) já foi emitida no Tiny.`);
+    } else if (processado.processado) {
       alertas.push(
         `Este pedido já gerou o rascunho ${processado.tinyNotaId} no Tiny. ` +
-          'Criar outro geraria nota duplicada.'
+          'Enviar de novo cria um rascunho novo no lugar dele — o antigo precisa ser removido à mão no Tiny.'
       );
     }
 
@@ -182,6 +184,7 @@ export async function GET(request, { params }) {
       totalNota: totalDaNota(payload),
       alertas,
       jaProcessado: processado.processado,
+      notaEmitida: processado.notaEmitida ?? false,
       tinyNotaId: processado.tinyNotaId ?? null,
     });
   } catch (erro) {

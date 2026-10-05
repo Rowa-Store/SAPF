@@ -2,22 +2,26 @@
 //
 // ESTE ENDPOINT ESCREVE EM PRODUÇÃO.
 //
-//   - POST cria o rascunho. Exige `confirmacaoTeste: true`.
+//   - POST cria o rascunho. Exige `confirmacaoTeste: true`. Com
+//     `substituir: true`, cria um NOVO mesmo que o pedido já tenha rascunho
+//     (às vezes o Tiny acusa duplicidade e a saída é reenviar com uma
+//     alteração mínima). O novo passa a ser o rascunho do pedido — é ele que
+//     "Emitir nota" emite — e o antigo vai para tiny_notas_substituidas, para
+//     ser removido à mão no Tiny. Nota já emitida nunca é substituída.
 //   - GET  devolve o rascunho já criado (o payload realmente enviado ao Tiny).
 //
-// Não existe edição: depois de enviado ao Tiny, o rascunho do pedido não é
-// alterado por este sistema — cliente e itens se ajustam antes, na tela de
-// conferência (/pedidos/[id]/rascunho).
+// A API 2.0 do Tiny não altera nota: cliente e itens se ajustam na tela de
+// conferência (/pedidos/[id]/rascunho) e seguem num rascunho novo.
 //
 // Emissão fiscal (nota.fiscal.emitir) mora em /api/pedidos/[id]/emitir.
 
 import { garantirContribuinteIcms, incluirNotaRascunho, obterNota } from '@/lib/integrations/tiny';
 import {
-  jaProcessado,
   obterRascunhoCriado,
   registrarRascunhoCriado,
   registrarErro,
   salvarItensPendentes,
+  statusPorPedido,
 } from '@/lib/db';
 import { totalDaNota } from '@/lib/fiscal/montarNota';
 import { erroJson, paraGid } from '@/lib/utils';
@@ -55,7 +59,7 @@ export async function POST(request, { params }) {
     return erroJson('Corpo da requisição inválido: era esperado um JSON.', 400);
   }
 
-  const { payload, classificacao, orderName, confirmacaoTeste, itensPendentes } = corpo ?? {};
+  const { payload, classificacao, orderName, confirmacaoTeste, itensPendentes, substituir } = corpo ?? {};
 
   // Trava 1 — confirmação explícita de que a pessoa sabe que isso escreve no Tiny real.
   if (confirmacaoTeste !== true) {
@@ -70,14 +74,28 @@ export async function POST(request, { params }) {
     return erroJson('Payload sem itens. Volte à tela do rascunho e confira o pedido.', 400);
   }
 
-  // Trava 2 — nunca criar dois rascunhos para o mesmo pedido.
-  const processado = await jaProcessado(gid);
-  if (processado.processado) {
+  // Trava 2 — segundo rascunho para o mesmo pedido só quando pedido
+  // explicitamente (`substituir`), e nunca por cima de nota emitida.
+  let situacao;
+  try {
+    situacao = (await statusPorPedido([gid]))[gid];
+  } catch (erro) {
+    return erroJson(`Não foi possível conferir se o pedido já tem rascunho: ${erro.message}`, 502);
+  }
+  if (situacao?.nota_emitida) {
     return erroJson(
-      `Pedido já processado: o rascunho ${processado.tinyNotaId} existe no Tiny. ` +
-        'Cancele ou exclua a nota lá antes de gerar outra.',
+      `A nota deste pedido já foi emitida${situacao.numero_nf ? ` (NF ${situacao.numero_nf})` : ''} — ` +
+        'não dá para enviar outro rascunho.',
+      409
+    );
+  }
+  const anterior = situacao?.status === 'rascunho_criado' ? situacao : null;
+  if (anterior && substituir !== true) {
+    return erroJson(
+      `Pedido já processado: o rascunho ${anterior.tiny_nota_id} existe no Tiny. ` +
+        'Confirme na tela que quer enviar um novo rascunho no lugar dele.',
       409,
-      { tinyNotaId: processado.tinyNotaId }
+      { tinyNotaId: anterior.tiny_nota_id }
     );
   }
 
@@ -101,6 +119,11 @@ export async function POST(request, { params }) {
       confirmacao = await obterNota(idNota).catch((erro) => ({ aviso: erro.message }));
     }
 
+    // Acumula: um rascunho refeito duas vezes deixa dois antigos para remover no Tiny.
+    const notasSubstituidas = anterior
+      ? [...(anterior.tiny_notas_substituidas ?? []), anterior.tiny_nota_id].filter(Boolean)
+      : undefined;
+
     const registro = await registrarRascunhoCriado({
       orderId: gid,
       orderName,
@@ -108,6 +131,7 @@ export async function POST(request, { params }) {
       payload,
       tinyNotaId: idNota,
       respostaTiny: retorno,
+      notasSubstituidas,
     });
     // A nota já foi criada no Tiny — isso não pode falhar por causa do
     // histórico, mas também não pode ficar invisível se o registro falhar.
@@ -124,11 +148,24 @@ export async function POST(request, { params }) {
       tinyNotaId: idNota,
       confirmacao,
       contribuinte,
-      mensagem:
-        'Rascunho criado no Tiny. Confira os dados e emita a nota pela tela de atacado.',
+      tinyNotaIdAnterior: anterior?.tiny_nota_id ?? null,
+      mensagem: anterior
+        ? `Novo rascunho criado no Tiny no lugar do ${anterior.tiny_nota_id} — é este que "Emitir nota" ` +
+          `vai emitir. Cancele ou exclua o rascunho ${anterior.tiny_nota_id} dentro do Tiny: a API não ` +
+          'faz isso, e os dois ficam duplicados até você remover o antigo à mão.'
+        : 'Rascunho criado no Tiny. Confira os dados e emita a nota pela tela de atacado.',
     });
   } catch (erro) {
     console.error(`[rascunho] Tiny recusou a inclusão do pedido ${gid}:`, erro);
+    // Com rascunho anterior, o erro NÃO vai para o registro: marcaria o
+    // pedido como "erro" e o rascunho que já existe deixaria de ser emitível.
+    if (anterior) {
+      return erroJson(
+        `O Tiny recusou o novo rascunho: ${erro.message}. O rascunho ${anterior.tiny_nota_id} continua ` +
+          'valendo. Se o Tiny acusou duplicidade, faça uma alteração mínima e envie de novo.',
+        502
+      );
+    }
     await registrarErro({ orderId: gid, orderName, classificacao, payload, mensagem: erro.message });
     return erroJson(`O Tiny recusou a inclusão da nota: ${erro.message}`, 502);
   }
