@@ -286,6 +286,7 @@ export default function ControleAtacado() {
                               <a
                                 className={`botao-pdf ${p.notaEmitida ? 'botao-pdf-destaque' : ''}`}
                                 href={`/api/pedidos/${p.id}/danfe?tinyNotaId=${p.tinyNotaId}`}
+                                download={`DANFE-${p.name}.pdf`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={
