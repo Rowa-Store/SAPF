@@ -13,15 +13,36 @@ import { useAtacado } from '../hooks/useAtacado';
 
 const COLUNAS = 6;
 
-function StatusFiscal({ p }) {
+/** "erro no Tiny": clicável quando há erro guardado — abre o erro na linha. */
+function MarcaErro({ rotulo = 'erro no Tiny', aoClicar }) {
+  if (!aoClicar) return <span className="marca marca-erro">{rotulo}</span>;
+  return (
+    <button type="button" className="marca marca-erro" onClick={aoClicar} title="Ver o erro">
+      {rotulo}
+    </button>
+  );
+}
+
+function StatusFiscal({ p, verErro }) {
   if (p.notaEmitida) {
     return <span className="marca marca-ok">NF emitida{p.numeroNf ? ` nº ${p.numeroNf}` : ''}</span>;
   }
+  const abrirErro = p.erro ? () => verErro(p) : null;
   if (p.status === 'rascunho_criado') {
-    return <span className="marca marca-atacado">rascunho {p.tinyNotaId}</span>;
+    return (
+      <>
+        <span className="marca marca-atacado">rascunho {p.tinyNotaId}</span>
+        {abrirErro && <MarcaErro aoClicar={abrirErro} />}
+      </>
+    );
   }
-  if (p.status === 'erro') return <span className="marca marca-erro">erro no Tiny</span>;
-  return <span className="fraco">sem rascunho</span>;
+  if (p.status === 'erro') return <MarcaErro aoClicar={abrirErro} />;
+  return (
+    <>
+      <span className="fraco">sem rascunho</span>
+      {abrirErro && <MarcaErro aoClicar={abrirErro} />}
+    </>
+  );
 }
 
 /** Linha de largura total logo abaixo do pedido (confirmação, erro). */
@@ -260,7 +281,7 @@ export default function ControleAtacado() {
                         </td>
                         <td>
                           <div className="pilha">
-                            <StatusFiscal p={p} />
+                            <StatusFiscal p={p} verErro={verErro} />
                             {p.tinyNotaId && temRascunho && (
                               <a
                                 className={`botao-pdf ${p.notaEmitida ? 'botao-pdf-destaque' : ''}`}
@@ -289,17 +310,6 @@ export default function ControleAtacado() {
                         <td>
                           <div className="acoes-linha">
                             {enviando && <span className="fraco">Enviando…</span>}
-
-                            {p.erro && acao?.fase !== 'erro' && (
-                              <button
-                                className="pequeno secundario"
-                                onClick={() => verErro(p)}
-                                disabled={enviando}
-                                title="Mostra o último erro do Tiny nesta nota"
-                              >
-                                Ver erro
-                              </button>
-                            )}
 
                             {podeCriar && (
                               <>

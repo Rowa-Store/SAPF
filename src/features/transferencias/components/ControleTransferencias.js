@@ -26,15 +26,36 @@ function StatusShopify({ status }) {
   return <span className={`marca ${classe}`}>{rotulo}</span>;
 }
 
-function StatusFiscal({ t }) {
+/** "erro no Tiny": clicável quando há erro guardado — abre o erro na linha. */
+function MarcaErro({ rotulo = 'erro no Tiny', aoClicar }) {
+  if (!aoClicar) return <span className="marca marca-erro">{rotulo}</span>;
+  return (
+    <button type="button" className="marca marca-erro" onClick={aoClicar} title="Ver o erro">
+      {rotulo}
+    </button>
+  );
+}
+
+function StatusFiscal({ t, verErro }) {
   if (t.notaEmitida) {
     return <span className="marca marca-ok">NF emitida{t.numeroNf ? ` nº ${t.numeroNf}` : ''}</span>;
   }
+  const abrirErro = t.erro ? () => verErro(t) : null;
   if (t.situacaoFiscal === 'rascunho_criado') {
-    return <span className="marca marca-atacado">rascunho {t.tinyNotaId}</span>;
+    return (
+      <>
+        <span className="marca marca-atacado">rascunho {t.tinyNotaId}</span>
+        {abrirErro && <MarcaErro aoClicar={abrirErro} />}
+      </>
+    );
   }
-  if (t.situacaoFiscal === 'erro') return <span className="marca marca-erro">erro no Tiny</span>;
-  return <span className="marca marca-erro">NF pendente</span>;
+  if (t.situacaoFiscal === 'erro') return <MarcaErro aoClicar={abrirErro} />;
+  return (
+    <>
+      <span className="marca marca-erro">NF pendente</span>
+      {abrirErro && <MarcaErro aoClicar={abrirErro} />}
+    </>
+  );
 }
 
 function SeletorLoja({ id, rotulo, valor, locais, aoMudar, vazio }) {
@@ -462,7 +483,7 @@ export default function ControleTransferencias() {
                         </td>
                         <td>
                           <div className="pilha">
-                            <StatusFiscal t={t} />
+                            <StatusFiscal t={t} verErro={verErro} />
                             {t.tinyNotaId && (
                               <a
                                 className={`botao-pdf ${t.notaEmitida ? 'botao-pdf-destaque' : ''}`}
@@ -491,17 +512,6 @@ export default function ControleTransferencias() {
                         <td>
                           <div className="acoes-linha">
                             {enviando && <span className="fraco">Enviando…</span>}
-
-                            {t.erro && acao?.fase !== 'erro' && (
-                              <button
-                                className="pequeno secundario"
-                                onClick={() => verErro(t)}
-                                disabled={enviando}
-                                title="Mostra o último erro do Tiny nesta nota"
-                              >
-                                Ver erro
-                              </button>
-                            )}
 
                             {podeCriar && (
                               <>

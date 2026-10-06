@@ -134,6 +134,9 @@ tbody tr.linha-saindo { opacity: 0; background: var(--alerta-fundo); transition:
 .marca-franquia { border-color: var(--roxo); color: var(--roxo); background: rgba(181, 146, 246, 0.14); }
 .marca-erro { border-color: var(--alerta); color: var(--alerta); background: var(--alerta-fundo); }
 .marca-ok { border-color: var(--ok); color: var(--ok); background: var(--ok-fundo); }
+/* Marca que abre um detalhe (ex.: "erro no Tiny" abre o erro guardado). */
+button.marca { font-size: 0.78rem; padding: 0.15rem 0.6rem; border-radius: 999px; font-weight: 400; cursor: pointer; }
+button.marca:hover:not(:disabled) { filter: brightness(1.2); text-decoration: underline; }
 
 .aviso {
   border: 1px solid var(--alerta);
