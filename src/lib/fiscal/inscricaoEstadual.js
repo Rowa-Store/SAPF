@@ -1,59 +1,68 @@
-// inscricaoEstadual.js — acha a inscrição estadual (IE) do cliente dentro do
-// pedido do Shopify.
+// inscricaoEstadual.js — descobre a inscrição estadual (IE) do cliente de
+// atacado a partir do CNPJ do pedido.
 //
-// Diferente do CNPJ, a IE não tem campo nenhum no checkout: quem atende
-// escreve à mão na observação do pedido (`note`). Os formatos encontrados em
-// pedidos reais desta loja são todos variações de rótulo + número:
+// Ordem:
+//   1. tabela clientes_ie do Supabase (de graça);
+//   2. SintegrAPI, na UF do cliente (gasta crédito). A IE achada é gravada em
+//      clientes_ie, para o próximo pedido do mesmo cliente parar no passo 1.
 //
-//   "CNPJ:40.400.311/0001-62\nIE:54822700"
-//   "CNPJ: 54846201/0001-33\nIE: 201424274"
-//   "Inscrição Estadual (IE):205871801\nCNPJ:43.628.138/0001-42"
-//   "CNPJ:41.608.371/0001-38\n\nIE:\t225.376.567.113"
-//
-// Só lemos o que vem com rótulo. A mesma observação também é usada para
-// recados de separação e valor de frete ("Frete Sedex 31,27"), então pescar
-// "o primeiro número da nota" traria lixo para dentro da nota fiscal — na
-// dúvida devolvemos vazio e a pessoa preenche o campo na tela do rascunho.
+// Não achar a IE não derruba o preview: a nota sai com o campo vazio e um
+// alerta, e a pessoa preenche à mão na tela do rascunho.
 
+import { gravarIeDoCliente, ieDoCliente } from '../db.js';
+import { consultarInscricoesEstaduais } from '../integrations/sintegrapi.js';
 import { somenteDigitos } from '../utils.js';
 
-// O rótulo pode vir como "IE", "I.E.", "Inscrição/Inscricao Estadual" ou
-// "Inscrição Estadual (IE)" — neste último o casamento acontece no "IE" de
-// dentro dos parênteses, porque os parênteses não são separador válido.
-// Depois do rótulo aceitamos qualquer pontuação/espaço (":", "-", tab) até o
-// número, que pode vir com ponto, barra ou hífen. "ISENTO" é resposta válida
-// para quem não tem IE.
-const PADRAO_IE = /(?:inscri[cç][aã]o\s+estadual|\bi\.?\s?e\.?)[^0-9A-Za-z\n]*(\d[\d.\/-]*|isent[oa])/i;
-
-function lerIe(texto) {
-  const achado = String(texto ?? '').match(PADRAO_IE);
-  if (!achado) return '';
-
-  const valor = achado[1];
-  if (/^isent/i.test(valor)) return 'ISENTO';
-
-  // Mesma normalização do CNPJ e do CEP: o Tiny recebe só dígitos.
-  return somenteDigitos(valor);
-}
+const PREENCHA = 'Preencha o campo à mão antes de incluir o rascunho.';
 
 /**
- * @param {object} pedido pedido do Shopify
- * @returns {{ ie: string, origem: string|null }} ie vazia quando não achamos
+ * @param {{ cnpj: string, uf: string }} cliente UF do endereço da nota
+ * @returns {Promise<{ ie: string, origem: 'banco'|'sintegrapi'|null, alertas: string[] }>}
  */
-export function extrairIe(pedido) {
-  if (!pedido) return { ie: '', origem: null };
+export async function resolverIe({ cnpj, uf }) {
+  const alertas = [];
+  const doc = somenteDigitos(cnpj);
+  if (!doc) return { ie: '', origem: null, alertas };
 
-  // 1. customAttributes, caso algum dia o checkout passe a mandar a IE pronta.
-  for (const attr of pedido?.customAttributes ?? []) {
-    if (/^(ie|inscricao_estadual|inscrição_estadual|state_registration)$/i.test(attr.key ?? '')) {
-      const ie = lerIe(`IE:${attr.value ?? ''}`);
-      if (ie) return { ie, origem: `customAttributes.${attr.key}` };
-    }
+  // 1. Cache no Supabase. Se a consulta falhar, seguimos para o SintegrAPI.
+  const salvo = await ieDoCliente(doc);
+  if (salvo.ok && salvo.ie) return { ie: salvo.ie, origem: 'banco', alertas };
+  if (!salvo.ok) console.error(`[ie] Falha ao ler a IE do cliente ${doc} no Supabase:`, salvo.erro);
+
+  // 2. SintegrAPI — sem UF a consulta teria que ir em todas (26 créditos).
+  const ufCliente = String(uf ?? '').trim().toUpperCase();
+  if (!ufCliente) {
+    alertas.push(`Inscrição estadual (IE) não consultada: o pedido não tem UF. ${PREENCHA}`);
+    return { ie: '', origem: null, alertas };
   }
 
-  // 2. Observação do pedido — é onde a IE realmente está hoje.
-  const ie = lerIe(pedido?.note);
-  if (ie) return { ie, origem: 'note' };
+  let inscricoes;
+  try {
+    inscricoes = await consultarInscricoesEstaduais(doc, ufCliente);
+  } catch (erro) {
+    console.error(`[ie] Falha ao consultar a IE do cliente ${doc} no SintegrAPI:`, erro.message);
+    alertas.push(`Não foi possível consultar a inscrição estadual (IE) no SintegrAPI: ${erro.message.replace(/\.$/, '')}. ${PREENCHA}`);
+    return { ie: '', origem: null, alertas };
+  }
 
-  return { ie: '', origem: null };
+  const daUf = inscricoes.filter((i) => String(i.uf ?? '').toUpperCase() === ufCliente);
+  const escolhida = daUf.find((i) => i.ativa) ?? null;
+  const ie = somenteDigitos(escolhida?.inscricao_estadual);
+  if (!ie) {
+    alertas.push(
+      daUf.length
+        ? `O CNPJ tem inscrição estadual em ${ufCliente}, mas nenhuma ativa. ${PREENCHA}`
+        : `O SintegrAPI não encontrou inscrição estadual (IE) do CNPJ em ${ufCliente}. ${PREENCHA}`
+    );
+    return { ie: '', origem: null, alertas };
+  }
+
+  if (escolhida.situacao_pj && !/sem restri/i.test(escolhida.situacao_pj)) {
+    alertas.push(`Inscrição estadual ${ie} com restrição no Sintegra: "${escolhida.situacao_pj}". Confira antes de emitir.`);
+  }
+
+  const gravacao = await gravarIeDoCliente({ cnpj: doc, ie, uf: ufCliente, origem: 'sintegrapi' });
+  if (!gravacao.ok) console.error(`[ie] Falha ao gravar a IE do cliente ${doc} no Supabase:`, gravacao.erro);
+
+  return { ie, origem: 'sintegrapi', alertas };
 }

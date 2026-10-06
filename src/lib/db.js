@@ -554,3 +554,39 @@ export async function transportadoraDoCliente(cnpj) {
   if (error) return { ok: false, erro: error.message, transportadora: null };
   return { ok: true, transportadora: data?.transportadora ?? null };
 }
+
+// ---------------------------------------------------------------------------
+// Inscrição estadual dos clientes — cache da consulta ao SintegrAPI
+// (ver src/lib/fiscal/inscricaoEstadual.js).
+// ---------------------------------------------------------------------------
+
+/** IE gravada para este CNPJ, ou `ie: null` quando não há. */
+export async function ieDoCliente(cnpj) {
+  const db = obterCliente();
+  if (!db) return { ok: false, erro: SEM_CONFIG.erro, ie: null };
+
+  const chave = somenteDigitos(cnpj);
+  if (!chave) return { ok: true, ie: null };
+
+  const { data, error } = await db.from('clientes_ie').select('ie, uf').eq('cnpj', chave).maybeSingle();
+  if (error) return { ok: false, erro: error.message, ie: null };
+  return { ok: true, ie: data?.ie || null, uf: data?.uf ?? null };
+}
+
+/** Grava (ou atualiza) a IE do CNPJ. */
+export async function gravarIeDoCliente({ cnpj, ie, uf, origem }) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { error } = await db.from('clientes_ie').upsert(
+    {
+      cnpj: somenteDigitos(cnpj),
+      ie: somenteDigitos(ie),
+      uf: uf || null,
+      origem,
+      atualizado_em: new Date().toISOString(),
+    },
+    { onConflict: 'cnpj' }
+  );
+  return error ? { ok: false, erro: error.message } : { ok: true };
+}

@@ -8,7 +8,6 @@
 import { dataBr, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
 import { extrairCnpj } from './classificacao.js';
 import { CAMPO_DESCONTO_TINY, montarDesconto } from './desconto.js';
-import { extrairIe } from './inscricaoEstadual.js';
 import { markupPadrao, valorComMarkup } from './markup.js';
 import { montarPagamento } from './pagamento.js';
 import { TRANSPORTE_PADRAO, quantidadeDeVolumes } from './transporte.js';
@@ -122,16 +121,6 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
     alertas.push('CNPJ não localizado no pedido. A nota não pode ser criada sem ele.');
   }
 
-  // A IE só existe na observação escrita à mão (ver inscricaoEstadual.js), e a
-  // natureza da operação aqui é sempre "Venda para contribuinte" — sair sem IE
-  // é erro, então avisamos em vez de deixar o campo vazio passar batido.
-  const { ie } = extrairIe(pedidoShopify);
-  if (!ie) {
-    alertas.push(
-      'Inscrição estadual (IE) não localizada nas observações do pedido. Preencha o campo à mão antes de incluir o rascunho.'
-    );
-  }
-
   // Volumes é campo da nota, não do cadastro da transportadora — sem ele o
   // Tiny assume 1 e a etiqueta sai errada, então é melhor avisar do que deixar
   // passar batido.
@@ -227,7 +216,9 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
         nome: pedidoShopify.customer?.displayName ?? endereco.company ?? '',
         tipo_pessoa: 'J', 
         cpf_cnpj: cnpj,
-        ie,
+        // Preenchida depois pela rota do preview (ver inscricaoEstadual.js), que
+        // precisa da UF já resolvida aqui e consulta Supabase/SintegrAPI.
+        ie: '',
         endereco: logradouro,
         numero: numero,
         complemento: complemento,

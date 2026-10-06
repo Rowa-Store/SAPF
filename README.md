@@ -67,6 +67,7 @@ commitada no repositório.
 | `TINY_API_TOKEN` | Token em Configurações > Geral > Tokens no Tiny (conta da matriz — pedidos de atacado) |
 | `TINY_API_TOKEN_<LOJA>` | Token da conta do Tiny de cada loja, com o nome do local no Shopify no nome da variável (sem acento, maiúsculas, espaços e pontuação viram `_` — ex.: `TINY_API_TOKEN_ROWA_CENTRO_DE_DISTRIBUICAO_1`). Usado nas transferências — ver abaixo. Os CDs (Rowa Centro de Distribuição 1, 2 e [PRÉ-VENDA]) não têm variável própria: usam `TINY_API_TOKEN`. |
 | `TINY_API_BASE` | `https://api.tiny.com.br/api2` |
+| `SINTEGRAPI_API_KEY` | Chave do SintegrAPI (dashboard). Usada para buscar a IE do cliente de atacado pelo CNPJ quando ela ainda não está em `clientes_ie` — ver abaixo. |
 | `SUPABASE_URL` | Project Settings > API > Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings > API > `service_role`. Nunca exponha no navegador. |
 | `PERMITIR_EMISSAO` | Valor inicial da trava, só usado se a linha `permitir_emissao` ainda não existir no Supabase. Não mude sem alinhar com o time fiscal. |
@@ -79,11 +80,18 @@ serviço não está configurado ou fora do ar.
 ### Criando as tabelas no Supabase
 
 No painel do Supabase: **SQL Editor > New query**, cole o conteúdo de
-`supabase/schema.sql` e clique em **Run**. São sete tabelas:
+`supabase/schema.sql` e clique em **Run**. São oito tabelas:
 `notas_processadas`, `itens_pendentes`, `configuracoes`, `cnpjs_franquia`,
-`lojas_fiscais`, `transportadoras` e `clientes_transportadora`. Quem já tinha
-rodado o schema antes das transportadoras existirem roda só
-`supabase/transportadoras.sql`.
+`lojas_fiscais`, `transportadoras`, `clientes_transportadora` e `clientes_ie`.
+Quem já tinha rodado o schema antes das transportadoras existirem roda só
+`supabase/transportadoras.sql`; antes de `clientes_ie`, roda
+`supabase/clientes-ie.sql`.
+
+`clientes_ie` guarda a inscrição estadual (IE) de cada cliente de atacado pelo
+CNPJ. O preview do pedido procura a IE ali; se não acha, consulta o
+SintegrAPI na UF do cliente (gasta crédito), usa a IE na nota e grava na
+tabela, para o próximo pedido do mesmo cliente não consultar de novo. Uma IE
+errada na tabela é corrigida direto no SQL Editor.
 
 `cnpjs_franquia` não vem com dados — é cadastro sensível de cliente, então
 fica de fora do controle de versão de propósito. Cadastre direto no SQL
@@ -290,6 +298,7 @@ src/
     db.js                            Histórico, franquias e configurações no Supabase
     fiscal/
       classificacao.js               Atacado, franquia ou outro, a partir do CNPJ
+      inscricaoEstadual.js           IE do cliente: cache no Supabase, senão SintegrAPI
       camposCliente.js                Lista dos campos do cliente exibidos nas telas de rascunho
       montarNota.js                  Pedido do Shopify -> JSON do nota.fiscal.incluir
       montarNotaTransferencia.js     Transferência do Shopify -> JSON do nota.fiscal.incluir
@@ -298,13 +307,15 @@ src/
     integrations/
       shopify.js                     Admin GraphQL API — fonte real dos pedidos
       shopifyTransferencias.js       Transferências e locais
+      sintegrapi.js                  Consulta de IE pelo CNPJ no SintegrAPI
       tiny.js                        API 2.0 do Tiny, com as travas de segurança
 
 supabase/
-  schema.sql                         As sete tabelas: notas, pendências,
+  schema.sql                         As oito tabelas: notas, pendências,
                                       configurações, CNPJs de franquia, lojas,
-                                      transportadoras e clientes anexados
+                                      transportadoras, clientes anexados e IEs
   transportadoras.sql                Só as tabelas de transportadoras (migração)
+  clientes-ie.sql                    Só a tabela clientes_ie (migração)
 ```
 
 Novos fluxos fiscais (transferência entre lojas, devolução) entram como uma

@@ -5,6 +5,7 @@
 import { obterPedidoCompleto } from '@/lib/integrations/shopify';
 import { classificarPedido, extrairCnpj } from '@/lib/fiscal/classificacao';
 import { descontoDaNota, montarNotaAtacado, totalDaNota } from '@/lib/fiscal/montarNota';
+import { resolverIe } from '@/lib/fiscal/inscricaoEstadual';
 import { registrarPreview, jaProcessado, markupDaFranquia, transportadoraDoCliente } from '@/lib/db';
 import { lerMarkup } from '@/lib/fiscal/markup';
 import { transporteDaTransportadora } from '@/lib/fiscal/transporte';
@@ -123,6 +124,13 @@ export async function GET(request, { params }) {
       transporte,
     });
     alertas.push(...alertasNota);
+
+    // 4b. IE do cliente: cache no Supabase e, se não tiver, SintegrAPI (que
+    // grava no cache). Depois da nota porque a consulta usa a UF dela.
+    const clienteNota = payload.nota_fiscal.cliente;
+    const { ie, alertas: alertasIe } = await resolverIe({ cnpj, uf: clienteNota.uf });
+    clienteNota.ie = ie;
+    alertas.push(...alertasIe);
 
     // 5. Já existe rascunho para este pedido?
     const processado = await jaProcessado(paraGid(id));

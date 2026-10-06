@@ -180,3 +180,17 @@ create index if not exists idx_clientes_transportadora on clientes_transportador
 
 alter table transportadoras         enable row level security;
 alter table clientes_transportadora enable row level security;
+
+-- Cache da inscrição estadual (IE) dos clientes de atacado, por CNPJ. O
+-- preview procura aqui antes de consultar o SintegrAPI (que cobra por
+-- consulta) e grava o que a consulta trouxer. Ver supabase/clientes-ie.sql.
+create table if not exists clientes_ie (
+  cnpj text primary key,                 -- só dígitos
+  ie text not null,                      -- só dígitos
+  uf text,
+  origem text not null default 'manual', -- 'sintegrapi' ou 'manual'
+  criado_em timestamptz default now(),
+  atualizado_em timestamptz default now()
+);
+
+alter table clientes_ie enable row level security;
