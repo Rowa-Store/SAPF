@@ -261,10 +261,11 @@ export function useTransferencias() {
     );
   }
 
-  const podeEmitir = (t) => !t.notaEmitida && t.status !== 'CANCELED';
+  // Transferência travada (CD 1 <-> CD 2) não tem nota: fica fora de tudo.
+  const podeEmitir = (t) => !t.notaEmitida && t.status !== 'CANCELED' && !t.bloqueio;
   // Já emitidas também podem ser marcadas, para reemitir em lote — mas só uma a
   // uma: "emitir todas" e o "marcar a página" continuam ignorando as emitidas.
-  const podeSelecionar = (t) => t.status !== 'CANCELED';
+  const podeSelecionar = (t) => t.status !== 'CANCELED' && !t.bloqueio;
   const comRascunho = (transferencias ?? []).filter((t) => podeEmitir(t) && t.situacaoFiscal === 'rascunho_criado');
   const selecionadasEmitiveis = (transferencias ?? []).filter((t) => podeSelecionar(t) && selecionadas.has(t.id));
 

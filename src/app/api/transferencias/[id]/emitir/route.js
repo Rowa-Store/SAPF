@@ -46,7 +46,7 @@ export async function POST(request, { params }) {
 
   const tinyNotaId = situacao.tiny_nota_id;
 
-  const lida = await contaTinyDaTransferencia(id);
+  const lida = await contaTinyDaTransferencia(id, { paraGravar: true });
   if (!lida.ok) return falhou(gid, lida.erro, 422);
   const conta = lida.conta;
 

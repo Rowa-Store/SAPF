@@ -12,6 +12,7 @@
 
 import { listarLocais, listarTransferencias } from '@/lib/integrations/shopifyTransferencias';
 import { statusPorPedido } from '@/lib/db';
+import { bloqueioDaTransferencia } from '@/lib/fiscal/travaTransferencia';
 import { erroJson, idNumerico } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -90,6 +91,8 @@ export async function GET(request) {
           status: t.status,
           origem: t.origin?.name ?? '—',
           origemId: t.origin?.location?.id ?? null,
+          // Motivo de a transferência não poder ter nota (CD 1 <-> CD 2), ou null.
+          bloqueio: bloqueioDaTransferencia(t.origin?.name, t.destination?.name),
           destino: t.destination?.name ?? '—',
           destinoId: t.destination?.location?.id ?? null,
           quantidadeTotal: t.totalQuantity,

@@ -51,6 +51,13 @@ function BotaoPararLote({ lote, pararLote }) {
 }
 
 function StatusFiscal({ t, verErro }) {
+  if (t.bloqueio && !t.notaEmitida) {
+    return (
+      <span className="marca" title={t.bloqueio}>
+        sem nota (CD ↔ CD)
+      </span>
+    );
+  }
   if (t.notaEmitida) {
     return <span className="marca marca-ok">NF emitida{t.numeroNf ? ` nº ${t.numeroNf}` : ''}</span>;
   }
@@ -476,7 +483,8 @@ export default function ControleTransferencias() {
                   const acao = acoes[t.id];
                   const enviando = acao?.fase === 'enviando';
                   const temRascunho = t.situacaoFiscal === 'rascunho_criado';
-                  const podeCriar = !t.notaEmitida && !temRascunho && t.status !== 'CANCELED';
+                  const travada = !!t.bloqueio;
+                  const podeCriar = !t.notaEmitida && !temRascunho && t.status !== 'CANCELED' && !travada;
                   const expandida = estadoProdutos?.aberto || (acao && acao.fase !== 'enviando');
 
                   return (
@@ -559,7 +567,7 @@ export default function ControleTransferencias() {
                               </>
                             )}
 
-                            {t.notaEmitida && t.status !== 'CANCELED' && (
+                            {t.notaEmitida && t.status !== 'CANCELED' && !travada && (
                               <button
                                 className="pequeno secundario"
                                 onClick={() => definirAcao(t.id, { fase: 'confirmar-reemissao' })}
@@ -570,7 +578,7 @@ export default function ControleTransferencias() {
                               </button>
                             )}
 
-                            {temRascunho && !t.notaEmitida && (
+                            {temRascunho && !t.notaEmitida && !travada && (
                               <>
                                 <button
                                   className="pequeno"

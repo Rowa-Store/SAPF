@@ -54,7 +54,7 @@ query Transferencia($id: ID!, $cursor: String) {
 
 const QUERY_ORIGEM = `
 query OrigemTransferencia($id: ID!) {
-  inventoryTransfer(id: $id) { id name origin { name location { id } } }
+  inventoryTransfer(id: $id) { id name origin { name location { id } } destination { name location { id } } }
 }`;
 
 /** Teto de páginas por consulta — 4 x 250 = 1000 transferências. */
@@ -158,10 +158,15 @@ export async function obterTransferenciaCompleta(id) {
 
 /** Só a loja de origem da transferência — sem ler os itens. */
 export async function obterOrigemTransferencia(id) {
+  return (await obterLojasTransferencia(id)).origem;
+}
+
+/** Origem e destino da transferência — { origem, destino }, cada um { name, location } ou null. */
+export async function obterLojasTransferencia(id) {
   const gid = paraGidTransferencia(id);
   const dados = await shopifyGraphQL(QUERY_ORIGEM, { id: gid });
   if (!dados.inventoryTransfer) throw new Error(`Transferência ${gid} não encontrada no Shopify.`);
-  return dados.inventoryTransfer.origin ?? null;
+  return { origem: dados.inventoryTransfer.origin ?? null, destino: dados.inventoryTransfer.destination ?? null };
 }
 
 /** Ping usado pelo /api/saude. */

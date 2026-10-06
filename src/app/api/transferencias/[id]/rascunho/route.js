@@ -35,6 +35,7 @@ import {
   statusPorPedido,
 } from '@/lib/db';
 import { totalDaNota } from '@/lib/fiscal/montarNota';
+import { bloqueioDaTransferencia } from '@/lib/fiscal/travaTransferencia';
 import { erroJson, somenteDigitos } from '@/lib/utils';
 
 /** Aviso para anexar à mensagem quando o Tiny trocou a natureza pedida. */
@@ -142,7 +143,7 @@ export async function PUT(request, { params }) {
   const tinyNotaIdAnterior = atual.rascunho.tiny_nota_id;
   const orderName = atual.rascunho.shopify_order_name;
 
-  const lida = await contaTinyDaTransferencia(id);
+  const lida = await contaTinyDaTransferencia(id, { paraGravar: true });
   if (!lida.ok) return erroJson(lida.erro, 422);
   const conta = lida.conta;
 
@@ -244,6 +245,8 @@ export async function POST(request, { params }) {
   let transferencia, payload, conta, cnpjOrigem;
   try {
     transferencia = await obterTransferenciaCompleta(id);
+    const bloqueio = bloqueioDaTransferencia(transferencia.origin?.name, transferencia.destination?.name);
+    if (bloqueio) return erroJson(bloqueio, 422);
     const origemId = transferencia.origin?.location?.id ?? null;
     const destinoId = transferencia.destination?.location?.id ?? null;
     const cadastro = await lojasFiscaisPorLocal([origemId, destinoId]);

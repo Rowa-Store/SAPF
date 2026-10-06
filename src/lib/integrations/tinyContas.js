@@ -15,7 +15,8 @@
 // na conta da matriz — por isso as leituras (DANFE, situação) tentam a conta
 // da origem e, se o Tiny não achar a nota lá, a da matriz.
 
-import { obterOrigemTransferencia } from './shopifyTransferencias.js';
+import { obterLojasTransferencia } from './shopifyTransferencias.js';
+import { bloqueioDaTransferencia } from '../fiscal/travaTransferencia.js';
 import { variavelTokenDaLoja } from './tiny.js';
 
 /**
@@ -61,15 +62,24 @@ export function contaTinyDaLoja(nomeLoja) {
   return { ok: true, conta: { token, variavel, matriz, nome: nomeLoja } };
 }
 
-/** Conta do Tiny da loja de origem da transferência (lida no Shopify). */
-export async function contaTinyDaTransferencia(id) {
-  let origem;
+/**
+ * Conta do Tiny da loja de origem da transferência (lida no Shopify).
+ * Com `paraGravar`, recusa também a transferência travada (ver
+ * travaTransferencia.js) — leituras de nota já criada (DANFE, situação) não
+ * passam isso.
+ */
+export async function contaTinyDaTransferencia(id, { paraGravar = false } = {}) {
+  let lojas;
   try {
-    origem = await obterOrigemTransferencia(id);
+    lojas = await obterLojasTransferencia(id);
   } catch (erro) {
     return { ok: false, erro: `Não foi possível ler a loja de origem no Shopify: ${erro.message}` };
   }
-  return contaTinyDaLoja(origem?.name);
+  if (paraGravar) {
+    const bloqueio = bloqueioDaTransferencia(lojas.origem?.name, lojas.destino?.name);
+    if (bloqueio) return { ok: false, erro: bloqueio };
+  }
+  return contaTinyDaLoja(lojas.origem?.name);
 }
 
 /**
