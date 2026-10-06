@@ -47,7 +47,9 @@ async function lerJson(resposta, mensagemPadrao) {
  *
  * A emissão em lote (todas com rascunho, ou as selecionadas) roda uma
  * transferência por vez e reaproveita o estado de ação da linha: a que falha
- * mostra o erro nela mesma, e o lote segue para a próxima.
+ * mostra o erro nela mesma, e o lote segue para a próxima. O botão que
+ * começou o lote vira "Parar": a nota que está no Tiny termina (emissão não
+ * se desfaz pela metade) e as seguintes não são enviadas.
  */
 export function useTransferencias() {
   const [filtros, setFiltros] = useState(FILTROS_VAZIOS);
@@ -69,9 +71,13 @@ export function useTransferencias() {
   const [pagina, setPagina] = useState(1);
   // ids marcados para "Emitir selecionadas" — vale entre páginas.
   const [selecionadas, setSelecionadas] = useState(() => new Set());
-  // { feitas, total } enquanto um lote de emissão roda.
+  // { feitas, total, origem, parando } enquanto um lote de emissão roda.
+  // origem: 'todas' | 'selecionadas' — qual botão vira "Parar".
   const [lote, setLote] = useState(null);
-  // { lista, descricao, semRascunho, jaEmitidas } enquanto o lote espera confirmação.
+  // Lido pelo laço do lote antes de cada nota; ref para valer na hora, sem
+  // esperar o próximo render.
+  const pararLoteRef = useRef(false);
+  // { lista, descricao, origem, semRascunho, jaEmitidas } enquanto o lote espera confirmação.
   const [loteAConfirmar, setLoteAConfirmar] = useState(null);
 
   const carregar = useCallback(async (f, extra = '') => {
@@ -285,11 +291,12 @@ export function useTransferencias() {
   // A confirmação é um painel na própria tela, não window.confirm: o navegador
   // pode bloquear as caixas de diálogo da página, e aí o confirm devolve false
   // na hora — o botão parecia não fazer nada.
-  function pedirConfirmacaoDoLote(lista, descricao) {
+  function pedirConfirmacaoDoLote(lista, descricao, origem) {
     if (lista.length === 0 || lote) return;
     setLoteAConfirmar({
       lista,
       descricao,
+      origem,
       semRascunho: lista.filter((t) => !t.notaEmitida && t.situacaoFiscal !== 'rascunho_criado').length,
       jaEmitidas: lista.filter((t) => t.notaEmitida).length,
     });
@@ -302,30 +309,47 @@ export function useTransferencias() {
   // Uma confirmação só vale para o lote inteiro, inclusive para as reemissões.
   async function confirmarLote() {
     if (!loteAConfirmar || lote) return;
-    const { lista } = loteAConfirmar;
+    const { lista, origem } = loteAConfirmar;
     setLoteAConfirmar(null);
     setErro(null);
-    setLote({ feitas: 0, total: lista.length });
+    pararLoteRef.current = false;
+    setLote({ feitas: 0, total: lista.length, origem, parando: false });
     const falhas = [];
-    for (const [i, t] of lista.entries()) {
+    let feitas = 0;
+    for (const t of lista) {
+      if (pararLoteRef.current) break;
       if (await executarNaLinha(t, operacaoDeEmissao(t))) selecionarVarias([t.id], false);
       else falhas.push(t.name);
-      setLote({ feitas: i + 1, total: lista.length });
+      feitas += 1;
+      setLote((atual) => atual && { ...atual, feitas });
     }
     setLote(null);
-    const emitidas = lista.length - falhas.length;
+    const emitidas = feitas - falhas.length;
+    const naoEnviadas = lista.length - feitas;
     setAviso(
-      `${emitidas} nota(s) emitida(s).` +
+      (naoEnviadas ? `Emissão parada: ${naoEnviadas} nota(s) não foram enviadas. ` : '') +
+        `${emitidas} nota(s) emitida(s).` +
         (falhas.length ? ` Falharam ${falhas.length}: ${falhas.join(', ')} — veja o erro em cada linha.` : '')
     );
   }
 
   function emitirTodasComRascunho() {
-    return pedirConfirmacaoDoLote(comRascunho, 'transferências com rascunho da lista filtrada (todas as páginas)');
+    return pedirConfirmacaoDoLote(
+      comRascunho,
+      'transferências com rascunho da lista filtrada (todas as páginas)',
+      'todas'
+    );
+  }
+
+  /** Para o lote depois da nota que está no Tiny agora. */
+  function pararLote() {
+    if (!lote) return;
+    pararLoteRef.current = true;
+    setLote((atual) => atual && { ...atual, parando: true });
   }
 
   function emitirSelecionadas() {
-    return pedirConfirmacaoDoLote(selecionadasEmitiveis, 'transferências selecionadas');
+    return pedirConfirmacaoDoLote(selecionadasEmitiveis, 'transferências selecionadas', 'selecionadas');
   }
 
   const precisaConferir = (t) => !!t.tinyNotaId && (!t.notaEmitida || !t.numeroNf);
@@ -413,6 +437,7 @@ export function useTransferencias() {
     comRascunho,
     selecionadasEmitiveis,
     lote,
+    pararLote,
     loteAConfirmar,
     confirmarLote,
     cancelarLote,

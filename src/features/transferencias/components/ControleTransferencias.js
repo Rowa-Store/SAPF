@@ -36,6 +36,20 @@ function MarcaErro({ rotulo = 'erro no Tiny', aoClicar }) {
   );
 }
 
+/** No lugar do botão que começou o lote: vermelho, para a emissão. */
+function BotaoPararLote({ lote, pararLote }) {
+  return (
+    <button
+      className="botao-erro"
+      onClick={pararLote}
+      disabled={lote.parando}
+      title="A nota que está no Tiny agora termina; as seguintes não são enviadas"
+    >
+      {lote.parando ? 'Parando…' : `Parar emissão (${lote.feitas}/${lote.total})`}
+    </button>
+  );
+}
+
 function StatusFiscal({ t, verErro }) {
   if (t.notaEmitida) {
     return <span className="marca marca-ok">NF emitida{t.numeroNf ? ` nº ${t.numeroNf}` : ''}</span>;
@@ -194,6 +208,7 @@ export default function ControleTransferencias() {
     comRascunho,
     selecionadasEmitiveis,
     lote,
+    pararLote,
     loteAConfirmar,
     confirmarLote,
     cancelarLote,
@@ -375,24 +390,35 @@ export default function ControleTransferencias() {
               ) : (
                 'Marque as transferências para emitir em lote'
               )}
-              {lote && ` — emitindo ${lote.feitas}/${lote.total}… não feche a página.`}
+              {lote &&
+                (lote.parando
+                  ? ` — parando: termina a nota em andamento (${lote.feitas}/${lote.total})…`
+                  : ` — emitindo ${lote.feitas}/${lote.total}… não feche a página.`)}
             </span>
             <div className="grupo-botoes">
-              <button
-                className="secundario"
-                onClick={emitirTodasComRascunho}
-                disabled={carregando || !!lote || !!loteAConfirmar || comRascunho.length === 0}
-                title="Emite no Tiny todas as notas com rascunho da lista filtrada (todas as páginas)"
-              >
-                Emitir todas com rascunho ({comRascunho.length})
-              </button>
-              <button
-                onClick={emitirSelecionadas}
-                disabled={carregando || !!lote || !!loteAConfirmar || selecionadasEmitiveis.length === 0}
-                title="Cria o rascunho quando falta e emite as transferências marcadas — as já emitidas são reemitidas com um novo rascunho"
-              >
-                Emitir selecionadas ({selecionadasEmitiveis.length})
-              </button>
+              {lote?.origem === 'todas' ? (
+                <BotaoPararLote lote={lote} pararLote={pararLote} />
+              ) : (
+                <button
+                  className="secundario"
+                  onClick={emitirTodasComRascunho}
+                  disabled={carregando || !!lote || !!loteAConfirmar || comRascunho.length === 0}
+                  title="Emite no Tiny todas as notas com rascunho da lista filtrada (todas as páginas)"
+                >
+                  Emitir todas com rascunho ({comRascunho.length})
+                </button>
+              )}
+              {lote?.origem === 'selecionadas' ? (
+                <BotaoPararLote lote={lote} pararLote={pararLote} />
+              ) : (
+                <button
+                  onClick={emitirSelecionadas}
+                  disabled={carregando || !!lote || !!loteAConfirmar || selecionadasEmitiveis.length === 0}
+                  title="Cria o rascunho quando falta e emite as transferências marcadas — as já emitidas são reemitidas com um novo rascunho"
+                >
+                  Emitir selecionadas ({selecionadasEmitiveis.length})
+                </button>
+              )}
             </div>
           </div>
 
