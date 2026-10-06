@@ -99,6 +99,9 @@ export async function GET(request) {
           notaEmitida: situacao?.nota_emitida ?? false,
           numeroNf: situacao?.numero_nf ?? null,
           tinyNotasSubstituidas: situacao?.tiny_notas_substituidas ?? [],
+          // Último erro de rascunho/emissão, para o "Ver erro" da linha.
+          erro: situacao?.erro ?? null,
+          erroEm: situacao?.erro ? situacao.atualizado_em : null,
         };
       })
       .filter((t) => !excluir || (t.origemId !== excluir && t.destinoId !== excluir))

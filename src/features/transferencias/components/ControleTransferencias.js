@@ -8,7 +8,7 @@ import { Fragment, useEffect, useState } from 'react';
 import IconePdf from '@/components/ui/IconePdf';
 import Paginacao from '@/components/ui/Paginacao';
 import { hoje, mesDoIntervalo, somarMeses } from '@/lib/datas';
-import { formatarDataCurta, formatarMoeda } from '@/lib/format';
+import { formatarDataCurta, formatarDataHoraCurta, formatarMoeda } from '@/lib/format';
 import { useTransferencias } from '../hooks/useTransferencias';
 
 const STATUS_SHOPIFY = {
@@ -178,6 +178,7 @@ export default function ControleTransferencias() {
     cancelarLote,
     emitirTodasComRascunho,
     emitirSelecionadas,
+    verErro,
   } = useTransferencias();
 
   // Mês corrente de São Paulo — calculado depois de montar, para o HTML
@@ -491,6 +492,17 @@ export default function ControleTransferencias() {
                           <div className="acoes-linha">
                             {enviando && <span className="fraco">Enviando…</span>}
 
+                            {t.erro && acao?.fase !== 'erro' && (
+                              <button
+                                className="pequeno secundario"
+                                onClick={() => verErro(t)}
+                                disabled={enviando}
+                                title="Mostra o último erro do Tiny nesta nota"
+                              >
+                                Ver erro
+                              </button>
+                            )}
+
                             {podeCriar && (
                               <>
                                 <button
@@ -675,6 +687,7 @@ export default function ControleTransferencias() {
                             <div>
                               <strong>A operação na transferência {t.name} não foi concluída.</strong>
                               <p style={{ marginBottom: 0 }}>{acao.erro}</p>
+                              {acao.erroEm && <p className="fraco" style={{ marginBottom: 0 }}>Em {formatarDataHoraCurta(acao.erroEm)}</p>}
                             </div>
                             <button className="secundario pequeno" onClick={() => definirAcao(t.id, null)}>
                               Fechar

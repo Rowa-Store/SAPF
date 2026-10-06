@@ -30,6 +30,7 @@ import { obterPedidoCompleto } from '@/lib/integrations/shopify';
 import {
   obterRascunhoCriado,
   registrarRascunhoCriado,
+  anotarErro,
   registrarErro,
   salvarItensPendentes,
   statusPorPedido,
@@ -231,16 +232,17 @@ export async function POST(request, { params }) {
     });
   } catch (erro) {
     console.error(`[rascunho] Tiny recusou a inclusão do pedido ${gid}:`, erro);
-    // Com rascunho anterior, o erro NÃO vai para o registro: marcaria o
-    // pedido como "erro" e o rascunho que já existe deixaria de ser emitível.
+    // Com rascunho anterior, o status NÃO vira "erro": o rascunho que já
+    // existe deixaria de ser emitível. Só a mensagem fica guardada.
     if (anterior) {
-      return erroJson(
+      const mensagem =
         `O Tiny recusou o novo rascunho: ${erro.message}. O rascunho ${anterior.tiny_nota_id} continua ` +
-          'valendo. Se o Tiny acusou duplicidade, faça uma alteração mínima e envie de novo.',
-        502
-      );
+        'valendo. Se o Tiny acusou duplicidade, faça uma alteração mínima e envie de novo.';
+      await anotarErro(gid, mensagem);
+      return erroJson(mensagem, 502);
     }
-    await registrarErro({ orderId: gid, orderName, classificacao, payload, mensagem: erro.message });
-    return erroJson(`O Tiny recusou a inclusão da nota: ${erro.message}`, 502);
+    const mensagem = `O Tiny recusou a inclusão da nota: ${erro.message}`;
+    await registrarErro({ orderId: gid, orderName, classificacao, payload, mensagem });
+    return erroJson(mensagem, 502);
   }
 }

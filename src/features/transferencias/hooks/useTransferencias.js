@@ -174,6 +174,8 @@ export function useTransferencias() {
     atualizarLinha(t.id, {
       situacaoFiscal: 'rascunho_criado',
       tinyNotaId: corpo.tinyNotaId,
+      erro: null,
+      erroEm: null,
       ...(reemitir ? { notaEmitida: false, numeroNf: null } : {}),
       ...(corpo.tinyNotasSubstituidas ? { tinyNotasSubstituidas: corpo.tinyNotasSubstituidas } : {}),
     });
@@ -185,7 +187,7 @@ export function useTransferencias() {
       await fetch(`/api/transferencias/${t.id}/emitir`, { method: 'POST' }),
       'O Tiny recusou a emissão.'
     );
-    atualizarLinha(t.id, { notaEmitida: true, numeroNf: corpo.numeroNf ?? t.numeroNf });
+    atualizarLinha(t.id, { notaEmitida: true, numeroNf: corpo.numeroNf ?? t.numeroNf, erro: null, erroEm: null });
     return corpo;
   }
 
@@ -215,8 +217,15 @@ export function useTransferencias() {
       return true;
     } catch (e) {
       definirAcao(t.id, { fase: 'erro', erro: e.message });
+      // O servidor guarda o mesmo erro; aqui só deixa o "Ver erro" na linha sem recarregar.
+      atualizarLinha(t.id, { erro: e.message, erroEm: new Date().toISOString() });
       return false;
     }
+  }
+
+  /** Reabre o último erro de rascunho/emissão guardado para a linha. */
+  function verErro(t) {
+    definirAcao(t.id, { fase: 'erro', erro: t.erro, erroEm: t.erroEm });
   }
 
   function criarRascunho(t) {
@@ -367,6 +376,7 @@ export function useTransferencias() {
 
   return {
     pagina,
+    verErro,
     totalPaginas,
     mudarPagina,
     transferenciasDaPagina,

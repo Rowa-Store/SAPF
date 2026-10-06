@@ -15,6 +15,7 @@ import { conferirNatureza, emitirNota, obterNota, obterSituacaoNota } from '@/li
 import { contaTinyDaTransferencia } from '@/lib/integrations/tinyContas';
 import { paraGidTransferencia } from '@/lib/integrations/shopifyTransferencias';
 import {
+  anotarErro,
   atualizarNotaEmitida,
   obterRascunhoCriado,
   registrarNumeroNf,
@@ -24,6 +25,12 @@ import { erroJson } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+/** Recusa a emissão e guarda a mensagem para o "Ver erro" da linha. */
+async function falhou(gid, mensagem, status, extra) {
+  await anotarErro(gid, mensagem);
+  return erroJson(mensagem, status, extra);
+}
 
 export async function POST(request, { params }) {
   const { id } = await params;
@@ -40,14 +47,14 @@ export async function POST(request, { params }) {
   const tinyNotaId = situacao.tiny_nota_id;
 
   const lida = await contaTinyDaTransferencia(id);
-  if (!lida.ok) return erroJson(lida.erro, 422);
+  if (!lida.ok) return falhou(gid, lida.erro, 422);
   const conta = lida.conta;
 
   const rascunho = await obterRascunhoCriado(gid);
-  if (!rascunho.ok) return erroJson(`Não foi possível ler o rascunho no Supabase: ${rascunho.erro}`, 502);
+  if (!rascunho.ok) return falhou(gid, `Não foi possível ler o rascunho no Supabase: ${rascunho.erro}`, 502);
   const esperada = rascunho.rascunho?.payload_enviado?.nota_fiscal?.natureza_operacao;
   if (!esperada?.trim()) {
-    return erroJson('O rascunho registrado não tem natureza de operação — refaça o rascunho antes de emitir.', 422);
+    return falhou(gid, 'O rascunho registrado não tem natureza de operação — refaça o rascunho antes de emitir.', 422);
   }
   let natureza;
   try {
@@ -55,14 +62,16 @@ export async function POST(request, { params }) {
   } catch (erro) {
     // Não achar a nota aqui costuma ser rascunho criado em outra conta (a da
     // matriz, antes das contas por loja) — emitir por lá é o erro fiscal.
-    return erroJson(
+    return falhou(
+      gid,
       `Não foi possível ler a nota ${tinyNotaId} na conta do Tiny de "${conta.nome}": ${erro.message}. ` +
         'Se o rascunho foi criado pela matriz, use "Novo rascunho" para refazê-lo na conta da loja de origem.',
       502
     );
   }
   if (!natureza.ok) {
-    return erroJson(
+    return falhou(
+      gid,
       `Emissão recusada: a nota ${tinyNotaId} está no Tiny com a natureza ` +
         `"${natureza.naNota ?? '(não informada)'}", mas foi pedida "${esperada}". Confira ` +
         'o id e o nome da natureza em lojas_fiscais (naturezas_tiny da loja de origem) e use "Novo rascunho".',
@@ -74,7 +83,7 @@ export async function POST(request, { params }) {
   try {
     await emitirNota(tinyNotaId, conta);
   } catch (erro) {
-    return erroJson(erro.message, 502);
+    return falhou(gid, erro.message, 502);
   }
 
   const registro = await atualizarNotaEmitida(gid, true);

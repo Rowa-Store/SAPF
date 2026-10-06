@@ -122,6 +122,9 @@ export async function obterRascunhoCriado(orderId) {
   return { ok: true, rascunho: data };
 }
 
+// A resposta de erro do Tiny pode listar vários campos; 2000 cortava no meio.
+const TAMANHO_MAXIMO_ERRO = 10000;
+
 /** Guarda o erro para o pedido aparecer na lista como "erro". */
 export async function registrarErro({ orderId, orderName, classificacao, payload, mensagem }) {
   const db = obterCliente();
@@ -134,12 +137,29 @@ export async function registrarErro({ orderId, orderName, classificacao, payload
       classificacao: classificacao ?? 'outro',
       status: 'erro',
       payload_enviado: payload ?? null,
-      erro: String(mensagem ?? '').slice(0, 2000),
+      erro: String(mensagem ?? '').slice(0, TAMANHO_MAXIMO_ERRO),
       atualizado_em: new Date().toISOString(),
     },
     { onConflict: 'shopify_order_id' }
   );
 
+  return error ? { ok: false, erro: error.message } : { ok: true };
+}
+
+/**
+ * Guarda o erro de uma operação que falhou sem mudar o status — ex.: a
+ * emissão de um rascunho que continua emitível. É o que o botão "Ver erro" da
+ * linha mostra depois. Não cria registro: sem linha no Supabase, não grava.
+ */
+export async function anotarErro(orderId, mensagem) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { error } = await db
+    .from('notas_processadas')
+    .update({ erro: String(mensagem ?? '').slice(0, TAMANHO_MAXIMO_ERRO), atualizado_em: new Date().toISOString() })
+    .eq('shopify_order_id', orderId);
+  if (error) console.error(`[db] Falha ao guardar o erro de ${orderId}:`, error.message);
   return error ? { ok: false, erro: error.message } : { ok: true };
 }
 
@@ -174,7 +194,8 @@ export async function atualizarNotaEmitida(orderId, emitida) {
 
   const { error } = await db
     .from('notas_processadas')
-    .update({ nota_emitida: emitida, atualizado_em: new Date().toISOString() })
+    // Emitiu: o erro de uma tentativa anterior não vale mais.
+    .update({ nota_emitida: emitida, ...(emitida ? { erro: null } : {}), atualizado_em: new Date().toISOString() })
     .eq('shopify_order_id', orderId);
 
   return error ? { ok: false, erro: error.message } : { ok: true };
@@ -218,7 +239,7 @@ export async function statusPorPedido(orderIds) {
     lotes.map((ids) =>
       db
         .from('notas_processadas')
-        .select('shopify_order_id, status, tiny_nota_id, nota_emitida, numero_nf, tiny_notas_substituidas')
+        .select('shopify_order_id, status, tiny_nota_id, nota_emitida, numero_nf, tiny_notas_substituidas, erro, atualizado_em')
         .in('shopify_order_id', ids)
     )
   );

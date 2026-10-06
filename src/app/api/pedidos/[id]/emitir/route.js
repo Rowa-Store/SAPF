@@ -7,6 +7,7 @@
 
 import { emitirNota, garantirContribuinteIcms, obterSituacaoNota } from '@/lib/integrations/tiny';
 import {
+  anotarErro,
   obterRascunhoCriado,
   atualizarNotaEmitida,
   registrarNumeroNf,
@@ -16,6 +17,12 @@ import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+/** Recusa a emissão e guarda a mensagem para o "Ver erro" da linha. */
+async function falhou(gid, mensagem, status) {
+  await anotarErro(gid, mensagem);
+  return erroJson(mensagem, status);
+}
 
 export async function POST(request, { params }) {
   const { id } = await params;
@@ -37,7 +44,8 @@ export async function POST(request, { params }) {
   const rascunho = await obterRascunhoCriado(gid);
   const cliente = rascunho.rascunho?.payload_enviado?.nota_fiscal?.cliente;
   if (!cliente?.cpf_cnpj) {
-    return erroJson(
+    return falhou(
+      gid,
       'Não foi possível ler o cliente do rascunho para conferir o Contribuinte ICMS' +
         `${rascunho.erro ? `: ${rascunho.erro}` : ''}. A nota não foi emitida.`,
       502
@@ -45,7 +53,8 @@ export async function POST(request, { params }) {
   }
   const contribuinte = await garantirContribuinteIcms(cliente.cpf_cnpj, { clienteNota: cliente });
   if (!contribuinte.ok) {
-    return erroJson(
+    return falhou(
+      gid,
       `${contribuinte.mensagem} A nota não foi emitida — marque o cliente como Contribuinte ICMS no Tiny e tente de novo.`,
       502
     );
@@ -54,7 +63,7 @@ export async function POST(request, { params }) {
   try {
     await emitirNota(tinyNotaId);
   } catch (erro) {
-    return erroJson(erro.message, 502);
+    return falhou(gid, erro.message, 502);
   }
 
   const registro = await atualizarNotaEmitida(gid, true);

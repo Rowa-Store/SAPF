@@ -29,6 +29,7 @@ import { montarNotaTransferencia } from '@/lib/fiscal/montarNotaTransferencia';
 import {
   lojasFiscaisPorLocal,
   obterRascunhoCriado,
+  anotarErro,
   registrarErro,
   registrarRascunhoCriado,
   statusPorPedido,
@@ -182,7 +183,10 @@ export async function PUT(request, { params }) {
     });
   } catch (erro) {
     console.error(`[transferencia] Tiny recusou a recriação da transferência ${gid} (substituindo ${tinyNotaIdAnterior}):`, erro);
-    return erroJson(`O Tiny recusou a inclusão da nota corrigida: ${erro.message}`, 502);
+    const mensagem = `O Tiny recusou a inclusão da nota corrigida: ${erro.message}`;
+    // O rascunho anterior continua valendo: só a mensagem fica guardada.
+    await anotarErro(gid, mensagem);
+    return erroJson(mensagem, 502);
   }
 }
 
@@ -323,13 +327,14 @@ export async function POST(request, { params }) {
     });
   } catch (erro) {
     console.error(`[transferencia] Tiny recusou a inclusão da transferência ${gid}:`, erro);
+    const mensagem = `O Tiny recusou a inclusão da nota: ${erro.message}`;
     await registrarErro({
       orderId: gid,
       orderName: transferencia.name,
       classificacao: CLASSIFICACAO,
       payload,
-      mensagem: erro.message,
+      mensagem,
     });
-    return erroJson(`O Tiny recusou a inclusão da nota: ${erro.message}`, 502);
+    return erroJson(mensagem, 502);
   }
 }

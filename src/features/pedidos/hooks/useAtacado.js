@@ -184,7 +184,7 @@ export function useAtacado() {
       }),
       'O Tiny recusou a inclusão.'
     );
-    atualizarLinha(p.id, { status: 'rascunho_criado', tinyNotaId: corpo.tinyNotaId });
+    atualizarLinha(p.id, { status: 'rascunho_criado', tinyNotaId: corpo.tinyNotaId, erro: null, erroEm: null });
     return corpo;
   }
 
@@ -193,7 +193,7 @@ export function useAtacado() {
       await fetch(`/api/pedidos/${p.id}/emitir`, { method: 'POST' }),
       'O Tiny recusou a emissão.'
     );
-    atualizarLinha(p.id, { notaEmitida: true, numeroNf: corpo.numeroNf ?? p.numeroNf });
+    atualizarLinha(p.id, { notaEmitida: true, numeroNf: corpo.numeroNf ?? p.numeroNf, erro: null, erroEm: null });
     return corpo;
   }
 
@@ -205,7 +205,14 @@ export function useAtacado() {
       aoConcluir?.(corpo);
     } catch (e) {
       definirAcao(p.id, { fase: 'erro', erro: e.message });
+      // O servidor guarda o mesmo erro; aqui só deixa o "Ver erro" na linha sem recarregar.
+      atualizarLinha(p.id, { erro: e.message, erroEm: new Date().toISOString() });
     }
+  }
+
+  /** Reabre o último erro de rascunho/emissão guardado para a linha. */
+  function verErro(p) {
+    definirAcao(p.id, { fase: 'erro', erro: p.erro, erroEm: p.erroEm });
   }
 
   function criarRascunho(p) {
@@ -278,6 +285,7 @@ export function useAtacado() {
 
   return {
     pedidos,
+    verErro,
     erro,
     aviso,
     setAviso,

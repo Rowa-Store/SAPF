@@ -8,7 +8,7 @@ import { Fragment } from 'react';
 import AbasAtacado from '@/components/ui/AbasAtacado';
 import IconePdf from '@/components/ui/IconePdf';
 import { formatarDia } from '@/lib/datas';
-import { formatarDataCurta, formatarMoeda, formatarMoedaOuTraco } from '@/lib/format';
+import { formatarDataCurta, formatarDataHoraCurta, formatarMoeda, formatarMoedaOuTraco } from '@/lib/format';
 import { useAtacado } from '../hooks/useAtacado';
 
 const COLUNAS = 6;
@@ -100,6 +100,7 @@ export default function ControleAtacado() {
     criarRascunho,
     criarEEmitir,
     emitir,
+    verErro,
   } = useAtacado();
 
   // Sem busca, a lista é de um dia só (abre em hoje): os botões andam um dia
@@ -289,6 +290,17 @@ export default function ControleAtacado() {
                           <div className="acoes-linha">
                             {enviando && <span className="fraco">Enviando…</span>}
 
+                            {p.erro && acao?.fase !== 'erro' && (
+                              <button
+                                className="pequeno secundario"
+                                onClick={() => verErro(p)}
+                                disabled={enviando}
+                                title="Mostra o último erro do Tiny nesta nota"
+                              >
+                                Ver erro
+                              </button>
+                            )}
+
                             {podeCriar && (
                               <>
                                 <button
@@ -406,6 +418,7 @@ export default function ControleAtacado() {
                             <div>
                               <strong>A operação no pedido {p.name} não foi concluída.</strong>
                               <p style={{ marginBottom: 0 }}>{acao.erro}</p>
+                              {acao.erroEm && <p className="fraco" style={{ marginBottom: 0 }}>Em {formatarDataHoraCurta(acao.erroEm)}</p>}
                             </div>
                             <button className="secundario pequeno" onClick={() => definirAcao(p.id, null)}>
                               Fechar
