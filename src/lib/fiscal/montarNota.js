@@ -139,7 +139,7 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
     const precoVarejo = Number(linha.originalUnitPriceSet?.shopMoney?.amount ?? 0);
     precosVarejo.push(precoVarejo);
     const valorUnitario = valorComMarkup(precoVarejo, markup);
-    const gtin = "";
+    const gtin = "sem gtin
 
     return {
       item: {
