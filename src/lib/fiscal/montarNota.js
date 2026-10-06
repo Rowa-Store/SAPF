@@ -139,6 +139,7 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
     const precoVarejo = Number(linha.originalUnitPriceSet?.shopMoney?.amount ?? 0);
     precosVarejo.push(precoVarejo);
     const valorUnitario = valorComMarkup(precoVarejo, markup);
+    const gtin = "";
 
     return {
       item: {
@@ -150,8 +151,8 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
         tipo: 'P',
         // Teste: vazio no lugar de 'SEM GTIN', para ver se o Tiny emite sem
         // precisar do script do /gtin. Se não emitir, voltar para 'SEM GTIN'.
-        gtin_ean: '',
-        gtin_ean_embalagem: '',
+        gtin_ean:gtin,
+        gtin_ean_embalagem: gtin,
       },
     };
   });
