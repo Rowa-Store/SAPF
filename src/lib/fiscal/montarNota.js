@@ -140,6 +140,7 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
     precosVarejo.push(precoVarejo);
     const valorUnitario = valorComMarkup(precoVarejo, markup);
     const gtin = "sem gtin";
+    const sem = "SEM GTIN";
     return {
       item: {
         codigo: linha.sku ?? '',
