@@ -1,13 +1,15 @@
 'use client';
 
-// Abas da área de atacado: as notas (/pedidos) e o cadastro de
-// transportadoras. Fica no topo das duas telas, no lugar do título.
+// Abas da área de atacado: as notas (/pedidos) e os cadastros de
+// transportadoras e de clientes franqueados. Fica no topo das telas, no
+// lugar do título.
 
 import { usePathname } from 'next/navigation';
 
 const ABAS = [
   { href: '/pedidos', rotulo: 'Notas de atacado' },
   { href: '/pedidos/transportadoras', rotulo: 'Transportadoras' },
+  { href: '/pedidos/clientes', rotulo: 'Clientes franqueados' },
 ];
 
 export default function AbasAtacado() {

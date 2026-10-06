@@ -57,8 +57,8 @@ create index if not exists idx_pendentes_sku on itens_pendentes (sku);
 -- Este repositório é público (ou vai ser) — por isso a carga de dados reais
 -- NÃO fica aqui. Cadastre os CNPJs direto no SQL Editor do Supabase, fora do
 -- controle de versão, algo como:
---   insert into cnpjs_franquia (cnpj, apelido) values ('00000000000000', 'Nome da franquia');
-create table if not exists cnpjs_franquia (
+--   insert into client_exce (cnpj, apelido) values ('00000000000000', 'Nome da franquia');
+create table if not exists client_exce (
   cnpj text primary key,           -- só dígitos, sem máscara
   apelido text,                    -- nome da franquia, só para referência humana
   ativo boolean not null default true,
@@ -70,13 +70,13 @@ create table if not exists cnpjs_franquia (
 alter table notas_processadas enable row level security;
 alter table itens_pendentes  enable row level security;
 alter table configuracoes    enable row level security;
-alter table cnpjs_franquia   enable row level security;
+alter table client_exce   enable row level security;
 
 -- Markup de cada franquia (ver src/lib/fiscal/markup.js): o valor do item na
 -- nota é o preço do Shopify ÷ markup. Vazio = markup padrão de franquia (2,2).
 -- Os limites são os mesmos da tela do rascunho (MARKUP_MINIMO/MARKUP_MAXIMO).
---   update cnpjs_franquia set markup = 2.6 where cnpj = '00000000000000';
-alter table cnpjs_franquia add column if not exists markup numeric(6,4)
+--   update client_exce set markup = 2.6 where cnpj = '00000000000000';
+alter table client_exce add column if not exists markup numeric(6,4)
   check (markup is null or (markup >= 1 and markup <= 10));
 
 -- ---------------------------------------------------------------------------
@@ -94,7 +94,7 @@ alter table notas_processadas add column if not exists numero_nf text;
 
 -- Dados fiscais de cada loja (local do Shopify). O Shopify não guarda CNPJ nem
 -- IE de local, e o endereço dele não tem bairro — sem esta tabela a nota de
--- transferência não tem destinatário válido. Assim como cnpjs_franquia, a
+-- transferência não tem destinatário válido. Assim como client_exce, a
 -- carga real NÃO fica no repositório. Cadastre pelo SQL Editor:
 --   insert into lojas_fiscais (shopify_location_id, razao_social, cnpj, ie, logradouro, numero, bairro, cidade, uf, cep)
 --   values ('gid://shopify/Location/123', 'RAZAO SOCIAL LTDA', '00000000000000', '000000000', 'Av. X', '100', 'Centro', 'Belo Horizonte', 'MG', '30000000');

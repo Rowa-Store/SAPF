@@ -6,7 +6,7 @@ import { pareceCnpj, somenteDigitos } from '../utils.js';
 import { listarCnpjsFranquia } from '../db.js';
 
 // Não existe mais lista fixa de CNPJs no código — a fonte de verdade é a
-// tabela cnpjs_franquia no Supabase (ver supabase/schema.sql e
+// tabela client_exce no Supabase (ver supabase/schema.sql e
 // listarCnpjsFranquia em src/lib/db.js). Se a consulta falhar, tratamos como
 // "nenhum franqueado conhecido" (ver classificarPedido) em vez de arriscar
 // classificar errado.
@@ -80,7 +80,7 @@ export function classificarComListaFranquia(pedido, cnpjsFranquia) {
 export async function classificarPedido(pedido) {
   const { ok, cnpjs, erro } = await listarCnpjsFranquia();
   if (!ok) {
-    console.error('[classificacao] Falha ao buscar cnpjs_franquia no Supabase, classificando sem a lista de franquia:', erro);
+    console.error('[classificacao] Falha ao buscar client_exce no Supabase, classificando sem a lista de franquia:', erro);
   }
   return classificarComListaFranquia(pedido, ok ? cnpjs : []);
 }

@@ -255,6 +255,10 @@ export async function pedidosPorNfOuCnpj({ numerosNf = [], cnpjs = [] }) {
   return [...new Set((data ?? []).map((r) => r.shopify_order_name).filter(Boolean))];
 }
 
+// Cadastro dos clientes franqueados (tela /pedidos/clientes). Era
+// cnpjs_franquia — ver supabase/client-exce.sql.
+const TABELA_FRANQUIAS = 'client_exce';
+
 /** CNPJs (só dígitos) dos clientes franqueados, para a classificação decidir
  *  atacado x franquia. `ok: false` quando o Supabase não está configurado ou
  *  a consulta falha — quem chama decide o que fazer (ver classificacao.js). */
@@ -262,7 +266,7 @@ export async function listarCnpjsFranquia() {
   const db = obterCliente();
   if (!db) return { ok: false, erro: SEM_CONFIG.erro, cnpjs: [] };
 
-  const { data, error } = await db.from('cnpjs_franquia').select('cnpj').eq('ativo', true);
+  const { data, error } = await db.from(TABELA_FRANQUIAS).select('cnpj').eq('ativo', true);
 
   if (error) return { ok: false, erro: error.message, cnpjs: [] };
   // O cadastro no Supabase deveria ser só dígitos (ver schema.sql), mas quem
@@ -273,7 +277,7 @@ export async function listarCnpjsFranquia() {
 }
 
 /** Markup cadastrado para a franquia deste CNPJ (coluna `markup` de
- *  cnpjs_franquia). `markup: null` quando a franquia não tem markup próprio,
+ *  client_exce). `markup: null` quando a franquia não tem markup próprio,
  *  não está cadastrada ou a consulta falha — quem chama usa o padrão. */
 export async function markupDaFranquia(cnpj) {
   const db = obterCliente();
@@ -281,12 +285,44 @@ export async function markupDaFranquia(cnpj) {
 
   // Mesmo motivo de listarCnpjsFranquia: o cadastro pode ter vindo com
   // máscara, então a comparação é feita em dígitos, do lado de cá.
-  const { data, error } = await db.from('cnpjs_franquia').select('cnpj, markup').eq('ativo', true);
+  const { data, error } = await db.from(TABELA_FRANQUIAS).select('cnpj, markup').eq('ativo', true);
   if (error) return { ok: false, erro: error.message, markup: null };
 
   const linha = (data ?? []).find((r) => somenteDigitos(r.cnpj) === somenteDigitos(cnpj));
   const markup = linha?.markup == null ? null : Number(linha.markup);
   return { ok: true, markup: Number.isFinite(markup) ? markup : null };
+}
+
+/** Todos os clientes franqueados, ativos ou não, por nome. */
+export async function listarFranquias() {
+  const db = obterCliente();
+  if (!db) return { ok: false, erro: SEM_CONFIG.erro, franquias: [] };
+
+  const { data, error } = await db
+    .from(TABELA_FRANQUIAS)
+    .select('cnpj, apelido, markup, ativo, criado_em')
+    .order('apelido', { ascending: true, nullsFirst: false });
+  if (error) return { ok: false, erro: error.message, franquias: [] };
+  return { ok: true, franquias: data ?? [] };
+}
+
+/** Inclui o cliente na lista de franquias. Quem valida o conteúdo é a rota. */
+export async function criarFranquia({ cnpj, apelido, markup, ativo }) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { data, error } = await db
+    .from(TABELA_FRANQUIAS)
+    .insert({
+      cnpj: somenteDigitos(cnpj),
+      apelido: String(apelido ?? '').trim() || null,
+      markup: markup ?? null,
+      ativo: ativo !== false,
+    })
+    .select('cnpj, apelido, markup, ativo, criado_em')
+    .single();
+  if (error) return { ok: false, erro: error.code === '23505' ? 'Este CNPJ já está cadastrado como franquia.' : error.message };
+  return { ok: true, franquia: data };
 }
 
 /** Ping usado pelo /api/saude. */
