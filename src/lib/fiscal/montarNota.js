@@ -150,8 +150,8 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
         tipo: 'P',
         // Teste: vazio no lugar de 'SEM GTIN', para ver se o Tiny emite sem
         // precisar do script do /gtin. Se não emitir, voltar para 'SEM GTIN'.
-        gtin_ean:gtin,
-        gtin_ean_embalagem: gtin,
+        gtin_ean:'gtin',
+        gtin_ean_embalagem: 'gtin',
       },
     };
   });
