@@ -367,6 +367,10 @@ async function incluirContatoContribuinte(cliente) {
  * `clienteNota` (o `cliente` do payload) — senão a nota criaria o contato
  * sem contribuinte.
  *
+ * Contribuinte ICMS exige IE na NFe (indIEDest=1). Então, se o cadastro
+ * existente está com a IE vazia e a nota trouxe uma, ela é gravada junto.
+ * IE já preenchida no cadastro nunca é sobrescrita.
+ *
  * Nunca lança: devolve o que aconteceu; quem chama decide se a falha
  * bloqueia (a emissão bloqueia, a criação do rascunho só avisa).
  *
@@ -414,8 +418,13 @@ export async function garantirContribuinteIcms(cnpj, { clienteNota } = {}) {
     // contatos.pesquisa não devolve `contribuinte`; só o cadastro completo tem.
     const cadastro = await chamarTiny('contato.obter.php', { id: String(contato.id) });
     const atual = String(cadastro.contato?.contribuinte ?? '0');
+    const jaContribuinte = atual === CONTRIBUINTE_ICMS;
 
-    if (atual === CONTRIBUINTE_ICMS) {
+    // Vazio de verdade: "ISENTO" ou qualquer outro texto conta como preenchido.
+    const ieNota = somenteDigitos(clienteNota?.ie);
+    const preencherIe = !String(cadastro.contato?.ie ?? '').trim() && ieNota !== '';
+
+    if (jaContribuinte && !preencherIe) {
       return {
         ok: true,
         alterado: false,
@@ -425,7 +434,7 @@ export async function garantirContribuinteIcms(cnpj, { clienteNota } = {}) {
 
     // `sequencia`, `nome` e `situacao` são obrigatórios mesmo numa alteração
     // parcial — devolvemos os valores que já estão lá para não mexer em nada
-    // além de `contribuinte`.
+    // além de `contribuinte` (e da IE, quando estava vazia).
     await chamarTiny('contato.alterar.php', {
       contato: JSON.stringify({
         contatos: [
@@ -436,18 +445,22 @@ export async function garantirContribuinteIcms(cnpj, { clienteNota } = {}) {
               nome: cadastro.contato?.nome ?? contato.nome,
               situacao: cadastro.contato?.situacao ?? 'A',
               contribuinte: CONTRIBUINTE_ICMS,
+              ...(preencherIe ? { ie: ieNota } : {}),
             },
           },
         ],
       }),
     });
 
+    const feito = jaContribuinte
+      ? `já estava como Contribuinte ICMS`
+      : `marcado como Contribuinte ICMS — antes estava como ${rotuloContribuinte(atual)}`;
+    const avisoIe = preencherIe ? ` IE ${ieNota} preenchida no cadastro, que estava sem IE.` : '';
+
     return {
       ok: true,
       alterado: true,
-      mensagem:
-        `Cadastro de "${contato.nome}" (contato ${contato.id}) marcado como Contribuinte ICMS ` +
-        `— antes estava como ${rotuloContribuinte(atual)}.${duplicados}`,
+      mensagem: `Cadastro de "${contato.nome}" (contato ${contato.id}) ${feito}.${avisoIe}${duplicados}`,
     };
   } catch (erro) {
     return {
