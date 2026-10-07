@@ -20,6 +20,7 @@ import {
 } from '@/lib/fiscal/markup';
 import { CATEGORIA_PADRAO, rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
 import { formatarMoeda } from '@/lib/format';
+import { resumoDoTransporte } from '@/lib/fiscal/transporte';
 import { useIncluirRascunho } from '../hooks/useIncluirRascunho';
 
 // Duração da transição de saída da linha (ver .linha-saindo em globals.css) —
@@ -458,16 +459,9 @@ export default function IncluirRascunho({ params }) {
           Categoria: preencher como &quot;{CATEGORIA_PADRAO}&quot; dentro do Tiny — a API não aceita
           esse campo.
         </div>
-        {/* Lido do payload: os Correios por padrão, ou a transportadora
-            anexada ao CNPJ do cliente (/pedidos/transportadoras). */}
-        <div>
-          Transportadora: {dados.payload?.nota_fiscal?.transportador?.nome ?? '—'}
-          {dados.transportadora ? (
-            <span className="fraco"> (anexada ao cliente)</span>
-          ) : (
-            <span className="fraco"> (padrão)</span>
-          )}
-        </div>
+        {/* O metafield `transportadora` do pedido manda; em branco, a
+            transportadora anexada ao CNPJ do cliente ou os Correios. */}
+        <div>Transportadora: {resumoDoTransporte(dados)}</div>
         <div>Forma de frete: {dados.payload?.nota_fiscal?.forma_frete ?? 'não informada'}</div>
         {/* O que vai na nota é o número já lido do payload, não o texto cru do
             metafield — se o Shopify não mandou nada, a nota vai com 1 volume e
@@ -480,7 +474,8 @@ export default function IncluirRascunho({ params }) {
           <button
             style={{ marginTop: '1.5rem' }}
             onClick={() => setPedindoConfirmacao(true)}
-            disabled={!podeIncluir || pedindoConfirmacao}
+            disabled={!podeIncluir || pedindoConfirmacao || !!dados.transporteBloqueado}
+            title={dados.transporteBloqueado ?? undefined}
           >
             {dados.jaProcessado ? 'Enviar novo rascunho ao Tiny' : 'Incluir rascunho no Tiny'}
           </button>

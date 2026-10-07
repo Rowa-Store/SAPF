@@ -63,6 +63,13 @@ export function useTransportadoras() {
     carregar();
   }, [carregar]);
 
+  // ?nova=<nome>: veio do aviso "transporte não cadastrado" da lista do
+  // atacado — abre o cadastro já com o nome digitado no Shopify.
+  useEffect(() => {
+    const nome = new URLSearchParams(window.location.search).get('nova');
+    if (nome) setFormulario({ dados: { ...TRANSPORTADORA_VAZIA, nome }, salvando: false, erro: null });
+  }, []);
+
   /** Ajusta a contagem da linha sem recarregar a lista inteira. */
   function somarClientes(id, delta) {
     setTransportadoras((atual) =>

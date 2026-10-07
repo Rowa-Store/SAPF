@@ -98,6 +98,7 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
       currentTotalPriceSet { shopMoney { amount } }
       note
       customAttributes { key value }
+      transportadora: metafield(namespace: "custom", key: "transportadora") { value }
       customer {
         id displayName email
         metafields(first: 20) { nodes { namespace key value } }
@@ -157,6 +158,12 @@ export async function listarPedidosRecentes({ limite = 50, cursor = null, termos
       cliente: pedido.customer?.displayName ?? 'Sem cliente',
       total: Number(pedido.currentTotalPriceSet?.shopMoney?.amount ?? 0),
       tags: pedido.tags ?? [],
+      // Metafield custom.transportadora (ou o atributo do pedido com essa
+      // chave, como no preview) — a lista avisa quando não está no cadastro.
+      transporteInformado:
+        pedido.transportadora?.value ??
+        (pedido.customAttributes ?? []).find((a) => a.key?.toLowerCase() === 'transportadora')?.value ??
+        '',
       // O pedido inteiro vai junto para a classificação rodar sem uma segunda
       // consulta.
       _bruto: pedido,

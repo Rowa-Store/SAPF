@@ -9,6 +9,7 @@ import AbasAtacado from '@/components/ui/AbasAtacado';
 import IconePdf from '@/components/ui/IconePdf';
 import { formatarDia } from '@/lib/datas';
 import { formatarDataCurta, formatarDataHoraCurta, formatarMoeda, formatarMoedaOuTraco } from '@/lib/format';
+import { resumoDoTransporte } from '@/lib/fiscal/transporte';
 import { useAtacado } from '../hooks/useAtacado';
 
 const COLUNAS = 6;
@@ -45,6 +46,29 @@ function StatusFiscal({ p, verErro }) {
   );
 }
 
+const ROTULO_TRANSPORTE = {
+  nao_cadastrada: 'transporte não cadastrado',
+  ambigua: 'transporte ambíguo',
+  inativa: 'transportadora inativa',
+};
+
+/**
+ * Aviso da transportadora pedida no metafield que não deu para usar. Abre o
+ * cadastro de transportadoras — "não cadastrado" já com o nome preenchido.
+ */
+function AvisoTransporte({ transporte }) {
+  if (!transporte?.problema) return null;
+  const href =
+    transporte.tipo === 'nao_cadastrada'
+      ? `/pedidos/transportadoras?nova=${encodeURIComponent(transporte.texto)}`
+      : '/pedidos/transportadoras';
+  return (
+    <a className="marca marca-erro" href={href} title={transporte.problema}>
+      {ROTULO_TRANSPORTE[transporte.tipo] ?? 'transporte com problema'}
+    </a>
+  );
+}
+
 /** Linha de largura total logo abaixo do pedido (confirmação, erro). */
 function LinhaDetalhe({ children }) {
   return (
@@ -74,8 +98,7 @@ function ResumoPreview({ preview }) {
         {nota.cliente.cpf_cnpj && <span className="mono"> · CNPJ {nota.cliente.cpf_cnpj}</span>} ·{' '}
         {nota.itens.length} item(ns) · <strong>Total da nota: {formatarMoeda(dados.totalNota)}</strong>
         <br />
-        Transporte: {nota.transportador?.nome ?? '—'}
-        {dados.transportadora ? ' (transportadora do cliente)' : ' (padrão)'}
+        Transporte: {resumoDoTransporte(dados)}
       </p>
       {dados.alertas.length > 0 && (
         <div className="aviso">
@@ -259,7 +282,9 @@ export default function ControleAtacado() {
                   const enviando = acao?.fase === 'enviando';
                   const temRascunho = p.status === 'rascunho_criado';
                   const podeCriar = !p.notaEmitida && !temRascunho;
-                  const previewPronto = !!acao?.preview?.dados;
+                  // Transporte do metafield sem cadastro: nada é criado até resolver.
+                  const transporteBloqueado = p.transporte?.problema ?? acao?.preview?.dados?.transporteBloqueado ?? null;
+                  const previewPronto = !!acao?.preview?.dados && !transporteBloqueado;
                   const expandida = acao && !enviando;
 
                   return (
@@ -274,6 +299,7 @@ export default function ControleAtacado() {
                         <td>
                           {p.cliente}
                           {p.cnpj && <div className="fraco mono">{p.cnpj}</div>}
+                          <AvisoTransporte transporte={p.transporte} />
                         </td>
                         <td className="num">{formatarMoedaOuTraco(p.total)}</td>
                         <td>
@@ -316,16 +342,16 @@ export default function ControleAtacado() {
                                 <button
                                   className="pequeno"
                                   onClick={() => pedirCriacao(p, 'confirmar-emissao-direta')}
-                                  disabled={enviando || acao?.fase === 'confirmar-emissao-direta'}
-                                  title="Cria o rascunho no Tiny e emite em seguida"
+                                  disabled={enviando || acao?.fase === 'confirmar-emissao-direta' || !!transporteBloqueado}
+                                  title={transporteBloqueado ?? 'Cria o rascunho no Tiny e emite em seguida'}
                                 >
                                   Criar e emitir
                                 </button>
                                 <button
                                   className="pequeno secundario"
                                   onClick={() => pedirCriacao(p, 'confirmar-rascunho')}
-                                  disabled={enviando || acao?.fase === 'confirmar-rascunho'}
-                                  title="Cria só o rascunho no Tiny, para emitir depois"
+                                  disabled={enviando || acao?.fase === 'confirmar-rascunho' || !!transporteBloqueado}
+                                  title={transporteBloqueado ?? 'Cria só o rascunho no Tiny, para emitir depois'}
                                 >
                                   Só rascunho
                                 </button>

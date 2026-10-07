@@ -6,9 +6,14 @@ import { obterPedidoCompleto } from '@/lib/integrations/shopify';
 import { classificarPedido, extrairCnpj } from '@/lib/fiscal/classificacao';
 import { descontoDaNota, montarNotaAtacado, totalDaNota } from '@/lib/fiscal/montarNota';
 import { resolverIe } from '@/lib/fiscal/inscricaoEstadual';
-import { registrarPreview, jaProcessado, markupDaFranquia, transportadoraDoCliente } from '@/lib/db';
+import { registrarPreview, jaProcessado, markupDaFranquia, transportadoraDoCliente, listarTransportadoras } from '@/lib/db';
 import { lerMarkup } from '@/lib/fiscal/markup';
-import { transporteDaTransportadora } from '@/lib/fiscal/transporte';
+import {
+  blocoDoTransporte,
+  problemaDoTransporte,
+  resolverTransporte,
+  transporteDaTransportadora,
+} from '@/lib/fiscal/transporte';
 import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +79,9 @@ export async function GET(request, { params }) {
     // Texto livre ("1200,45", "1.200,45", "R$ 1200.00") — quem converte para
     // número é desconto.js; aqui o valor segue cru, como os outros metafields.
     const descontoPedido = getMetafield("desconto");
+    // "correios", "retirada" ou o nome (ou parte dele) de uma transportadora
+    // do cadastro — ver resolverTransporte em transporte.js.
+    const transporteInformado = getMetafield("transportadora");
 
     // 3. Franquia pode ter markup próprio no cadastro (cnpjs_franquia.markup);
     // sem ele, montarNotaAtacado usa o padrão da classificação.
@@ -90,13 +98,35 @@ export async function GET(request, { params }) {
       markupFranquia = lerMarkup(resp.markup) ?? undefined;
     }
 
-    // 3b. Cliente anexado a uma transportadora (/pedidos/transportadoras) sai
-    // com o transporte dela; sem anexo, a nota fica com os Correios. Falha na
-    // consulta também cai nos Correios, mas avisa — a pessoa pode estar
-    // esperando a transportadora.
+    // 3b. Transporte. O metafield `transportadora` do pedido manda: Correios,
+    // retirada (nota sem dados de transporte) ou uma transportadora do
+    // cadastro. Transportadora que não está no cadastro BLOQUEIA a criação —
+    // a nota não pode sair com um transporte que ninguém pediu.
+    //
+    // Metafield em branco: cliente anexado a uma transportadora
+    // (/pedidos/transportadoras) sai com o transporte dela; sem anexo, a nota
+    // fica com os Correios. Falha na consulta também cai nos Correios, mas
+    // avisa — a pessoa pode estar esperando a transportadora.
     let transporte;
     let transportadora = null;
-    if (cnpj) {
+    let transporteResolvido = { tipo: 'vazio', texto: '' };
+    let transporteBloqueado = null;
+    if (transporteInformado.trim()) {
+      const cadastroTransp = await listarTransportadoras();
+      if (!cadastroTransp.ok) {
+        transporteBloqueado =
+          `Não foi possível ler o cadastro de transportadoras para conferir "${transporteInformado}" ` +
+          `(metafield transportadora): ${cadastroTransp.erro}`;
+      } else {
+        transporteResolvido = resolverTransporte(transporteInformado, cadastroTransp.transportadoras);
+        transporteBloqueado = problemaDoTransporte(transporteResolvido);
+        transporte = blocoDoTransporte(transporteResolvido);
+        if (transporteResolvido.transportadora) {
+          transportadora = { id: transporteResolvido.transportadora.id, nome: transporteResolvido.transportadora.nome };
+        }
+      }
+      if (transporteBloqueado) alertas.push(transporteBloqueado);
+    } else if (cnpj) {
       const resp = await transportadoraDoCliente(cnpj);
       if (!resp.ok) {
         console.error(`[preview] Falha ao buscar a transportadora do cliente ${cnpj} no Supabase:`, resp.erro);
@@ -187,8 +217,18 @@ export async function GET(request, { params }) {
       // "Padrão desta franquia" em vez do padrão da classificação.
       markupProprio: markupFranquia !== undefined,
       precosVarejo,
-      // Transportadora anexada ao cliente que entrou na nota; null = Correios.
+      // Transportadora que entrou na nota (do metafield ou anexada ao
+      // cliente); null = Correios ou retirada.
       transportadora,
+      // O que o metafield `transportadora` pediu e como foi lido.
+      transporteInformado: {
+        texto: transporteResolvido.texto,
+        tipo: transporteResolvido.tipo,
+        candidatas: (transporteResolvido.candidatas ?? []).map((t) => t.nome),
+      },
+      // Mensagem que impede criar a nota (transporte não cadastrado,
+      // ambíguo, inativo ou cadastro ilegível); null = pode criar.
+      transporteBloqueado,
       totalNota: totalDaNota(payload),
       alertas,
       jaProcessado: processado.processado,

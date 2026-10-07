@@ -12,7 +12,8 @@
 import { listarPedidosDoDia, listarPedidosRecentes } from '@/lib/integrations/shopify';
 import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
 import { classificarComListaFranquia, extrairCnpj } from '@/lib/fiscal/classificacao';
-import { statusPorPedido, listarCnpjsFranquia, pedidosPorNfOuCnpj } from '@/lib/db';
+import { statusPorPedido, listarCnpjsFranquia, pedidosPorNfOuCnpj, listarTransportadoras } from '@/lib/db';
+import { problemaDoTransporte, resolverTransporte } from '@/lib/fiscal/transporte';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
 import { idNumerico, erroJson, somenteDigitos } from '@/lib/utils';
 
@@ -82,6 +83,25 @@ export async function GET(request) {
     }
     const cnpjsFranquia = cnpjsFranquiaResp.ok ? cnpjsFranquiaResp.cnpjs : [];
 
+    // Transportadora pedida no metafield de cada pedido, conferida contra o
+    // cadastro — só lê o cadastro se algum pedido da página informou uma.
+    let transportadoras = null;
+    if (pedidos.some((p) => String(p.transporteInformado ?? '').trim())) {
+      const resp = await listarTransportadoras();
+      if (resp.ok) transportadoras = resp.transportadoras;
+      else console.error('[pedidos] Falha ao ler o cadastro de transportadoras:', resp.erro);
+    }
+    const transporteDoPedido = (texto) => {
+      if (!String(texto ?? '').trim() || !transportadoras) return null;
+      const resolvido = resolverTransporte(texto, transportadoras);
+      return {
+        texto: resolvido.texto,
+        tipo: resolvido.tipo,
+        nome: resolvido.transportadora?.nome ?? null,
+        problema: problemaDoTransporte(resolvido),
+      };
+    };
+
     const lista = pedidos.map((p) => {
       const { cnpj, origem } = extrairCnpj(p._bruto);
       const situacao = situacoes[p.id];
@@ -93,6 +113,8 @@ export async function GET(request) {
         cliente: p.cliente,
         total: p.total,
         tags: p.tags,
+        // null = metafield em branco (vale a regra antiga) ou cadastro ilegível.
+        transporte: transporteDoPedido(p.transporteInformado),
         classificacao: classificarComListaFranquia(p._bruto, cnpjsFranquia),
         cnpj: cnpj,
         origemCnpj: origem,
