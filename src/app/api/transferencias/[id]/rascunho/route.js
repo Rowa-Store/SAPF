@@ -21,10 +21,25 @@
 //     fica registrado em tiny_notas_substituidas.
 //
 // A nota é criada na conta do Tiny da loja de ORIGEM (tinyContas.js).
+//
+// Se o Tiny recusar com "Um produto pai não pode ser informado", o código do
+// pai é trocado pelo da variação certa e a inclusão é tentada mais UMA vez,
+// como no rascunho de pedido (incluirNotaTrocandoProdutosPai em tiny.js). O
+// payload gravado é o que foi aceito.
 
-import { conferirNatureza, incluirNotaRascunho, obterCnpjDaConta, obterNota } from '@/lib/integrations/tiny';
+import {
+  avisoDeTrocas,
+  conferirNatureza,
+  incluirNotaTrocandoProdutosPai,
+  obterCnpjDaConta,
+  obterNota,
+} from '@/lib/integrations/tiny';
 import { contaTinyDaLoja, contaTinyDaTransferencia } from '@/lib/integrations/tinyContas';
-import { obterTransferenciaCompleta, paraGidTransferencia } from '@/lib/integrations/shopifyTransferencias';
+import {
+  obterTransferenciaCompleta,
+  opcoesPorSkuDaTransferencia,
+  paraGidTransferencia,
+} from '@/lib/integrations/shopifyTransferencias';
 import { montarNotaTransferencia } from '@/lib/fiscal/montarNotaTransferencia';
 import {
   lojasFiscaisPorLocal,
@@ -148,7 +163,17 @@ export async function PUT(request, { params }) {
   const conta = lida.conta;
 
   try {
-    const { idNota, retorno } = await incluirNotaRascunho(payload, conta);
+    const { idNota, retorno, payload: payloadAceito, trocas } = await incluirNotaTrocandoProdutosPai(payload, {
+      conta,
+      // O payload veio da tela; as opções (tamanho/cor) vêm do Shopify.
+      lerOpcoes: () =>
+        obterTransferenciaCompleta(id)
+          .then(opcoesPorSkuDaTransferencia)
+          .catch((erro) => {
+            console.error(`[transferencia] Não foi possível ler as opções dos itens de ${gid} no Shopify:`, erro);
+            return {};
+          }),
+    });
     const confirmacao = idNota ? await obterNota(idNota, conta).catch((erro) => ({ aviso: erro.message })) : null;
 
     // Acumula: um rascunho corrigido duas vezes deixa dois antigos para remover no Tiny.
@@ -159,7 +184,7 @@ export async function PUT(request, { params }) {
       orderId: gid,
       orderName,
       classificacao: CLASSIFICACAO,
-      payload,
+      payload: payloadAceito,
       tinyNotaId: idNota,
       respostaTiny: retorno,
       notasSubstituidas,
@@ -176,11 +201,13 @@ export async function PUT(request, { params }) {
       tinyNotaId: idNota,
       tinyNotaIdAnterior,
       confirmacao,
+      trocasProdutoPai: trocas,
       mensagem:
         `Novo rascunho ${idNota ?? ''} criado na conta do Tiny de "${conta.nome}" com os dados corrigidos. ` +
         `Cancele ou exclua o rascunho ${tinyNotaIdAnterior} dentro do Tiny — a API não faz isso ` +
         'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.' +
-        avisoNatureza(confirmacao, payload),
+        avisoDeTrocas(trocas) +
+        avisoNatureza(confirmacao, payloadAceito),
     });
   } catch (erro) {
     console.error(`[transferencia] Tiny recusou a recriação da transferência ${gid} (substituindo ${tinyNotaIdAnterior}):`, erro);
@@ -287,7 +314,10 @@ export async function POST(request, { params }) {
   if (erroToken) return erroJson(erroToken, 422);
 
   try {
-    const { idNota, retorno } = await incluirNotaRascunho(payload, conta);
+    const { idNota, retorno, payload: payloadAceito, trocas } = await incluirNotaTrocandoProdutosPai(payload, {
+      conta,
+      lerOpcoes: async () => opcoesPorSkuDaTransferencia(transferencia),
+    });
     const confirmacao = idNota ? await obterNota(idNota, conta).catch((erro) => ({ aviso: erro.message })) : null;
 
     // Acumula: um rascunho refeito duas vezes deixa dois antigos para remover no Tiny.
@@ -299,7 +329,7 @@ export async function POST(request, { params }) {
       orderId: gid,
       orderName: transferencia.name,
       classificacao: CLASSIFICACAO,
-      payload,
+      payload: payloadAceito,
       tinyNotaId: idNota,
       respostaTiny: retorno,
       notasSubstituidas,
@@ -326,7 +356,8 @@ export async function POST(request, { params }) {
       tinyNotaIdAnterior: anterior?.tiny_nota_id ?? null,
       tinyNotasSubstituidas: notasSubstituidas ?? null,
       confirmacao,
-      mensagem: mensagem + naConta + avisoNatureza(confirmacao, payload),
+      trocasProdutoPai: trocas,
+      mensagem: mensagem + naConta + avisoDeTrocas(trocas) + avisoNatureza(confirmacao, payloadAceito),
     });
   } catch (erro) {
     console.error(`[transferencia] Tiny recusou a inclusão da transferência ${gid}:`, erro);

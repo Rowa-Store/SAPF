@@ -45,7 +45,7 @@ query Transferencia($id: ID!, $cursor: String) {
         inventoryItem {
           sku
           unitCost { amount }
-          variants(first: 1) { nodes { price barcode displayName } }
+          variants(first: 1) { nodes { price barcode displayName selectedOptions { value } } }
         }
       }
     }
@@ -154,6 +154,22 @@ export async function obterTransferenciaCompleta(id) {
   }
 
   return { ...transferencia, lineItems: itens };
+}
+
+/**
+ * Tamanho/cor de cada SKU da transferência, para a troca de produto pai no
+ * Tiny (ver trocarProdutosPai em tiny.js).
+ */
+export function opcoesPorSkuDaTransferencia(transferencia) {
+  const mapa = {};
+  for (const linha of transferencia?.lineItems ?? []) {
+    const sku = linha.inventoryItem?.sku;
+    if (!sku) continue;
+    mapa[sku] = (linha.inventoryItem.variants?.nodes?.[0]?.selectedOptions ?? [])
+      .map((o) => o.value)
+      .filter((v) => v && v !== 'Default Title');
+  }
+  return mapa;
 }
 
 /** Só a loja de origem da transferência — sem ler os itens. */

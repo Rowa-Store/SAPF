@@ -533,13 +533,22 @@ async function produtosPorCodigo(codigo, conta) {
  * pai, recusa a nota do mesmo jeito. A pesquisa por código então não acha
  * nada, e só a pesquisa pelo nome chega no pai.
  */
-async function paiPorDescricao(descricao, conta) {
+async function paiPorDescricao(descricao, opcoes, conta) {
   if (!descricao) return null;
-  const alvo = normalizarOpcao(descricao);
-  const pais = (await pesquisarProdutos(descricao, conta)).filter(
-    (p) => p.tipoVariacao === 'P' && normalizarOpcao(p.nome) === alvo
-  );
-  return pais.length === 1 ? pais[0] : null;
+  // Na transferência a descrição é o displayName do Shopify ("Produto - M"):
+  // o nome do pai é o que vem antes das opções da variante.
+  const sufixo = opcoes.length ? ` - ${opcoes.join(' / ')}` : '';
+  const nomes = [descricao];
+  if (sufixo && descricao.endsWith(sufixo)) nomes.push(descricao.slice(0, -sufixo.length));
+
+  for (const nome of nomes) {
+    const alvo = normalizarOpcao(nome);
+    const pais = (await pesquisarProdutos(nome, conta)).filter(
+      (p) => p.tipoVariacao === 'P' && normalizarOpcao(p.nome) === alvo
+    );
+    if (pais.length === 1) return pais[0];
+  }
+  return null;
 }
 
 /**
@@ -621,7 +630,7 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
     // pesquisa também devolva uma variação com o mesmo código.
     let pai = produtos.find((p) => p.tipoVariacao === 'P');
     if (!pai && produtos.length === 0 && citados.includes(codigo)) {
-      pai = await paiPorDescricao(descricaoDe(codigo), conta);
+      pai = await paiPorDescricao(descricaoDe(codigo), opcoesPorCodigo[codigo] ?? [], conta);
     }
     if (!pai) {
       // Código citado pelo Tiny e não achado como pai: vira pendência com o
@@ -671,4 +680,44 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
     trocas,
     pendentes,
   };
+}
+
+/**
+ * Inclui o rascunho; se o Tiny recusar por produto pai, troca pelos códigos
+ * das variações e tenta de novo uma vez. Devolve também o payload aceito e
+ * as trocas feitas. Lança com a lista do que não deu para resolver.
+ *
+ * @param {() => Promise<Record<string, string[]>>} lerOpcoes opções do
+ *   Shopify por SKU — só lidas se o Tiny recusar
+ */
+export async function incluirNotaTrocandoProdutosPai(payload, { lerOpcoes = async () => ({}), conta = null } = {}) {
+  try {
+    return { ...(await incluirNotaRascunho(payload, conta)), payload, trocas: [] };
+  } catch (erro) {
+    if (!erroDeProdutoPai(erro.message)) throw erro;
+
+    const { itens, trocas, pendentes } = await trocarProdutosPai(payload.nota_fiscal.itens, await lerOpcoes(), {
+      mensagemErro: erro.message,
+      conta,
+    });
+    if (pendentes.length > 0 || trocas.length === 0) {
+      const detalhe = pendentes.length
+        ? pendentes.map((p) => `${p.codigo}${p.descricao ? ` (${p.descricao})` : ''}: ${p.motivo}`).join('; ')
+        : 'nenhum código da nota foi encontrado como produto pai no Tiny';
+      throw new Error(
+        `${erro.message}. Não deu para trocar pela variação automaticamente — ${detalhe}. ` +
+          'Ajuste o cadastro do produto no Tiny (nome do pai ou grade das variações) e tente de novo.'
+      );
+    }
+
+    const corrigido = { ...payload, nota_fiscal: { ...payload.nota_fiscal, itens } };
+    return { ...(await incluirNotaRascunho(corrigido, conta)), payload: corrigido, trocas };
+  }
+}
+
+/** Trecho da mensagem de sucesso com as trocas feitas ('' sem trocas). */
+export function avisoDeTrocas(trocas) {
+  return trocas.length
+    ? ` O Tiny recusou produto pai — trocado pela variação: ${trocas.map((t) => `${t.de} → ${t.para}`).join(', ')}.`
+    : '';
 }

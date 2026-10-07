@@ -14,17 +14,16 @@
 // conferência (/pedidos/[id]/rascunho) e seguem num rascunho novo.
 //
 // Se o Tiny recusar com "Um produto pai não pode ser informado", o código do
-// pai é trocado pelo da variação certa (ver trocarProdutosPai em tiny.js) e a
+// pai é trocado pelo da variação certa (ver incluirNotaTrocandoProdutosPai em tiny.js) e a
 // inclusão é tentada mais UMA vez. O payload gravado é o que foi aceito.
 //
 // Emissão fiscal (nota.fiscal.emitir) mora em /api/pedidos/[id]/emitir.
 
 import {
-  erroDeProdutoPai,
+  avisoDeTrocas,
   garantirContribuinteIcms,
-  incluirNotaRascunho,
+  incluirNotaTrocandoProdutosPai,
   obterNota,
-  trocarProdutosPai,
 } from '@/lib/integrations/tiny';
 import { obterPedidoCompleto } from '@/lib/integrations/shopify';
 import {
@@ -65,35 +64,6 @@ async function opcoesPorSku(gid) {
   } catch (erro) {
     console.error(`[rascunho] Não foi possível ler as opções dos itens do pedido ${gid} no Shopify:`, erro);
     return {};
-  }
-}
-
-/**
- * Inclui o rascunho; se o Tiny recusar por produto pai, troca pelos códigos
- * das variações e tenta de novo uma vez. Devolve também o payload aceito e
- * as trocas feitas. Lança com a lista do que não deu para resolver.
- */
-async function incluirTrocandoProdutosPai(payload, gid) {
-  try {
-    return { ...(await incluirNotaRascunho(payload)), payload, trocas: [] };
-  } catch (erro) {
-    if (!erroDeProdutoPai(erro.message)) throw erro;
-
-    const { itens, trocas, pendentes } = await trocarProdutosPai(payload.nota_fiscal.itens, await opcoesPorSku(gid), {
-      mensagemErro: erro.message,
-    });
-    if (pendentes.length > 0 || trocas.length === 0) {
-      const detalhe = pendentes.length
-        ? pendentes.map((p) => `${p.codigo}${p.descricao ? ` (${p.descricao})` : ''}: ${p.motivo}`).join('; ')
-        : 'nenhum código da nota foi encontrado como produto pai no Tiny';
-      throw new Error(
-        `${erro.message}. Não deu para trocar pela variação automaticamente — ${detalhe}. ` +
-          'Ajuste o cadastro do produto no Tiny (nome do pai ou grade das variações) e tente de novo.'
-      );
-    }
-
-    const corrigido = { ...payload, nota_fiscal: { ...payload.nota_fiscal, itens } };
-    return { ...(await incluirNotaRascunho(corrigido)), payload: corrigido, trocas };
   }
 }
 
@@ -180,7 +150,9 @@ export async function POST(request, { params }) {
   }
 
   try {
-    const { idNota, retorno, payload: payloadAceito, trocas } = await incluirTrocandoProdutosPai(payload, gid);
+    const { idNota, retorno, payload: payloadAceito, trocas } = await incluirNotaTrocandoProdutosPai(payload, {
+      lerOpcoes: () => opcoesPorSku(gid),
+    });
 
     // Confirma no Tiny que a nota existe mesmo (a inclusão pode responder ok
     // sem que a nota seja localizável — melhor conferir e mostrar o resultado).
@@ -213,9 +185,7 @@ export async function POST(request, { params }) {
       await salvarItensPendentes(orderName, itensPendentes);
     }
 
-    const avisoTrocas = trocas.length
-      ? ` O Tiny recusou produto pai — trocado pela variação: ${trocas.map((t) => `${t.de} → ${t.para}`).join(', ')}.`
-      : '';
+    const avisoTrocas = avisoDeTrocas(trocas);
 
     return Response.json({
       ok: true,
