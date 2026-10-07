@@ -504,18 +504,24 @@ function valoresDaGrade(grade) {
   return Object.values(grade).filter((v) => typeof v === 'string' && v);
 }
 
-/** Produtos do Tiny com este código exato (a pesquisa também casa por nome). */
+/** Código comparável: o Tiny casa o código sem ligar para caixa nem espaços nas pontas. */
+function normalizarCodigo(codigo) {
+  return String(codigo ?? '').trim().toUpperCase();
+}
+
+/** Produtos do Tiny com este código (a pesquisa também casa por nome). */
 async function produtosPorCodigo(codigo, conta) {
   let retorno;
   try {
-    retorno = await chamarTiny('produtos.pesquisa.php', { pesquisa: codigo }, conta);
+    retorno = await chamarTiny('produtos.pesquisa.php', { pesquisa: codigo.trim() }, conta);
   } catch (erro) {
     if (/não retornou registros|nao retornou registros/i.test(erro.message)) return [];
     throw erro;
   }
+  const alvo = normalizarCodigo(codigo);
   return paraArray(retorno.produtos)
     .map((p) => p.produto ?? p)
-    .filter((p) => String(p.codigo ?? '') === codigo);
+    .filter((p) => normalizarCodigo(p.codigo) === alvo);
 }
 
 /**
@@ -542,6 +548,10 @@ function escolherVariacao(variacoes, opcoes) {
   return contidas.length === 1 ? contidas[0] : null;
 }
 
+function rotuloTipoVariacao(tipo) {
+  return { N: 'produto simples', V: 'variação', P: 'pai' }[tipo] ?? `tipo "${tipo ?? '?'}"`;
+}
+
 /**
  * Troca, nos itens, o código de produto pai pelo da variação certa.
  *
@@ -556,7 +566,8 @@ function escolherVariacao(variacoes, opcoes) {
  */
 export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemErro = '', conta = null } = {}) {
   const codigos = [...new Set(itens.map(({ item }) => String(item.codigo ?? '')).filter(Boolean))];
-  const citados = codigos.filter((c) => mensagemErro.includes(c));
+  const mensagemNormalizada = normalizarCodigo(mensagemErro);
+  const citados = codigos.filter((c) => mensagemNormalizada.includes(normalizarCodigo(c)));
   const conferir = citados.length > 0 ? citados : codigos;
 
   const descricaoDe = (codigo) => itens.find(({ item }) => item.codigo === codigo)?.item.descricao ?? '';
@@ -567,10 +578,26 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
   // Uma chamada por vez: a API do Tiny limita chamadas por minuto.
   for (const codigo of conferir) {
     const produtos = await produtosPorCodigo(codigo, conta);
-    // Se existe um produto que não é pai com este código, não há o que trocar.
-    if (produtos.length === 0 || produtos.some((p) => p.tipoVariacao !== 'P')) continue;
+    // O Tiny já disse que este código é de um pai: vale o pai mesmo que a
+    // pesquisa também devolva uma variação com o mesmo código.
+    const pai = produtos.find((p) => p.tipoVariacao === 'P');
+    if (!pai) {
+      // Código citado pelo Tiny e não achado como pai: vira pendência com o
+      // motivo, em vez de sumir — senão a tela só diz "nenhum código encontrado".
+      if (citados.includes(codigo)) {
+        pendentes.push({
+          codigo,
+          descricao: descricaoDe(codigo),
+          motivo:
+            produtos.length === 0
+              ? 'a pesquisa de produtos do Tiny não encontra este código (confira se o código do pai no Tiny é exatamente esse)'
+              : `o Tiny cadastra este código como ${produtos.map((p) => rotuloTipoVariacao(p.tipoVariacao)).join(' e ')}, não como pai`,
+        });
+      }
+      continue;
+    }
 
-    const cadastro = await chamarTiny('produto.obter.php', { id: String(produtos[0].id) }, conta);
+    const cadastro = await chamarTiny('produto.obter.php', { id: String(pai.id) }, conta);
     const variacoes = paraArray(cadastro.produto?.variacoes).map((v) => v.variacao ?? v);
     const opcoes = opcoesPorCodigo[codigo] ?? [];
     const escolhida = escolherVariacao(variacoes, opcoes);
