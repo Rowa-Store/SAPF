@@ -509,19 +509,37 @@ function normalizarCodigo(codigo) {
   return String(codigo ?? '').trim().toUpperCase();
 }
 
-/** Produtos do Tiny com este código (a pesquisa também casa por nome). */
-async function produtosPorCodigo(codigo, conta) {
+/** Resultado de produtos.pesquisa (casa por código e por nome). */
+async function pesquisarProdutos(termo, conta) {
   let retorno;
   try {
-    retorno = await chamarTiny('produtos.pesquisa.php', { pesquisa: codigo.trim() }, conta);
+    retorno = await chamarTiny('produtos.pesquisa.php', { pesquisa: String(termo).trim() }, conta);
   } catch (erro) {
     if (/não retornou registros|nao retornou registros/i.test(erro.message)) return [];
     throw erro;
   }
+  return paraArray(retorno.produtos).map((p) => p.produto ?? p);
+}
+
+/** Produtos do Tiny com este código. */
+async function produtosPorCodigo(codigo, conta) {
   const alvo = normalizarCodigo(codigo);
-  return paraArray(retorno.produtos)
-    .map((p) => p.produto ?? p)
-    .filter((p) => normalizarCodigo(p.codigo) === alvo);
+  return (await pesquisarProdutos(codigo, conta)).filter((p) => normalizarCodigo(p.codigo) === alvo);
+}
+
+/**
+ * Pai com o mesmo nome da descrição do item. Quando o código da nota não
+ * existe no Tiny, o Tiny casa o item pela descrição — e, se o nome é o de um
+ * pai, recusa a nota do mesmo jeito. A pesquisa por código então não acha
+ * nada, e só a pesquisa pelo nome chega no pai.
+ */
+async function paiPorDescricao(descricao, conta) {
+  if (!descricao) return null;
+  const alvo = normalizarOpcao(descricao);
+  const pais = (await pesquisarProdutos(descricao, conta)).filter(
+    (p) => p.tipoVariacao === 'P' && normalizarOpcao(p.nome) === alvo
+  );
+  return pais.length === 1 ? pais[0] : null;
 }
 
 /**
@@ -580,7 +598,10 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
     const produtos = await produtosPorCodigo(codigo, conta);
     // O Tiny já disse que este código é de um pai: vale o pai mesmo que a
     // pesquisa também devolva uma variação com o mesmo código.
-    const pai = produtos.find((p) => p.tipoVariacao === 'P');
+    let pai = produtos.find((p) => p.tipoVariacao === 'P');
+    if (!pai && produtos.length === 0 && citados.includes(codigo)) {
+      pai = await paiPorDescricao(descricaoDe(codigo), conta);
+    }
     if (!pai) {
       // Código citado pelo Tiny e não achado como pai: vira pendência com o
       // motivo, em vez de sumir — senão a tela só diz "nenhum código encontrado".
@@ -590,7 +611,7 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
           descricao: descricaoDe(codigo),
           motivo:
             produtos.length === 0
-              ? 'a pesquisa de produtos do Tiny não encontra este código (confira se o código do pai no Tiny é exatamente esse)'
+              ? 'o código não existe no Tiny, nem há um pai com o nome da descrição — confira o SKU no Shopify e o código da variação no Tiny'
               : `o Tiny cadastra este código como ${produtos.map((p) => rotuloTipoVariacao(p.tipoVariacao)).join(' e ')}, não como pai`,
         });
       }
