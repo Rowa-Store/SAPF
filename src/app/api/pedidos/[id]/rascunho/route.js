@@ -88,7 +88,7 @@ async function incluirTrocandoProdutosPai(payload, gid) {
         : 'nenhum código da nota foi encontrado como produto pai no Tiny';
       throw new Error(
         `${erro.message}. Não deu para trocar pela variação automaticamente — ${detalhe}. ` +
-          'Corrija o SKU no Shopify ou o cadastro no Tiny e tente de novo.'
+          'Ajuste o cadastro do produto no Tiny (nome do pai ou grade das variações) e tente de novo.'
       );
     }
 

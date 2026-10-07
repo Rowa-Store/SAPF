@@ -632,7 +632,7 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
           descricao: descricaoDe(codigo),
           motivo:
             produtos.length === 0
-              ? 'o código não existe no Tiny, nem há um pai com o nome da descrição — confira o SKU no Shopify e o código da variação no Tiny'
+              ? 'o código não existe no Tiny, nem há um pai com o nome da descrição — confira no Tiny se o nome do pai é igual ao do item'
               : `o Tiny cadastra este código como ${produtos.map((p) => rotuloTipoVariacao(p.tipoVariacao)).join(' e ')}, não como pai`,
         });
       }
