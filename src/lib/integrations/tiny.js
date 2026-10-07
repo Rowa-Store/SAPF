@@ -546,24 +546,45 @@ async function paiPorDescricao(descricao, conta) {
  * Escolhe a variação cujos valores de grade são os mesmos das opções do item
  * no Shopify (sem olhar o nome da opção — "Tamanho" lá pode ser "Size" aqui).
  * Sem opções no Shopify, só decide quando o pai tem uma variação só.
+ *
+ * O Shopify às vezes só tem o tamanho, com a cor no nome do produto ("Top
+ * Heart - Azul Marinho" / "M"), enquanto a grade do Tiny tem tamanho e cor.
+ * Aí vale a variação que tem as opções do Shopify e cujo resto da grade
+ * aparece na descrição do item.
  */
-function escolherVariacao(variacoes, opcoes) {
+function escolherVariacao(variacoes, opcoes, descricao = '') {
   const alvo = new Set(opcoes.map(normalizarOpcao).filter(Boolean));
   if (alvo.size === 0) return variacoes.length === 1 ? variacoes[0] : null;
 
-  const valores = (v) => new Set(valoresDaGrade(v.grade).map(normalizarOpcao));
+  const valores = (v) => new Set(valoresDaGrade(v.grade).map(normalizarOpcao).filter(Boolean));
+  const unica = (lista) => (lista.length === 1 ? lista[0] : null);
+
   const iguais = variacoes.filter((v) => {
     const g = valores(v);
     return g.size === alvo.size && [...g].every((x) => alvo.has(x));
   });
-  if (iguais.length === 1) return iguais[0];
+  if (iguais.length) return unica(iguais);
 
   // Grade com menos atributos que o Shopify (ex.: só tamanho no Tiny).
   const contidas = variacoes.filter((v) => {
     const g = valores(v);
     return g.size > 0 && [...g].every((x) => alvo.has(x));
   });
-  return contidas.length === 1 ? contidas[0] : null;
+  if (contidas.length) return unica(contidas);
+
+  // Grade com mais atributos que o Shopify (ex.: cor só no nome do produto).
+  const contem = variacoes.filter((v) => {
+    const g = valores(v);
+    return [...alvo].every((x) => g.has(x));
+  });
+  if (contem.length <= 1) return unica(contem);
+  const texto = normalizarOpcao(descricao);
+  return unica(contem.filter((v) => [...valores(v)].every((x) => alvo.has(x) || texto.includes(x))));
+}
+
+/** "M / Azul; G / Azul" — para a mensagem dizer o que o Tiny tem. */
+function resumoDasGrades(variacoes) {
+  return variacoes.map((v) => valoresDaGrade(v.grade).join(' / ') || `${v.codigo || 'sem código'} (sem grade)`).join('; ');
 }
 
 function rotuloTipoVariacao(tipo) {
@@ -621,9 +642,15 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
     const cadastro = await chamarTiny('produto.obter.php', { id: String(pai.id) }, conta);
     const variacoes = paraArray(cadastro.produto?.variacoes).map((v) => v.variacao ?? v);
     const opcoes = opcoesPorCodigo[codigo] ?? [];
-    const escolhida = escolherVariacao(variacoes, opcoes);
+    const escolhida = escolherVariacao(variacoes, opcoes, descricaoDe(codigo));
 
-    if (escolhida?.codigo) {
+    if (escolhida && !escolhida.codigo) {
+      pendentes.push({
+        codigo,
+        descricao: descricaoDe(codigo),
+        motivo: `a variação "${valoresDaGrade(escolhida.grade).join(' / ')}" não tem código no Tiny — cadastre um código nela`,
+      });
+    } else if (escolhida) {
       novoCodigo[codigo] = String(escolhida.codigo);
       trocas.push({ de: codigo, para: String(escolhida.codigo), descricao: descricaoDe(codigo) });
     } else {
@@ -633,7 +660,8 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
         motivo:
           variacoes.length === 0
             ? 'o produto pai não tem variações cadastradas no Tiny'
-            : `nenhuma das ${variacoes.length} variações do Tiny bate com ${opcoes.length ? `"${opcoes.join(' / ')}"` : 'o item (sem tamanho/cor no Shopify)'}`,
+            : `nenhuma das ${variacoes.length} variações do Tiny (${resumoDasGrades(variacoes)}) bate só com ` +
+              `${opcoes.length ? `"${opcoes.join(' / ')}"` : 'o item (sem tamanho/cor no Shopify)'}`,
       });
     }
   }
