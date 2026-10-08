@@ -117,7 +117,8 @@ export default function IncluirRascunho({ params }) {
     <>
       <h2>
         Incluir rascunho — pedido {dados.pedido.name}{' '}
-        <span className={`marca marca-${dados.classificacao}`}>{dados.classificacao}</span>
+        <span className={`marca marca-${dados.classificacao}`}>{dados.classificacao}</span>{' '}
+        {dados.markupOrigem === 'acessorio' && <span className="marca marca-acessorio">acessórios</span>}
       </h2>
       <p className="fraco">
         Confira e corrija o que precisar antes de enviar. É exatamente isto que vai para o Tiny.
@@ -223,7 +224,12 @@ export default function IncluirRascunho({ params }) {
             </strong>
           </div>
           <div className="fraco">
-            {dados.markupProprio ? 'Padrão desta franquia' : `Padrão para ${dados.classificacao}`}:{' '}
+            {dados.markupOrigem === 'franquia'
+              ? 'Padrão desta franquia'
+              : dados.markupOrigem === 'acessorio'
+                ? 'Padrão de franquia para acessórios (primeiro item do pedido)'
+                : `Padrão para ${dados.classificacao}`}
+            :{' '}
             {formatarMarkup(markupOriginal)} (
             {formatarMarkup(descontoDoMarkup(markupOriginal))}%).
           </div>

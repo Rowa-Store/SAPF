@@ -7,7 +7,7 @@ import { classificarPedido, extrairCnpj } from '@/lib/fiscal/classificacao';
 import { descontoDaNota, montarNotaAtacado, totalDaNota } from '@/lib/fiscal/montarNota';
 import { resolverIe } from '@/lib/fiscal/inscricaoEstadual';
 import { registrarPreview, jaProcessado, markupDaFranquia, transportadoraDoCliente, listarTransportadoras } from '@/lib/db';
-import { lerMarkup } from '@/lib/fiscal/markup';
+import { lerMarkup, ehAcessorio, formatarMarkup, MARKUP_FRANQUIA_ACESSORIO } from '@/lib/fiscal/markup';
 import {
   blocoDoTransporte,
   problemaDoTransporte,
@@ -83,19 +83,37 @@ export async function GET(request, { params }) {
     // do cadastro — ver resolverTransporte em transporte.js.
     const transporteInformado = getMetafield("transportadora");
 
-    // 3. Franquia pode ter markup próprio no cadastro (cnpjs_franquia.markup);
-    // sem ele, montarNotaAtacado usa o padrão da classificação.
+    // 3. Franquia: o primeiro item do pedido decide o markup do pedido
+    // inteiro. Acessório sai com 2,0; vestuário com o markup próprio do
+    // cadastro (cnpjs_franquia.markup) ou, sem ele, o padrão de franquia que
+    // montarNotaAtacado aplica (ver markup.js).
     let markupFranquia;
+    let markupOrigem = 'classificacao';
     if (classificacao === 'franquia') {
-      const resp = await markupDaFranquia(cnpj);
-      if (!resp.ok) {
-        console.error(`[preview] Falha ao buscar o markup da franquia ${cnpj} no Supabase:`, resp.erro);
-        alertas.push(
-          'Não foi possível ler o markup desta franquia no cadastro — a nota saiu com o markup padrão de franquia. ' +
-            'Confira antes de continuar.'
-        );
+      const primeiroItem = pedido.lineItems[0];
+      const tipoPrimeiro = primeiroItem?.product?.productType ?? '';
+      if (ehAcessorio(tipoPrimeiro)) {
+        markupFranquia = MARKUP_FRANQUIA_ACESSORIO;
+        markupOrigem = 'acessorio';
+      } else {
+        if (primeiroItem && !tipoPrimeiro.trim()) {
+          alertas.push(
+            `O primeiro item ("${primeiroItem.title}") está sem tipo de produto no Shopify — ` +
+              'o pedido foi tratado como vestuário. Se for acessório, troque o markup para ' +
+              `${formatarMarkup(MARKUP_FRANQUIA_ACESSORIO)}.`
+          );
+        }
+        const resp = await markupDaFranquia(cnpj);
+        if (!resp.ok) {
+          console.error(`[preview] Falha ao buscar o markup da franquia ${cnpj} no Supabase:`, resp.erro);
+          alertas.push(
+            'Não foi possível ler o markup desta franquia no cadastro — a nota saiu com o markup padrão de franquia. ' +
+              'Confira antes de continuar.'
+          );
+        }
+        markupFranquia = lerMarkup(resp.markup) ?? undefined;
+        if (markupFranquia !== undefined) markupOrigem = 'franquia';
       }
-      markupFranquia = lerMarkup(resp.markup) ?? undefined;
     }
 
     // 3b. Transporte. O metafield `transportadora` do pedido manda: Correios,
@@ -213,9 +231,10 @@ export async function GET(request, { params }) {
       // payload.nota_fiscal.itens) — a tela usa os dois para recalcular a
       // nota quando alguém troca o markup (ver markup.js).
       markup,
-      // true quando o markup veio de cnpjs_franquia.markup — a tela mostra
-      // "Padrão desta franquia" em vez do padrão da classificação.
-      markupProprio: markupFranquia !== undefined,
+      // De onde veio o markup padrão: 'franquia' (cnpjs_franquia.markup),
+      // 'acessorio' (franquia com acessório no primeiro item) ou
+      // 'classificacao' — a tela usa para dizer de quem é o padrão.
+      markupOrigem,
       precosVarejo,
       // Transportadora que entrou na nota (do metafield ou anexada ao
       // cliente); null = Correios ou retirada.

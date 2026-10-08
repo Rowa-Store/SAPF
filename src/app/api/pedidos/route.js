@@ -12,6 +12,7 @@
 import { listarPedidosDoDia, listarPedidosRecentes } from '@/lib/integrations/shopify';
 import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
 import { classificarComListaFranquia, extrairCnpj } from '@/lib/fiscal/classificacao';
+import { ehAcessorio } from '@/lib/fiscal/markup';
 import { statusPorPedido, listarCnpjsFranquia, pedidosPorNfOuCnpj, listarTransportadoras } from '@/lib/db';
 import { problemaDoTransporte, resolverTransporte } from '@/lib/fiscal/transporte';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
@@ -105,6 +106,7 @@ export async function GET(request) {
     const lista = pedidos.map((p) => {
       const { cnpj, origem } = extrairCnpj(p._bruto);
       const situacao = situacoes[p.id];
+      const classificacao = classificarComListaFranquia(p._bruto, cnpjsFranquia);
       return {
         id: idNumerico(p.id),
         gid: p.id,
@@ -115,7 +117,12 @@ export async function GET(request) {
         tags: p.tags,
         // null = metafield em branco (vale a regra antiga) ou cadastro ilegível.
         transporte: transporteDoPedido(p.transporteInformado),
-        classificacao: classificarComListaFranquia(p._bruto, cnpjsFranquia),
+        classificacao,
+        // Franquia cujo primeiro item é acessório sai com markup 2,0 (ver
+        // markup.js) — a lista marca esses pedidos.
+        acessorio:
+          classificacao === 'franquia' &&
+          ehAcessorio(p._bruto.primeiroItem?.nodes?.[0]?.product?.productType),
         cnpj: cnpj,
         origemCnpj: origem,
         status: situacao?.status ?? null,

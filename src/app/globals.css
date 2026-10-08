@@ -18,6 +18,8 @@
   --alerta-fundo: rgba(255, 148, 102, 0.14);
   --ok: #34d399;
   --ok-fundo: rgba(52, 211, 153, 0.14);
+  --amarelo: #f5c84c;
+  --amarelo-fundo: rgba(245, 200, 76, 0.14);
   --raio: 10px;
   --largura: 74rem;
 }
@@ -132,6 +134,7 @@ tbody tr.linha-saindo { opacity: 0; background: var(--alerta-fundo); transition:
 }
 .marca-atacado { border-color: var(--azul); color: var(--azul); background: var(--azul-fundo); }
 .marca-franquia { border-color: var(--roxo); color: var(--roxo); background: rgba(181, 146, 246, 0.14); }
+.marca-acessorio { border-color: var(--amarelo); color: var(--amarelo); background: var(--amarelo-fundo); }
 .marca-erro { border-color: var(--alerta); color: var(--alerta); background: var(--alerta-fundo); }
 .marca-ok { border-color: var(--ok); color: var(--ok); background: var(--ok-fundo); }
 /* Marca que abre um detalhe (ex.: "erro no Tiny" abre o erro guardado). */

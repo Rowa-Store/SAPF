@@ -82,6 +82,7 @@ query PedidoAtacado($id: ID!, $cursor: String) {
       nodes {
         sku title quantity variantTitle
         variant { selectedOptions { name value } }
+        product { productType }
         originalUnitPriceSet   { shopMoney { amount } }
         discountedUnitPriceSet { shopMoney { amount } }
       }
@@ -99,6 +100,7 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
       note
       customAttributes { key value }
       transportadora: metafield(namespace: "custom", key: "transportadora") { value }
+      primeiroItem: lineItems(first: 1) { nodes { product { productType } } }
       customer {
         id displayName email
         metafields(first: 20) { nodes { namespace key value } }

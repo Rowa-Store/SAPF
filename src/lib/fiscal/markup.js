@@ -30,6 +30,43 @@ export const MARKUP_PADRAO = {
   outro: 1,
 };
 
+// Franquia: o markup depende do PRIMEIRO item do pedido. Vestuário usa o
+// markup da franquia (cadastro ou padrão de franquia) e acessório usa 2,0 —
+// sempre para o pedido inteiro, mesmo que ele misture os dois. Quem diz o que
+// é acessório é o "Tipo de produto" do Shopify; Tênis conta como vestuário.
+
+/** Markup de franquia quando o primeiro item do pedido é acessório. */
+export const MARKUP_FRANQUIA_ACESSORIO = 2.0;
+
+/** Tipos de produto do Shopify que são acessório (comparados sem acento e
+ *  sem diferenciar maiúsculas). Tipo novo de acessório entra aqui. */
+export const TIPOS_ACESSORIO = [
+  'bolsa',
+  'bone',
+  'copo',
+  'ecobag',
+  'faixa',
+  'garrafa',
+  'laco',
+  'meias',
+  'necessaire',
+  'oculos',
+  'sacola',
+];
+
+function normalizarTipo(tipo) {
+  return String(tipo ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+/** true quando o tipo de produto do Shopify é acessório. */
+export function ehAcessorio(tipoProduto) {
+  return TIPOS_ACESSORIO.includes(normalizarTipo(tipoProduto));
+}
+
 /** Atalhos da tela do rascunho; qualquer outro valor pode ser digitado. */
 export const MARKUPS_SUGERIDOS = [2.0, 2.2, 2.4];
 

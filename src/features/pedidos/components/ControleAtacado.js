@@ -303,7 +303,10 @@ export default function ControleAtacado() {
                         </td>
                         <td className="num">{formatarMoedaOuTraco(p.total)}</td>
                         <td>
-                          <span className={`marca marca-${p.classificacao}`}>{p.classificacao}</span>
+                          <div className="pilha">
+                            <span className={`marca marca-${p.classificacao}`}>{p.classificacao}</span>
+                            {p.acessorio && <span className="marca marca-acessorio">acessórios</span>}
+                          </div>
                         </td>
                         <td>
                           <div className="pilha">
