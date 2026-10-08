@@ -6,16 +6,15 @@
 // na nota é o preço do Shopify DIVIDIDO pelo markup.
 //
 //   markup 2,0  ->  preço ÷ 2,0  ->  50% de desconto      (atacado, padrão)
-//   markup 2,2  ->  preço ÷ 2,2  ->  54,55% de desconto   (franquia, padrão)
+//   markup 2,2  ->  preço ÷ 2,2  ->  54,54% de desconto   (franquia, padrão)
 //   markup 2,4  ->  preço ÷ 2,4  ->  58,33% de desconto
+//
+// Nada do markup é arredondado: o percentual e o valor de cada item são
+// TRUNCADOS (2,2 dá 54,54%, e não 54,55%; R$ 100,00 dá 45,45).
 //
 // O markup padrão vem da classificação do pedido. De vez em quando uma nota
 // precisa sair com outro markup — a tela do rascunho deixa trocar, e o novo
 // markup vale para TODOS os itens da nota (ver useIncluirRascunho).
-//
-// Antes deste arquivo a franquia usava 54,54% fixo, que é 1/2,2 truncado; com
-// o markup exato alguns itens mudam 1 centavo (R$ 100,00 dá 45,45, e não
-// 45,46).
 //
 // Por cima do markup a tela do rascunho ainda aceita um DESCONTO EXTRA em
 // percentual, para a nota inteira. Ele é calculado sobre o valor que já saiu
@@ -78,24 +77,29 @@ export function lerDescontoExtra(texto) {
   return numero;
 }
 
+/** Folga contra ruído de ponto flutuante ao truncar: 110 ÷ 2,2 dá
+ *  4999,999… centavos, e sem ela viraria 49,99 em vez de 50,00. */
+const FOLGA_TRUNCAMENTO = 1e-6;
+
 /**
- * Valor unitário da nota, com 2 casas, a partir do preço de varejo. O
- * desconto extra (percentual) entra depois do markup, sobre o valor já
- * arredondado — é a conta que a pessoa faria à mão olhando a tela.
+ * Valor unitário da nota, com 2 casas, a partir do preço de varejo: preço ÷
+ * markup TRUNCADO no centavo, nunca arredondado. O desconto extra
+ * (percentual) entra depois do markup, sobre esse valor — é a conta que a
+ * pessoa faria à mão olhando a tela.
  */
 export function valorComMarkup(precoVarejo, markup, descontoExtra = 0) {
   const preco = Number(precoVarejo);
   if (!Number.isFinite(preco) || !(markup > 0)) return 0;
-  const comMarkup = Math.round((preco / markup) * 100) / 100;
+  const comMarkup = Math.floor(Math.round(preco * 100) / markup + FOLGA_TRUNCAMENTO) / 100;
   if (!(descontoExtra > 0)) return comMarkup;
   // Conta em centavos inteiros para não herdar ruído de ponto flutuante.
   return Math.round((Math.round(comMarkup * 100) * (100 - descontoExtra)) / 100) / 100;
 }
 
-/** Percentual de desconto equivalente ao markup (2,2 -> 54.55). */
+/** Percentual de desconto equivalente ao markup, truncado (2,2 -> 54.54). */
 export function descontoDoMarkup(markup) {
   if (!(markup > 0)) return 0;
-  return Math.round((1 - 1 / markup) * 10000) / 100;
+  return Math.floor((1 - 1 / markup) * 10000 + FOLGA_TRUNCAMENTO) / 100;
 }
 
 /** "2,2" — como o markup aparece na tela e nos alertas. */
