@@ -93,6 +93,21 @@ function normalizarTexto(valor) {
 /** Pedaço mínimo para casar com o nome — "a" ou "tr" casaria com tudo. */
 const MINIMO_TRECHO = 3;
 
+/** Palavras que não identificam a transportadora: tipo de empresa, ramo e
+ *  ligação. "Azul Transportes" e "AZUL LINHAS AEREAS BRASILEIRAS S.A." só
+ *  têm "azul" de significativo — e é por ele que casam. */
+const PALAVRAS_GENERICAS = new Set([
+  'transporte', 'transportes', 'transportadora', 'transportadoras', 'logistica', 'log',
+  'carga', 'cargas', 'cargo', 'encomenda', 'encomendas', 'rodoviario', 'rodoviarios', 'rodoviaria',
+  'urgente', 'urgentes', 'servico', 'servicos', 'express', 'expresso', 'entregas',
+  'ltda', 'sa', 's', 'a', 'me', 'epp', 'eireli', 'cia', 'companhia',
+  'e', 'de', 'do', 'da', 'dos', 'das',
+]);
+
+function palavrasSignificativas(normalizado) {
+  return normalizado.split(' ').filter((p) => p.length >= 2 && !PALAVRAS_GENERICAS.has(p));
+}
+
 /**
  * Lê o metafield e diz qual transporte a nota leva.
  *
@@ -118,7 +133,19 @@ export function resolverTransporte(texto, transportadoras = []) {
     if (nome === alvo) return true;
     return (alvo.length >= MINIMO_TRECHO && nome.includes(alvo)) || (nome.length >= MINIMO_TRECHO && alvo.includes(nome));
   };
-  const encontradas = transportadoras.filter(casa);
+  // Sem nenhum trecho em comum, tenta pelas palavras significativas: todas as
+  // do lado mais curto têm que estar no outro ("Azul Transportes" acha
+  // "AZUL LINHAS AEREAS BRASILEIRAS S.A.").
+  const palavrasAlvo = palavrasSignificativas(alvo);
+  const casaPorPalavras = (t) => {
+    const palavrasNome = palavrasSignificativas(normalizarTexto(t.nome));
+    if (!palavrasAlvo.length || !palavrasNome.length) return false;
+    const [menor, maior] =
+      palavrasAlvo.length <= palavrasNome.length ? [palavrasAlvo, palavrasNome] : [palavrasNome, palavrasAlvo];
+    return menor.every((p) => maior.includes(p));
+  };
+  let encontradas = transportadoras.filter(casa);
+  if (encontradas.length === 0) encontradas = transportadoras.filter(casaPorPalavras);
   const ativas = encontradas.filter((t) => t.ativo !== false);
 
   if (ativas.length === 1) return { tipo: 'transportadora', texto: bruto, transportadora: ativas[0] };
