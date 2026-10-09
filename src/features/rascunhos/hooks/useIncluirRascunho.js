@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
 import { lerDescontoExtra, lerMarkup, valorComMarkup } from '@/lib/fiscal/markup';
 import { recalcularParcelas } from '@/lib/fiscal/pagamento';
+import { trocarTransporte } from '@/lib/fiscal/transporte';
 
 /** O preço de varejo anda junto com o item na tela, mas não vai para o Tiny. */
 function semPrecoVarejo({ preco_varejo, ...item }) {
@@ -38,6 +39,9 @@ export function useIncluirRascunho(id) {
   // Desconto extra em %, sobre o valor que já saiu do markup — começa em 0
   // e também vale para a nota inteira (ver markup.js).
   const [descontoExtra, setDescontoExtra] = useState(0);
+  // Transporte trocado à mão (ver transporteEscolhido em transporte.js) — só
+  // vale para esta nota; null = o que o preview montou.
+  const [transporte, setTransporte] = useState(null);
 
   const [pedindoConfirmacao, setPedindoConfirmacao] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -143,10 +147,13 @@ export function useIncluirRascunho(id) {
       // As parcelas (franquia com boleto) foram calculadas sobre o total do
       // pedido original — se itens foram editados ou removidos aqui, os
       // valores precisam ser refeitos antes de enviar.
+      const notaFiscal = transporte
+        ? trocarTransporte(dados.payload.nota_fiscal, transporte.bloco)
+        : dados.payload.nota_fiscal;
       const payload = {
         nota_fiscal: recalcularParcelas(
           {
-            ...dados.payload.nota_fiscal,
+            ...notaFiscal,
             cliente: clienteEditado,
             itens: itensEditados.map((it) => ({
               item: {
@@ -211,6 +218,10 @@ export function useIncluirRascunho(id) {
   const totalNota = carregado
     ? itensEditados.reduce((soma, it) => soma + Number(it.valor_unitario || 0) * Number(it.quantidade || 0), 0)
     : 0;
+  // Escolher o transporte à mão resolve o metafield que não casou com o cadastro.
+  const transporteBloqueado = transporte ? null : (dados?.transporteBloqueado ?? null);
+  const notaFiscalNaTela =
+    carregado && transporte ? trocarTransporte(dados.payload.nota_fiscal, transporte.bloco) : dados?.payload?.nota_fiscal;
   const itensForamEditados = carregado ? JSON.stringify(itensEditados) !== JSON.stringify(itensOriginais) : false;
   // Já ter rascunho não bloqueia: o Tiny às vezes acusa duplicidade e a saída
   // é reenviar com uma alteração mínima. Nota emitida, sim.
@@ -243,6 +254,10 @@ export function useIncluirRascunho(id) {
     alterarMarkup,
     descontoExtra,
     alterarDescontoExtra,
+    transporte,
+    setTransporte,
+    transporteBloqueado,
+    notaFiscalNaTela,
     atualizarCliente,
     atualizarItem,
     removerItem,

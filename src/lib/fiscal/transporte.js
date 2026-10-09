@@ -192,11 +192,40 @@ export function blocoDoTransporte(resolvido) {
   return undefined;
 }
 
+/** Campos da nota que formam o bloco de transporte (ver TRANSPORTE_PADRAO e
+ *  transporteDaTransportadora). */
+const CAMPOS_DO_TRANSPORTE = ['forma_envio', 'forma_frete', 'transportador'];
+
+/**
+ * Troca o bloco de transporte de uma nota já montada. Os campos antigos saem
+ * antes — retirada é um bloco vazio, e sobrar o `transportador` anterior
+ * mandaria a nota com quem não vai levar.
+ */
+export function trocarTransporte(notaFiscal, bloco) {
+  const nota = { ...notaFiscal };
+  for (const campo of CAMPOS_DO_TRANSPORTE) delete nota[campo];
+  return { ...nota, ...bloco };
+}
+
+/**
+ * Transporte escolhido à mão na tela do rascunho, só para aquele pedido —
+ * não mexe no metafield nem na transportadora anexada ao cliente.
+ * `opcao`: 'correios', 'retirada' ou uma linha da tabela `transportadoras`.
+ */
+export function transporteEscolhido(opcao) {
+  if (opcao === 'correios') return { tipo: 'correios', nome: TRANSPORTE_PADRAO.transportador.nome, bloco: TRANSPORTE_PADRAO };
+  if (opcao === 'retirada') return { tipo: 'retirada', nome: 'Retirada pelo cliente', bloco: {} };
+  return { tipo: 'transportadora', nome: opcao.nome, id: opcao.id, bloco: transporteDaTransportadora(opcao) };
+}
+
 /**
  * Texto da tela para o transporte que entrou na nota, a partir da resposta do
- * preview (`payload`, `transportadora`, `transporteInformado`).
+ * preview (`payload`, `transportadora`, `transporteInformado`). `escolhido`
+ * (ver transporteEscolhido) passa por cima de tudo.
  */
-export function resumoDoTransporte(dados) {
+export function resumoDoTransporte(dados, escolhido = null) {
+  if (escolhido?.tipo === 'retirada') return 'Retirada pelo cliente — a nota vai sem dados de transporte (escolhida nesta tela)';
+  if (escolhido) return `${escolhido.nome} (escolhida nesta tela, só para este pedido)`;
   const nome = dados?.payload?.nota_fiscal?.transportador?.nome ?? '—';
   const informado = dados?.transporteInformado;
   switch (informado?.tipo) {

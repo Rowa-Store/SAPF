@@ -22,6 +22,7 @@ import { rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
 import { formatarMoeda } from '@/lib/format';
 import { resumoDoTransporte } from '@/lib/fiscal/transporte';
 import { useIncluirRascunho } from '../hooks/useIncluirRascunho';
+import TrocarTransportadora from './TrocarTransportadora';
 
 // Duração da transição de saída da linha (ver .linha-saindo em globals.css) —
 // a remoção de verdade só acontece depois, senão a linha some sem animar.
@@ -53,6 +54,10 @@ export default function IncluirRascunho({ params }) {
     alterarMarkup,
     descontoExtra,
     alterarDescontoExtra,
+    transporte,
+    setTransporte,
+    transporteBloqueado,
+    notaFiscalNaTela,
     atualizarCliente,
     atualizarItem,
     removerItem,
@@ -73,6 +78,7 @@ export default function IncluirRascunho({ params }) {
   const [erroMarkup, setErroMarkup] = useState(null);
   const [descontoDigitado, setDescontoDigitado] = useState('');
   const [erroDesconto, setErroDesconto] = useState(null);
+  const [trocandoTransporte, setTrocandoTransporte] = useState(false);
 
   function handleMarkup(valor) {
     if (alterarMarkup(valor)) {
@@ -119,6 +125,17 @@ export default function IncluirRascunho({ params }) {
   }
 
   if (!carregado) return <p className="fraco">Lendo o pedido…</p>;
+
+  // Transporte que o preview montou, no formato de transporteEscolhido — só
+  // para a janela marcar o que está em uso.
+  const transporteOriginal =
+    dados.transporteInformado?.tipo === 'retirada'
+      ? { tipo: 'retirada' }
+      : dados.transportadora
+        ? { tipo: 'transportadora', id: dados.transportadora.id }
+        : dados.transporteBloqueado
+          ? null
+          : { tipo: 'correios' };
 
   return (
     <>
@@ -472,8 +489,8 @@ export default function IncluirRascunho({ params }) {
         )}
         {/* O metafield `transportadora` do pedido manda; em branco, a
             transportadora anexada ao CNPJ do cliente ou os Correios. */}
-        <div>Transportadora: {resumoDoTransporte(dados)}</div>
-        <div>Forma de frete: {dados.payload?.nota_fiscal?.forma_frete ?? 'não informada'}</div>
+        <div>Transportadora: {resumoDoTransporte(dados, transporte)}</div>
+        <div>Forma de frete: {notaFiscalNaTela?.forma_frete ?? 'não informada'}</div>
         {/* O que vai na nota é o número já lido do payload, não o texto cru do
             metafield — se o Shopify não mandou nada, a nota vai com 1 volume e
             o alerta lá em cima avisa. */}
@@ -485,8 +502,8 @@ export default function IncluirRascunho({ params }) {
           <button
             style={{ marginTop: '1.5rem' }}
             onClick={() => setPedindoConfirmacao(true)}
-            disabled={!podeIncluir || pedindoConfirmacao || !!dados.transporteBloqueado}
-            title={dados.transporteBloqueado ?? undefined}
+            disabled={!podeIncluir || pedindoConfirmacao || !!transporteBloqueado}
+            title={transporteBloqueado ?? undefined}
           >
             {dados.jaProcessado ? 'Enviar novo rascunho ao Tiny' : 'Incluir rascunho no Tiny'}
           </button>
@@ -570,6 +587,27 @@ export default function IncluirRascunho({ params }) {
           )}
         </>
       )}
+
+      {!resultado && !emissao && !dados.notaEmitida && (
+        <div style={{ marginTop: '1.5rem' }}>
+          <button className="secundario" onClick={() => setTrocandoTransporte(true)} disabled={enviando}>
+            Trocar transportadora
+          </button>
+          {transporte && (
+            <span className="fraco" style={{ marginLeft: '0.75rem' }}>
+              Este pedido vai com {transporte.nome} — envie o rascunho para valer.
+            </span>
+          )}
+        </div>
+      )}
+
+      <TrocarTransportadora
+        aberto={trocandoTransporte}
+        aoFechar={() => setTrocandoTransporte(false)}
+        aoEscolher={setTransporte}
+        atual={transporte ?? transporteOriginal}
+        temOriginal={Boolean(transporte)}
+      />
 
       <p style={{ marginTop: '2rem' }}>
         <a href="/pedidos">Voltar para a tela de atacado</a>
