@@ -44,6 +44,11 @@ export function useIncluirRascunho(id) {
   const [erroEnvio, setErroEnvio] = useState(null);
   const [resultado, setResultado] = useState(null);
 
+  const [pedindoConfirmacaoEmissao, setPedindoConfirmacaoEmissao] = useState(false);
+  const [emitindo, setEmitindo] = useState(false);
+  const [erroEmissao, setErroEmissao] = useState(null);
+  const [emissao, setEmissao] = useState(null);
+
   useEffect(() => {
     fetch(`/api/pedidos/${id}/preview`)
       .then(async (r) => {
@@ -179,6 +184,24 @@ export function useIncluirRascunho(id) {
     }
   }
 
+  /** Emite o último rascunho do pedido — a rota lê o id da nota do Supabase,
+   *  então o que vai é o que está no Tiny, não o que está editado na tela. */
+  async function confirmarEmissao() {
+    setEmitindo(true);
+    setErroEmissao(null);
+    try {
+      const resposta = await fetch(`/api/pedidos/${id}/emitir`, { method: 'POST' });
+      const corpo = await resposta.json();
+      if (!resposta.ok) throw new Error(corpo.erro ?? 'O Tiny recusou a emissão.');
+      setEmissao(corpo);
+      setPedindoConfirmacaoEmissao(false);
+    } catch (e) {
+      setErroEmissao(e.message);
+    } finally {
+      setEmitindo(false);
+    }
+  }
+
   const carregado = Boolean(dados && itensEditados);
   const totalPaginas = carregado ? Math.max(1, Math.ceil(itensEditados.length / ITENS_POR_PAGINA)) : 1;
   const inicioPagina = (pagina - 1) * ITENS_POR_PAGINA;
@@ -191,7 +214,11 @@ export function useIncluirRascunho(id) {
   const itensForamEditados = carregado ? JSON.stringify(itensEditados) !== JSON.stringify(itensOriginais) : false;
   // Já ter rascunho não bloqueia: o Tiny às vezes acusa duplicidade e a saída
   // é reenviar com uma alteração mínima. Nota emitida, sim.
-  const podeIncluir = carregado && !dados.notaEmitida && !enviando && !resultado && itensEditados.length > 0;
+  const podeIncluir =
+    carregado && !dados.notaEmitida && !enviando && !resultado && !emissao && itensEditados.length > 0;
+  // Emitir pede um rascunho já gravado no Tiny: o que acabou de ser incluído
+  // aqui ou o que o pedido já tinha.
+  const podeEmitir = carregado && !dados.notaEmitida && !emissao && Boolean(resultado || dados.jaProcessado);
 
   return {
     dados,
@@ -222,5 +249,12 @@ export function useIncluirRascunho(id) {
     restaurarItemRemovido,
     restaurarItens,
     confirmarInclusao,
+    podeEmitir,
+    pedindoConfirmacaoEmissao,
+    setPedindoConfirmacaoEmissao,
+    emitindo,
+    erroEmissao,
+    emissao,
+    confirmarEmissao,
   };
 }

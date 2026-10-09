@@ -18,7 +18,7 @@ import {
   descontoDoMarkup,
   formatarMarkup,
 } from '@/lib/fiscal/markup';
-import { CATEGORIA_PADRAO, rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
+import { rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
 import { formatarMoeda } from '@/lib/format';
 import { resumoDoTransporte } from '@/lib/fiscal/transporte';
 import { useIncluirRascunho } from '../hooks/useIncluirRascunho';
@@ -59,6 +59,13 @@ export default function IncluirRascunho({ params }) {
     restaurarItemRemovido,
     restaurarItens,
     confirmarInclusao,
+    podeEmitir,
+    pedindoConfirmacaoEmissao,
+    setPedindoConfirmacaoEmissao,
+    emitindo,
+    erroEmissao,
+    emissao,
+    confirmarEmissao,
   } = useIncluirRascunho(id);
 
   const [saindoIndices, setSaindoIndices] = useState(() => new Set());
@@ -121,9 +128,6 @@ export default function IncluirRascunho({ params }) {
         {dados.markupOrigem === 'acessorio' && <span className="marca marca-acessorio">acessórios</span>}
       </h2>
       <p className="fraco">
-        Confira e corrija o que precisar antes de enviar. É exatamente isto que vai para o Tiny.
-      </p>
-      <p className="fraco">
         {dados.pedido.totalItens} itens lidos em {dados.pedido.paginasLidas} página(s).
         {dados.pedido.origemCnpj && ` CNPJ encontrado em ${dados.pedido.origemCnpj}.`}
       </p>
@@ -166,8 +170,20 @@ export default function IncluirRascunho({ params }) {
               {resultado.contribuinte.mensagem}
             </p>
           )}
+          {!emissao && <p>A nota pode ser emitida pelo botão &quot;Emitir nota&quot; no fim da página.</p>}
+        </div>
+      )}
+
+      {emissao && (
+        <div className="aviso aviso-ok">
+          <strong>
+            Nota {emissao.tinyNotaId} emitida{emissao.numeroNf ? ` — NF nº ${emissao.numeroNf}` : ''}.
+          </strong>
+          {!emissao.numeroNf && (
+            <p>A SEFAZ ainda não devolveu o número — a tela de atacado confere de novo depois.</p>
+          )}
           <p>
-            <a href="/pedidos">Voltar para a tela de atacado e emitir a nota</a>
+            <a href="/pedidos">Voltar para a tela de atacado</a>
           </p>
         </div>
       )}
@@ -317,11 +333,6 @@ export default function IncluirRascunho({ params }) {
         </div>
       </div>
 
-      <p className="fraco">
-        Quantidade e valor unitário aqui são os que vão para o Tiny — já incluem o markup e o
-        desconto extra acima. Corrija item a item se algo estiver errado; trocar o markup ou o
-        desconto depois refaz todos os valores.
-      </p>
 
       <table>
         <thead>
@@ -459,12 +470,6 @@ export default function IncluirRascunho({ params }) {
               .join(', ')}
           </div>
         )}
-        {/* Categoria não é campo de nota fiscal na API do Tiny — ver
-            pagamento.js. Fica como lembrete em vez de sumir da tela. */}
-        <div className="fraco">
-          Categoria: preencher como &quot;{CATEGORIA_PADRAO}&quot; dentro do Tiny — a API não aceita
-          esse campo.
-        </div>
         {/* O metafield `transportadora` do pedido manda; em branco, a
             transportadora anexada ao CNPJ do cliente ou os Correios. */}
         <div>Transportadora: {resumoDoTransporte(dados)}</div>
@@ -475,7 +480,7 @@ export default function IncluirRascunho({ params }) {
         <div>Quantidade de volumes: {dados.payload?.nota_fiscal?.quantidade_volumes ?? 1}</div>
       </div>
 
-      {!resultado && (
+      {!resultado && !emissao && (
         <>
           <button
             style={{ marginTop: '1.5rem' }}
@@ -513,6 +518,54 @@ export default function IncluirRascunho({ params }) {
                   Cancelar
                 </button>
               </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {podeEmitir && (
+        <>
+          <button
+            style={{ marginTop: '1.5rem', marginLeft: resultado ? 0 : '0.75rem' }}
+            onClick={() => setPedindoConfirmacaoEmissao(true)}
+            disabled={pedindoConfirmacaoEmissao || emitindo || enviando || pedindoConfirmacao}
+          >
+            Emitir nota
+          </button>
+
+          {pedindoConfirmacaoEmissao && (
+            <div className="confirmacao">
+              <p style={{ marginTop: 0 }}>
+                <strong>
+                  Emitir a nota {resultado?.tinyNotaId ?? dados.tinyNotaId} ({dados.pedido.name})?
+                </strong>{' '}
+                Isso dá valor fiscal real e é irreversível — não é possível desfazer pelo sistema.
+              </p>
+              {!resultado && (
+                <p>
+                  Vai o rascunho que já está no Tiny. O que foi alterado nesta tela só entra se você
+                  enviar um rascunho novo antes.
+                </p>
+              )}
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <button onClick={confirmarEmissao} disabled={emitindo}>
+                  {emitindo ? 'Emitindo…' : 'Sim, emitir'}
+                </button>
+                <button
+                  className="secundario"
+                  onClick={() => setPedindoConfirmacaoEmissao(false)}
+                  disabled={emitindo}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          )}
+
+          {erroEmissao && (
+            <div className="aviso" style={{ marginTop: '1rem' }}>
+              <strong>A nota não foi emitida.</strong>
+              <p>{erroEmissao}</p>
             </div>
           )}
         </>
