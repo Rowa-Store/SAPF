@@ -147,36 +147,44 @@ export default function ControleAtacado() {
     verErro,
   } = useAtacado();
 
-  // Sem busca, a lista é de um dia só (abre em hoje): os botões andam um dia
-  // por vez e o campo de data pula direto. Numa busca, páginas de 50.
-  const paginacao = dia ? (
-    <div className="paginacao">
-      <button className="secundario" onClick={diaAnterior} disabled={carregando}>
-        ← Dia anterior
-      </button>
-      <span>
-        <strong>{dia === diaDeHoje ? 'Hoje' : formatarDia(dia)}</strong>
-        {dia === diaDeHoje && <span className="fraco"> — {formatarDia(dia)}</span>}
-      </span>
-      <button className="secundario" onClick={diaSeguinte} disabled={carregando || dia === diaDeHoje}>
-        Dia seguinte →
-      </button>
-      <input
-        type="date"
-        aria-label="Ir para o dia"
-        value={dia}
-        max={diaDeHoje ?? undefined}
-        onChange={(e) => irParaDia(e.target.value)}
-        disabled={carregando}
-      />
-      {dia !== diaDeHoje && (
-        <button className="secundario pequeno" onClick={() => irParaDia(diaDeHoje)} disabled={carregando}>
-          Voltar para hoje
+  // Sem busca, a lista é de um dia só (abre em hoje): a navegação por dia
+  // fica no cartão, logo abaixo da busca — os botões andam um dia por vez e o
+  // campo de data pula direto. Numa busca, páginas de 50 no fim da lista.
+  const navegacaoDia = dia && (
+    <div className="navegacao-dia">
+      <label htmlFor="dia">Dia</label>
+      <div className="navegacao-dia-controles">
+        <button className="secundario pequeno" onClick={diaAnterior} disabled={carregando} aria-label="Dia anterior">
+          ←
         </button>
-      )}
+        <input
+          id="dia"
+          type="date"
+          value={dia}
+          max={diaDeHoje ?? undefined}
+          onChange={(e) => irParaDia(e.target.value)}
+          disabled={carregando}
+        />
+        <button
+          className="secundario pequeno"
+          onClick={diaSeguinte}
+          disabled={carregando || dia === diaDeHoje}
+          aria-label="Dia seguinte"
+        >
+          →
+        </button>
+        {dia === diaDeHoje ? (
+          <span className="fraco">Hoje — {formatarDia(dia)}</span>
+        ) : (
+          <button className="secundario pequeno" onClick={() => irParaDia(diaDeHoje)} disabled={carregando}>
+            Voltar para hoje
+          </button>
+        )}
+      </div>
     </div>
-  ) : (
-    (pagina > 1 || temProxima) && (
+  );
+
+  const paginacao = !dia && (pagina > 1 || temProxima) && (
     <div className="paginacao">
       <button className="secundario" onClick={paginaAnterior} disabled={pagina === 1 || carregando}>
         Anterior
@@ -186,7 +194,6 @@ export default function ControleAtacado() {
         Próxima
       </button>
     </div>
-    )
   );
 
   return (
@@ -207,6 +214,7 @@ export default function ControleAtacado() {
             />
           </div>
         </div>
+        {navegacaoDia}
         <div className="filtros-rodape">
           <div className="filtros">
             <label>

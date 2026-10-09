@@ -215,6 +215,9 @@ button.botao-erro { background: var(--alerta); border-color: var(--alerta); colo
 .filtros label { display: flex; gap: 0.35rem; align-items: center; margin: 0; font-size: 0.9rem; color: var(--tinta); }
 .filtros input[type="checkbox"] { width: auto; }
 
+.navegacao-dia { margin-top: 0.75rem; }
+.navegacao-dia-controles { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; font-size: 0.9rem; }
+.navegacao-dia-controles input[type="date"] { width: auto; }
 .paginacao { display: flex; gap: 0.75rem; align-items: center; margin-top: 1rem; font-size: 0.9rem; }
 
 /* Botão compacto — usado nas ações por linha, onde há vários lado a lado. */
