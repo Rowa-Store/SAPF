@@ -237,13 +237,6 @@ export default function CadastroTransportadoras() {
         </div>
       </div>
 
-      <p className="fraco">
-        O metafield <span className="mono">transportadora</span> do pedido no Shopify decide o transporte:
-        &quot;correios&quot;, &quot;retirada&quot; (nota sem transportadora) ou o nome — ou um pedaço dele — de uma
-        transportadora daqui. Em branco, cliente com o CNPJ anexado a uma transportadora ativa sai com ela; os
-        demais, pelos Correios. Vale para os próximos rascunhos; os já enviados ao Tiny não mudam.
-      </p>
-
       {aviso && (
         <div className="aviso aviso-ok aviso-fechavel">
           <p style={{ margin: 0 }}>{aviso}</p>
