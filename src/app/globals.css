@@ -166,6 +166,12 @@ input, select {
   color: var(--tinta);
 }
 
+/* O valor digitado fica em mono para alinhar; o texto de exemplo, não. */
+input::placeholder {
+  font-family: var(--fonte-sans, "Inter"), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: var(--tinta-fraca);
+}
+
 /* Sem isso o ícone do calendário sai preto em cima do fundo escuro. */
 input[type="date"] { color-scheme: dark; }
 
