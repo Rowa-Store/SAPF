@@ -111,7 +111,10 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
   }
 }`;
 
-const FILTRO_BASE = 'financial_status:paid';
+// Mesma regra do alerta de atacado (hub-rowa, webhook shopify/atacado): só
+// entra pedido criado a partir de pedido rascunho. Compra da loja online com
+// CNPJ no checkout não é atacado.
+const FILTRO_BASE = 'financial_status:paid AND source_name:shopify_draft_order';
 
 /** Aspas para a sintaxe de busca do Shopify (termos com espaço, "#", etc.). */
 function entreAspas(termo) {
