@@ -95,7 +95,7 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
   orders(first: $limite, after: $cursor, sortKey: CREATED_AT, reverse: true, query: $busca) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id name createdAt tags
+      id name createdAt tags closed
       currentTotalPriceSet { shopMoney { amount } }
       note
       customAttributes { key value }
@@ -111,7 +111,9 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
   }
 }`;
 
-const FILTRO_BASE = 'financial_status:paid';
+// Pedido arquivado no Shopify (`closed`) já foi resolvido por lá e não entra
+// na tela de atacado.
+const FILTRO_BASE = 'financial_status:paid AND -status:closed';
 
 /** Aspas para a sintaxe de busca do Shopify (termos com espaço, "#", etc.). */
 function entreAspas(termo) {
@@ -149,7 +151,9 @@ export async function listarPedidosRecentes({ limite = 50, cursor = null, termos
     cursor,
     busca: montarBusca({ termos, nomes, periodo }),
   });
-  const pedidos = dados.orders?.nodes ?? [];
+  // O `-status:closed` da busca é a primeira barreira; esta garante que
+  // nenhum arquivado passe mesmo se o Shopify ignorar o filtro.
+  const pedidos = (dados.orders?.nodes ?? []).filter((pedido) => !pedido.closed);
 
   return {
     pageInfo: dados.orders?.pageInfo ?? { hasNextPage: false, endCursor: null },
