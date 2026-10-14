@@ -285,7 +285,7 @@ export default function IncluirRascunho({ params }) {
             ))}
             <input
               aria-label="Outro markup"
-              placeholder="Outro (ex.: 2,35)"
+              placeholder="Ex.: 2,35"
               inputMode="decimal"
               style={{ width: '9rem' }}
               value={markupDigitado}
@@ -318,7 +318,7 @@ export default function IncluirRascunho({ params }) {
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.5rem' }}>
             <input
               aria-label="Desconto extra em percentual"
-              placeholder="% (ex.: 10)"
+              placeholder="Ex.: 10%"
               inputMode="decimal"
               style={{ width: '7rem' }}
               value={descontoDigitado}

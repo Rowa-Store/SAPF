@@ -207,7 +207,7 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
       numero_pedido_ecommerce: String(pedidoShopify.name ?? '').replace('#', ''),
       // valor_desconto: só aparece quando há desconto — ver desconto.js.
       ...desconto,
-      // forma_pagamento só existe quando o pagamento é boleto (+ parcelas,
+      // forma_pagamento só existe quando o pagamento é boleto ou PIX (+ parcelas,
       // quando é franquia); nos demais casos não entra nada aqui.
       ...pagamento,
       obs: `Pedido vindo do Shopify: ${String(pedidoShopify.name ?? '').replace('#', '')}`,

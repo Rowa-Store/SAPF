@@ -6,9 +6,10 @@
 //     "múltiplas formas de pagamento" (`multiplas`) e leva 3 parcelas, com
 //     vencimento em 30, 45 e 60 dias contados da data de emissão.
 //   - ATACADO pagando com BOLETO: a nota leva `boleto_bancario`, sem parcelas.
-//   - Qualquer outra forma de pagamento (PIX, cartão, transferência...): a
-//     nota vai SEM `forma_pagamento`. Só boleto é enviado ao Tiny; o resto
-//     fica para ser preenchido lá dentro, e a tela avisa.
+//   - PIX (atacado ou franquia): a nota leva `pix`, sem parcelas.
+//   - Qualquer outra forma de pagamento (cartão, transferência...), forma
+//     misturada ("Cartão + Pix") ou metafield vazio: a nota vai SEM
+//     `forma_pagamento`, para ser preenchida lá dentro do Tiny.
 //
 // A forma de pagamento chega do Shopify como TEXTO LIVRE, no metafield
 // `custom.metodo_pagamento` do pedido ("Boleto", "boleto bancário", "PIX",
@@ -16,9 +17,9 @@
 // uma lista fechada de códigos, que segue os meios de pagamento da NFe
 // (tPag). Por isso o texto passa pelo de-para abaixo, que continua
 // reconhecendo todas as formas — o rótulo traduzido é o que a tela usa para
-// dizer o que veio do Shopify. O que vai para o Tiny, porém, é só boleto:
-// qualquer outra forma (ou texto que não casar com nenhum código) sai da nota
-// SEM forma de pagamento (campo omitido) mais um alerta na tela — mandar um
+// dizer o que veio do Shopify. O que vai para o Tiny, porém, é só boleto e
+// PIX: qualquer outra forma (ou texto que não casar com nenhum código) sai da
+// nota SEM forma de pagamento (campo omitido) — mandar um
 // código inválido faria o Tiny recusar a nota inteira, e chutar um código
 // parecido iria para a NFe sem ninguém ver.
 //
@@ -43,10 +44,10 @@
 // configurada como categoria padrão da conta.
 //
 // Os únicos códigos que saem daqui para o Tiny são `multiplas` (franquia com
-// boleto) e `boleto_bancario` (o resto com boleto). Os demais códigos do
-// de-para (pix, cartao_credito...) existem só para o rótulo da tela — se um
+// boleto), `boleto_bancario` (o resto com boleto) e `pix`. Os demais códigos
+// do de-para (cartao_credito...) existem só para o rótulo da tela — se um
 // dia passarem a ser enviados, confirmar antes a grafia exata com o time
-// fiscal: `multiplas` é o único visto chegando no Tiny em rascunho real.
+// fiscal.
 
 import { valorMonetario } from '../utils.js';
 import { CAMPO_DESCONTO_TINY } from './desconto.js';
@@ -56,6 +57,9 @@ export const FORMA_MULTIPLAS = 'multiplas';
 
 /** Código do Tiny para boleto bancário (tPag 15). */
 export const FORMA_BOLETO = 'boleto_bancario';
+
+/** Código do Tiny para PIX (tPag 17). */
+export const FORMA_PIX = 'pix';
 
 /** Categoria financeira combinada — só para exibir na tela; a API não a aceita. */
 export const CATEGORIA_PADRAO = 'Compras';
@@ -76,7 +80,7 @@ export const CONDICAO_FRANQUIA_BOLETO = PRAZOS_FRANQUIA_BOLETO.join(' ');
  */
 const DE_PARA = [
   [/boleto/, FORMA_BOLETO],
-  [/\bpix\b/, 'pix'],
+  [/\bpix\b/, FORMA_PIX],
   [/cart[ao]+.*credito|credito.*cart[ao]+/, 'cartao_credito'],
   [/cart[ao]+.*debito|debito.*cart[ao]+/, 'cartao_debito'],
   [/credito.*loja|loja.*credito/, 'credito_loja'],
@@ -109,6 +113,17 @@ export function formaDePagamentoTiny(textoShopify) {
     if (padrao.test(texto)) return codigo;
   }
   return '';
+}
+
+/**
+ * PIX só vai para a nota quando é a única forma do texto: "Cartão + Pix" é
+ * pagamento misturado e fica para ser preenchido no Tiny.
+ */
+function soPix(textoShopify) {
+  const resto = normalizar(textoShopify).replace(/\bpix\b/g, ' ');
+  // "cartão" sozinho não casa no de-para (só com crédito/débito), por isso
+  // é conferido à parte.
+  return formaDePagamentoTiny(resto) === '' && !/cart[ao]+/.test(resto);
 }
 
 /** dd/mm/aaaa de `dias` dias depois da data base (ISO do pedido, ou hoje). */
@@ -157,7 +172,7 @@ function parcelasFranquiaBoleto(dataBaseIso, total) {
  * @param {number} [opcoes.total] total dos itens da nota
  * @returns {{ pagamento: object, alertas: string[] }} `pagamento` já pronto
  *   para entrar em `nota_fiscal` — vem vazio sempre que o pagamento não é
- *   boleto, porque só boleto é enviado ao Tiny.
+ *   boleto nem PIX, porque só esses dois são enviados ao Tiny.
  */
 export function montarPagamento({ classificacao, metodoPagamento, dataBaseIso, total = 0 }) {
   const alertas = [];
@@ -184,7 +199,11 @@ export function montarPagamento({ classificacao, metodoPagamento, dataBaseIso, t
     return { pagamento: { forma_pagamento: FORMA_BOLETO }, alertas };
   }
 
-  // Fora do boleto não vai nada: nem o código traduzido, nem um palpite.
+  if (forma === FORMA_PIX && soPix(metodoPagamento)) {
+    return { pagamento: { forma_pagamento: FORMA_PIX }, alertas };
+  }
+
+  // Fora do boleto e do PIX não vai nada: nem o código traduzido, nem um palpite.
   return { pagamento: {}, alertas };
 }
 
