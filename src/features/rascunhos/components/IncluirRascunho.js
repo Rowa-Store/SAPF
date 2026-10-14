@@ -252,8 +252,7 @@ export default function IncluirRascunho({ params }) {
         <div style={{ flex: '1 1 22rem' }}>
           <div>
             <strong>
-              Markup dos itens: {formatarMarkup(markup)} ({formatarMarkup(descontoDoMarkup(markup))}% de
-              desconto sobre o preço do Shopify)
+              Markup dos itens: {formatarMarkup(markup)} ({formatarMarkup(descontoDoMarkup(markup))}%)
             </strong>
           </div>
           <div className="fraco">

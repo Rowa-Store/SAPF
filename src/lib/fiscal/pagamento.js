@@ -185,13 +185,6 @@ export function montarPagamento({ classificacao, metodoPagamento, dataBaseIso, t
   }
 
   // Fora do boleto não vai nada: nem o código traduzido, nem um palpite.
-  // Forma não reconhecida não gera alerta.
-  if (forma) {
-    alertas.push(
-      `Pagamento por ${rotuloFormaPagamento(forma)}: só boleto é enviado ao Tiny, então a nota vai ` +
-        'sem forma de pagamento. Preencha esse campo dentro do Tiny antes de emitir.'
-    );
-  }
   return { pagamento: {}, alertas };
 }
 
