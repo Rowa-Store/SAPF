@@ -17,7 +17,7 @@ export const FILTROS_VAZIOS = {
 };
 
 // A tela abre filtrada nas transferências que saem do CD.
-const ORIGEM_PADRAO = 'Rowa Centro de Distribuição 1';
+const ORIGEM_PADRAO = 'Rowa Centro de Distribuição 2';
 
 function paraQuery(filtros) {
   const busca = new URLSearchParams();
