@@ -261,6 +261,7 @@ export function useIncluirRascunho(id) {
     totalShopify,
     totalDivergente,
     quantidadeItensNota,
+    quantidadeLinhasNota: carregado ? itensEditados.length : 0,
     itensForamEditados,
     podeIncluir,
     itensRemovidos,

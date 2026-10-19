@@ -51,6 +51,7 @@ export default function IncluirRascunho({ params }) {
     totalShopify,
     totalDivergente,
     quantidadeItensNota,
+    quantidadeLinhasNota,
     itensForamEditados,
     podeIncluir,
     itensRemovidos,
@@ -527,6 +528,7 @@ export default function IncluirRascunho({ params }) {
         <ComparacaoTotais
           nota={{
             quantidadeItens: quantidadeItensNota,
+            quantidadeLinhas: quantidadeLinhasNota,
             subtotal: totalNota,
             desconto: Number(dados.pedido.valorDesconto ?? 0),
             frete: Number(dados.pedido.valorFrete ?? 0),
@@ -714,22 +716,22 @@ const moedaShopify = (v) =>
 const pesoShopify = (kg) => `${kg.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg`;
 
 /**
- * Nota do sistema x pedido no Shopify, lado a lado, em cartões claros para
- * sair legível num print. O lado do Shopify copia o quadro de totais do admin
- * (rótulos em inglês e números no formato de lá).
+ * Nota do sistema x pedido no Shopify, lado a lado, para sair num print. O
+ * lado da nota segue o visual dos totais do Tiny; o do Shopify copia o quadro
+ * de totais do admin (rótulos em inglês e números no formato de lá).
  */
 function ComparacaoTotais({ nota, shopify }) {
   const diferenca = nota.total - shopify.total;
   const itens = (n) => `${n} ${n === 1 ? 'item' : 'items'}`;
-  const ladoNota = {
-    titulo: 'Sistema (nota no Tiny)',
-    linhas: [
-      ['Subtotal', `${nota.quantidadeItens} ${nota.quantidadeItens === 1 ? 'item' : 'itens'}`, formatarMoeda(nota.subtotal)],
-      ['Desconto', '', `-${formatarMoeda(nota.desconto)}`],
-      ['Frete', nota.formaFrete, formatarMoeda(nota.frete)],
-    ],
-    total: ['Total', formatarMoeda(nota.total)],
-  };
+  // Mesmos campos e rótulos do quadro de totais da nota no Tiny.
+  const camposNota = [
+    ['Total Produtos', formatarMoeda(nota.subtotal)],
+    ['Valor do Frete', formatarMoeda(nota.frete)],
+    ['Desconto', formatarMoeda(nota.desconto)],
+    ['Nº Itens', nota.quantidadeLinhas],
+    ['Qtd. Peças', nota.quantidadeItens],
+    ['Total da Nota', formatarMoeda(nota.total)],
+  ];
   const ladoShopify = {
     titulo: 'Shopify',
     linhas: [
@@ -745,7 +747,7 @@ function ComparacaoTotais({ nota, shopify }) {
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(22rem, 1fr))', gap: '1rem' }}>
-        <QuadroTotais {...ladoNota} />
+        <QuadroTiny titulo="Sistema (nota no Tiny)" campos={camposNota} />
         <QuadroTotais {...ladoShopify} />
       </div>
       <p style={{ marginBottom: 0, color: 'var(--amarelo)', fontSize: '0.9rem' }}>
@@ -753,6 +755,36 @@ function ComparacaoTotais({ nota, shopify }) {
         {diferenca > 0 ? 'a mais na nota do que no Shopify' : 'a menos na nota do que no Shopify'}
       </p>
     </>
+  );
+}
+
+// Quadro no visual dos totais da nota no Tiny: fundo grafite, rótulo pequeno
+// em cinza e valor em destaque logo abaixo, em grade.
+function QuadroTiny({ titulo, campos }) {
+  return (
+    <div>
+      <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>{titulo}</div>
+      <div
+        style={{
+          background: '#1f1f1f',
+          color: '#f2f2f2',
+          border: '1px solid #2e2e2e',
+          borderRadius: '12px',
+          padding: '1rem 1.25rem',
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '1rem 1.5rem',
+          fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+        }}
+      >
+        {campos.map(([rotulo, valor]) => (
+          <div key={rotulo}>
+            <div style={{ color: '#a3a3a3', fontSize: '0.8rem' }}>{rotulo}</div>
+            <div style={{ fontWeight: 600, fontSize: '0.95rem' }}>{valor}</div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
