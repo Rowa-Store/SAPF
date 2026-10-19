@@ -469,7 +469,38 @@ export default function IncluirRascunho({ params }) {
         </div>
       )}
 
-      <div className="cartao" style={{ marginTop: '1rem' }}>
+      <div className="cartao" style={{ marginTop: '1rem', position: 'relative' }}>
+        {/* Totais como o admin do Shopify mostra, para comparar com a nota —
+            escondidos até alguém abrir pela setinha, por cima do quadro. */}
+        {dados.pedido.resumoShopify && (
+          <>
+            <button
+              className="secundario pequeno"
+              style={{ position: 'absolute', top: '0.75rem', right: '0.75rem' }}
+              onClick={() => setMostrandoShopify((v) => !v)}
+              aria-expanded={mostrandoShopify}
+              aria-label={mostrandoShopify ? 'Ocultar valores do Shopify' : 'Mostrar valores do Shopify'}
+              title={mostrandoShopify ? 'Ocultar valores do Shopify' : 'Mostrar valores do Shopify'}
+            >
+              {mostrandoShopify ? '▴' : '▾'}
+            </button>
+            {mostrandoShopify && (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '2.75rem',
+                  right: '0.75rem',
+                  width: 'min(28rem, calc(100% - 1.5rem))',
+                  zIndex: 10,
+                  boxShadow: '0 12px 32px rgba(0, 0, 0, 0.45)',
+                  borderRadius: '12px',
+                }}
+              >
+                <QuadroTotais {...ladoShopify(dados.pedido.resumoShopify)} titulo={undefined} />
+              </div>
+            )}
+          </>
+        )}
         <div>
           <strong>Total da nota: {formatarMoeda(totalNota)}</strong>
           {totalDivergente && (
@@ -509,7 +540,24 @@ export default function IncluirRascunho({ params }) {
         )}
         {/* O metafield `transportadora` do pedido manda; em branco, a
             transportadora anexada ao CNPJ do cliente ou os Correios. */}
-        <div>Transportadora: {resumoDoTransporte(dados, transporte)}</div>
+        <div>
+          Transportadora: {resumoDoTransporte(dados, transporte)}
+          {!resultado && !emissao && !dados.notaEmitida && (
+            <button
+              className="secundario pequeno"
+              style={{ marginLeft: '0.75rem' }}
+              onClick={() => setTrocandoTransporte(true)}
+              disabled={enviando}
+            >
+              Trocar transportadora
+            </button>
+          )}
+          {transporte && !resultado && !emissao && (
+            <span className="fraco" style={{ marginLeft: '0.75rem' }}>
+              — envie o rascunho para valer.
+            </span>
+          )}
+        </div>
         <div>Forma de frete: {notaFiscalNaTela?.forma_frete ?? 'não informada'}</div>
         {/* O que vai na nota é o número já lido do payload, não o texto cru do
             metafield — se o Shopify não mandou nada, a nota vai com 1 volume e
@@ -535,33 +583,39 @@ export default function IncluirRascunho({ params }) {
         />
       </Modal>
 
-      {/* Totais como o admin do Shopify mostra, para comparar com a nota —
-          ficam escondidos até alguém pedir. */}
-      {dados.pedido.resumoShopify && (
-        <>
+      {/* Incluir à esquerda, emitir à direita. Emitir aparece sempre, mas só
+          libera com um rascunho no Tiny. */}
+      {!emissao && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginTop: '1.5rem' }}>
+          <div>
+            {!resultado && (
+              <button
+                onClick={() => setPedindoConfirmacao(true)}
+                disabled={!podeIncluir || pedindoConfirmacao || !!transporteBloqueado}
+                title={transporteBloqueado ?? undefined}
+              >
+                {dados.jaProcessado ? 'Enviar novo rascunho ao Tiny' : 'Incluir rascunho no Tiny'}
+              </button>
+            )}
+          </div>
           <button
-            className="secundario"
-            style={{ padding: '0.15rem 0.5rem', fontSize: '0.8rem' }}
-            onClick={() => setMostrandoShopify((v) => !v)}
-            aria-expanded={mostrandoShopify}
+            onClick={() => setPedindoConfirmacaoEmissao(true)}
+            disabled={!podeEmitir || pedindoConfirmacaoEmissao || emitindo || enviando || pedindoConfirmacao}
+            title={
+              podeEmitir
+                ? undefined
+                : dados.notaEmitida
+                  ? 'A nota deste pedido já foi emitida'
+                  : 'Inclua o rascunho no Tiny antes de emitir'
+            }
           >
-            {mostrandoShopify ? 'Ocultar valores do Shopify' : 'Mostrar valores do Shopify'}
+            Emitir nota
           </button>
-          {mostrandoShopify && <ResumoShopify resumo={dados.pedido.resumoShopify} />}
-        </>
+        </div>
       )}
 
       {!resultado && !emissao && (
         <>
-          <button
-            style={{ marginTop: '1.5rem' }}
-            onClick={() => setPedindoConfirmacao(true)}
-            disabled={!podeIncluir || pedindoConfirmacao || !!transporteBloqueado}
-            title={transporteBloqueado ?? undefined}
-          >
-            {dados.jaProcessado ? 'Enviar novo rascunho ao Tiny' : 'Incluir rascunho no Tiny'}
-          </button>
-
           {pedindoConfirmacao && (
             <div className="confirmacao">
               <p style={{ marginTop: 0 }}>
@@ -596,14 +650,6 @@ export default function IncluirRascunho({ params }) {
 
       {podeEmitir && (
         <>
-          <button
-            style={{ marginTop: '1.5rem', marginLeft: resultado ? 0 : '0.75rem' }}
-            onClick={() => setPedindoConfirmacaoEmissao(true)}
-            disabled={pedindoConfirmacaoEmissao || emitindo || enviando || pedindoConfirmacao}
-          >
-            Emitir nota
-          </button>
-
           {pedindoConfirmacaoEmissao && (
             <div className="confirmacao">
               <p style={{ marginTop: 0 }}>
@@ -642,19 +688,6 @@ export default function IncluirRascunho({ params }) {
         </>
       )}
 
-      {!resultado && !emissao && !dados.notaEmitida && (
-        <div style={{ marginTop: '1.5rem' }}>
-          <button className="secundario" onClick={() => setTrocandoTransporte(true)} disabled={enviando}>
-            Trocar transportadora
-          </button>
-          {transporte && (
-            <span className="fraco" style={{ marginLeft: '0.75rem' }}>
-              Este pedido vai com {transporte.nome} — envie o rascunho para valer.
-            </span>
-          )}
-        </div>
-      )}
-
       <TrocarTransportadora
         aberto={trocandoTransporte}
         aoFechar={() => setTrocandoTransporte(false)}
@@ -670,63 +703,16 @@ export default function IncluirRascunho({ params }) {
   );
 }
 
-function ResumoShopify({ resumo }) {
-  const peso = resumo.pesoKg.toLocaleString('pt-BR', { minimumFractionDigits: 1 });
-  const linhas = [
-    ['Subtotal', `${resumo.quantidadeItens} ${resumo.quantidadeItens === 1 ? 'item' : 'itens'}`, formatarMoeda(resumo.subtotal)],
-    ['Desconto', resumo.descricaoDesconto, `-${formatarMoeda(resumo.desconto)}`],
-    ['Frete', [resumo.formaFrete, resumo.pesoKg > 0 && `(${peso} kg)`].filter(Boolean).join(' '), formatarMoeda(resumo.frete)],
-    ...(resumo.impostos > 0 ? [['Impostos', '', formatarMoeda(resumo.impostos)]] : []),
-  ];
-  return (
-    <div className="cartao" style={{ marginTop: '0.75rem' }}>
-      <table>
-        <tbody>
-          {linhas.map(([rotulo, detalhe, valor]) => (
-            <tr key={rotulo}>
-              <td>{rotulo}</td>
-              <td>{detalhe}</td>
-              <td className="num">{valor}</td>
-            </tr>
-          ))}
-          <tr>
-            <td><strong>Total</strong></td>
-            <td />
-            <td className="num"><strong>{formatarMoeda(resumo.total)}</strong></td>
-          </tr>
-          <tr>
-            <td>Pago</td>
-            <td />
-            <td className="num">{formatarMoeda(resumo.pago)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 // Dinheiro e peso no formato do admin do Shopify (R$13,762.00 / 7.0 kg), para
 // o lado do Shopify sair idêntico ao que se vê lá.
 const moedaShopify = (v) =>
   `${v < 0 ? '-' : ''}R$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pesoShopify = (kg) => `${kg.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg`;
 
-/**
- * Nota do sistema x pedido no Shopify, lado a lado, para sair num print. O
- * lado da nota segue o visual dos totais do Tiny; o do Shopify copia o quadro
- * de totais do admin (rótulos em inglês e números no formato de lá).
- */
-function ComparacaoTotais({ nota, shopify }) {
-  const diferenca = nota.total - shopify.total;
+/** Quadro de totais do admin do Shopify (rótulos em inglês, como lá). */
+function ladoShopify(shopify) {
   const itens = (n) => `${n} ${n === 1 ? 'item' : 'items'}`;
-  // Mesmos campos e rótulos do quadro de totais da nota no Tiny.
-  const camposNota = [
-    ['Total Produtos', formatarMoeda(nota.subtotal)],
-    ['Valor do Frete', formatarMoeda(nota.frete)],
-    ['Desconto', formatarMoeda(nota.desconto)],
-    ['Total da Nota', formatarMoeda(nota.total)],
-  ];
-  const ladoShopify = {
+  return {
     titulo: 'Shopify',
     linhas: [
       ['Subtotal', itens(shopify.quantidadeItens), moedaShopify(shopify.subtotal)],
@@ -737,12 +723,28 @@ function ComparacaoTotais({ nota, shopify }) {
     total: ['Total', moedaShopify(shopify.total)],
     rodape: ['Paid', moedaShopify(shopify.pago)],
   };
+}
+
+/**
+ * Nota do sistema x pedido no Shopify, lado a lado, para sair num print. O
+ * lado da nota segue o visual dos totais do Tiny; o do Shopify copia o quadro
+ * de totais do admin (rótulos em inglês e números no formato de lá).
+ */
+function ComparacaoTotais({ nota, shopify }) {
+  const diferenca = nota.total - shopify.total;
+  // Mesmos campos e rótulos do quadro de totais da nota no Tiny.
+  const camposNota = [
+    ['Total Produtos', formatarMoeda(nota.subtotal)],
+    ['Valor do Frete', formatarMoeda(nota.frete)],
+    ['Desconto', formatarMoeda(nota.desconto)],
+    ['Total da Nota', formatarMoeda(nota.total)],
+  ];
 
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(22rem, 1fr))', gap: '1rem' }}>
         <QuadroTiny titulo="Sistema (nota no Tiny)" campos={camposNota} />
-        <QuadroTotais {...ladoShopify} />
+        <QuadroTotais {...ladoShopify(shopify)} />
       </div>
       <p style={{ marginBottom: 0, color: 'var(--amarelo)', fontSize: '0.9rem' }}>
         ! Divergência encontrada: <strong>{formatarMoeda(Math.abs(diferenca))}</strong>{' '}
@@ -796,7 +798,7 @@ const celula = { padding: '0.35rem 0.25rem', border: 'none', background: 'transp
 function QuadroTotais({ titulo, linhas, total, rodape }) {
   return (
     <div>
-      <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>{titulo}</div>
+      {titulo && <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>{titulo}</div>}
       <div style={estiloQuadro}>
         <table style={{ width: '100%', border: 'none', borderCollapse: 'collapse' }}>
           <tbody>
