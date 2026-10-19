@@ -9,7 +9,7 @@
 //   ?busca=   termos separados por vírgula: nº do pedido, cliente, nº da NF ou CNPJ
 //   ?cursor=  só com busca: página seguinte (o `endCursor` da resposta anterior)
 
-import { listarPedidosDoDia, listarPedidosRecentes } from '@/lib/integrations/shopify';
+import { listarPedidosDoDia, listarPedidosRecentes, tiposDosItens } from '@/lib/integrations/shopify';
 import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
 import { classificarComListaFranquia, extrairCnpj } from '@/lib/fiscal/classificacao';
 import { ehAcessorio } from '@/lib/fiscal/markup';
@@ -103,10 +103,30 @@ export async function GET(request) {
       };
     };
 
+    const classificacoes = Object.fromEntries(
+      pedidos.map((p) => [p.id, classificarComListaFranquia(p._bruto, cnpjsFranquia)])
+    );
+
+    // Franquia que comprou acessório em QUALQUER item ganha a marca de
+    // acessórios (ver markup.js) — a lista do Shopify só traz o primeiro item,
+    // então os tipos dos demais vêm numa consulta à parte, só das franquias.
+    // Se ela falhar, a marca cai para o primeiro item.
+    let tiposPorPedido = {};
+    const idsFranquia = pedidos.filter((p) => classificacoes[p.id] === 'franquia').map((p) => p.id);
+    if (idsFranquia.length > 0) {
+      try {
+        tiposPorPedido = await tiposDosItens(idsFranquia);
+      } catch (erro) {
+        console.error('[pedidos] Falha ao ler os tipos dos itens das franquias, marcando pelo primeiro item:', erro);
+      }
+    }
+    const temAcessorio = (p) =>
+      (tiposPorPedido[p.id] ?? [p._bruto.primeiroItem?.nodes?.[0]?.product?.productType]).some(ehAcessorio);
+
     const lista = pedidos.map((p) => {
       const { cnpj, origem } = extrairCnpj(p._bruto);
       const situacao = situacoes[p.id];
-      const classificacao = classificarComListaFranquia(p._bruto, cnpjsFranquia);
+      const classificacao = classificacoes[p.id];
       return {
         id: idNumerico(p.id),
         gid: p.id,
@@ -118,11 +138,9 @@ export async function GET(request) {
         // null = metafield em branco (vale a regra antiga) ou cadastro ilegível.
         transporte: transporteDoPedido(p.transporteInformado),
         classificacao,
-        // Franquia cujo primeiro item é acessório sai com markup 2,0 (ver
-        // markup.js) — a lista marca esses pedidos.
-        acessorio:
-          classificacao === 'franquia' &&
-          ehAcessorio(p._bruto.primeiroItem?.nodes?.[0]?.product?.productType),
+        // Franquia com acessório em algum item: esses itens saem com markup
+        // 2,0 (ver markup.js) — a lista marca esses pedidos.
+        acessorio: classificacao === 'franquia' && temAcessorio(p),
         cnpj: cnpj,
         origemCnpj: origem,
         status: situacao?.status ?? null,

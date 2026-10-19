@@ -17,8 +17,20 @@ import {
   MARKUP_MAXIMO,
   MARKUP_MINIMO,
   descontoDoMarkup,
+  ehMarkupHibrido,
   formatarMarkup,
+  mesmoMarkup,
 } from '@/lib/fiscal/markup';
+
+/** Origens de markup em que a franquia comprou acessório (ver a rota do preview). */
+const ORIGENS_COM_ACESSORIO = ['acessorio', 'hibrido', 'hibrido_franquia'];
+
+/** "2,2 (54,54%)", ou "2,0 (50%) nos acessórios + 2,2 (54,54%) no vestuário". */
+function descreverMarkup(markup) {
+  const um = (m) => `${formatarMarkup(m)} (${formatarMarkup(descontoDoMarkup(m))}%)`;
+  if (!ehMarkupHibrido(markup)) return um(markup);
+  return `${um(markup.acessorio)} nos acessórios + ${um(markup.vestuario)} no vestuário`;
+}
 import { rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
 import { formatarMoeda } from '@/lib/format';
 import { resumoDoTransporte } from '@/lib/fiscal/transporte';
@@ -170,7 +182,9 @@ export default function IncluirRascunho({ params }) {
         </a>
         Incluir rascunho — pedido {dados.pedido.name}{' '}
         <span className={`marca marca-${dados.classificacao}`}>{dados.classificacao}</span>{' '}
-        {dados.markupOrigem === 'acessorio' && <span className="marca marca-acessorio">acessórios</span>}
+        {ORIGENS_COM_ACESSORIO.includes(dados.markupOrigem) && (
+          <span className="marca marca-acessorio">acessórios</span>
+        )}
       </h2>
 
       {dados.notaEmitida ? (
@@ -266,9 +280,11 @@ export default function IncluirRascunho({ params }) {
       </h3>
       {/* Markup da nota inteira: valor unitário = preço do Shopify ÷ markup
           (ver markup.js). O padrão vem do cadastro da franquia, quando ela
-          tem markup próprio, ou da classificação; trocar aqui refaz todos os
-          itens, inclusive os que foram editados à mão. Ao lado, o desconto
-          extra em % sobre o valor que já saiu do markup. */}
+          tem markup próprio, ou da classificação; franquia que mistura
+          acessório e vestuário começa no markup híbrido, um para cada tipo.
+          Trocar aqui refaz todos os itens, inclusive os que foram editados à
+          mão. Ao lado, o desconto extra em % sobre o valor que já saiu do
+          markup. */}
       <div
         className="cartao"
         style={{ marginBottom: '1rem', display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'flex-start' }}
@@ -276,26 +292,39 @@ export default function IncluirRascunho({ params }) {
         <div style={{ flex: '1 1 22rem' }}>
           <div>
             <strong>
-              Markup dos itens: {formatarMarkup(markup)} ({formatarMarkup(descontoDoMarkup(markup))}%)
+              Markup dos itens: {descreverMarkup(markup)}
             </strong>
           </div>
           <div className="fraco">
             {dados.markupOrigem === 'franquia'
               ? 'Padrão desta franquia'
               : dados.markupOrigem === 'acessorio'
-                ? 'Padrão de franquia para acessórios (primeiro item do pedido)'
-                : `Padrão para ${dados.classificacao}`}
-            :{' '}
-            {formatarMarkup(markupOriginal)} (
-            {formatarMarkup(descontoDoMarkup(markupOriginal))}%).
+                ? 'Padrão de franquia para acessórios (todos os itens são acessório)'
+                : dados.markupOrigem === 'hibrido_franquia'
+                  ? 'Markup híbrido — acessórios com o padrão de acessório, vestuário com o desta franquia'
+                  : dados.markupOrigem === 'hibrido'
+                    ? 'Markup híbrido — acessórios e vestuário com o padrão de franquia de cada um'
+                    : `Padrão para ${dados.classificacao}`}
+            : {descreverMarkup(markupOriginal)}.
           </div>
-          {markup !== markupOriginal && (
+          {!mesmoMarkup(markup, markupOriginal) && (
             <p style={{ margin: '0.5rem 0 0' }}>
               <strong>Esta nota vai com markup diferente do padrão.</strong> Todos os itens foram
               recalculados com o novo markup.
             </p>
           )}
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.5rem' }}>
+            {ehMarkupHibrido(markupOriginal) && (
+              <button
+                className={mesmoMarkup(markup, markupOriginal) ? undefined : 'secundario'}
+                style={{ padding: '0.15rem 0.6rem', fontSize: '0.85rem' }}
+                title="Acessórios com um markup, vestuário com o outro"
+                onClick={() => handleMarkup(markupOriginal)}
+                disabled={!!resultado}
+              >
+                {formatarMarkup(markupOriginal)}
+              </button>
+            )}
             {MARKUPS_SUGERIDOS.map((m) => (
               <button
                 key={m}
@@ -402,6 +431,11 @@ export default function IncluirRascunho({ params }) {
                   onChange={(e) => atualizarItem(indiceGlobal, 'descricao', e.target.value)}
                   disabled={!!resultado}
                 />
+                {ehMarkupHibrido(markup) && item.acessorio && (
+                  <span className="marca marca-acessorio" style={{ marginTop: '0.25rem', display: 'inline-block' }}>
+                    acessório
+                  </span>
+                )}
               </td>
               <td className="num">
                 <input

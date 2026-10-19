@@ -2,21 +2,23 @@
 
 import { useEffect, useState } from 'react';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
-import { lerDescontoExtra, lerMarkup, valorComMarkup } from '@/lib/fiscal/markup';
+import { ehMarkupHibrido, lerDescontoExtra, lerMarkup, markupDoItem, valorComMarkup } from '@/lib/fiscal/markup';
 import { recalcularParcelas } from '@/lib/fiscal/pagamento';
 import { trocarTransporte } from '@/lib/fiscal/transporte';
 
-/** O preço de varejo anda junto com o item na tela, mas não vai para o Tiny. */
-function semPrecoVarejo({ preco_varejo, ...item }) {
+/** O preço de varejo e o "é acessório" andam junto com o item na tela, mas
+ *  não vão para o Tiny. */
+function semPrecoVarejo({ preco_varejo, acessorio, ...item }) {
   return item;
 }
 
-/** Refaz o valor unitário a partir do preço do Shopify, com o markup e o
- *  desconto extra da nota. Item sem preço de varejo conhecido (valor 0 no
- *  Shopify) fica como está. */
+/** Refaz o valor unitário a partir do preço do Shopify, com o markup (o do
+ *  tipo do item, se for híbrido) e o desconto extra da nota. Item sem preço
+ *  de varejo conhecido (valor 0 no Shopify) fica como está. */
 function aplicarMarkupNoItem(item, markup, descontoExtra) {
   if (!(item.preco_varejo > 0)) return item;
-  return { ...item, valor_unitario: valorComMarkup(item.preco_varejo, markup, descontoExtra).toFixed(2) };
+  const markupItem = markupDoItem(markup, item.acessorio);
+  return { ...item, valor_unitario: valorComMarkup(item.preco_varejo, markupItem, descontoExtra).toFixed(2) };
 }
 
 /** /pedidos/[id]/rascunho — grava o rascunho da nota no Tiny pela primeira vez. */
@@ -32,8 +34,8 @@ export function useIncluirRascunho(id) {
   const [itensOriginais, setItensOriginais] = useState(null);
   const [itensRemovidos, setItensRemovidos] = useState([]);
 
-  // Markup em uso nos itens — começa no padrão da classificação e pode ser
-  // trocado para a nota inteira (ver markup.js).
+  // Markup em uso nos itens — começa no padrão da classificação (ou no
+  // híbrido da franquia) e pode ser trocado para a nota inteira (ver markup.js).
   const [markup, setMarkup] = useState(null);
   const [markupOriginal, setMarkupOriginal] = useState(null);
   // Desconto extra em %, sobre o valor que já saiu do markup — começa em 0
@@ -62,9 +64,11 @@ export function useIncluirRascunho(id) {
       })
       .then((corpo) => {
         const precos = corpo.precosVarejo ?? [];
+        const acessorios = corpo.acessorios ?? [];
         const itens = (corpo.payload?.nota_fiscal?.itens ?? []).map((i, indice) => ({
           ...i.item,
           preco_varejo: precos[indice] ?? 0,
+          acessorio: Boolean(acessorios[indice]),
         }));
 
         setDados(corpo);
@@ -95,12 +99,13 @@ export function useIncluirRascunho(id) {
   /**
    * Troca o markup de TODOS os itens da nota, inclusive os removidos (que
    * voltam com o markup certo se forem restaurados). Valor unitário editado à
-   * mão é sobrescrito — o markup vale para a nota inteira. O desconto extra
-   * em uso continua valendo por cima do novo markup.
+   * mão é sobrescrito — o markup vale para a nota inteira. Um markup híbrido
+   * (`{ acessorio, vestuario }`) dá a cada item o markup do tipo dele. O
+   * desconto extra em uso continua valendo por cima do novo markup.
    * Devolve false quando o valor digitado não é um markup válido.
    */
   function alterarMarkup(texto) {
-    const novo = lerMarkup(texto);
+    const novo = ehMarkupHibrido(texto) ? texto : lerMarkup(texto);
     if (novo === null) return false;
     setMarkup(novo);
     reaplicarNosItens(novo, descontoExtra);

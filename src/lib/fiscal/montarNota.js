@@ -8,24 +8,26 @@
 import { dataBr, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
 import { extrairCnpj } from './classificacao.js';
 import { CAMPO_DESCONTO_TINY, montarDesconto } from './desconto.js';
-import { markupPadrao, valorComMarkup } from './markup.js';
+import { ehAcessorio, markupDoItem, markupPadrao, valorComMarkup } from './markup.js';
 import { montarPagamento } from './pagamento.js';
 import { TRANSPORTE_PADRAO, quantidadeDeVolumes } from './transporte.js';
 
 /**
  * @param {object} pedidoShopify pedido já completo (com todos os lineItems)
  * @param {"atacado"|"franquia"} classificacao
- * @param {{ volumes?: string|number, metodoPagamento?: string, desconto?: string|number, markup?: number, transporte?: object }} [opcoes]
+ * @param {{ volumes?: string|number, metodoPagamento?: string, desconto?: string|number, markup?: number|{ acessorio: number, vestuario: number }, transporte?: object }} [opcoes]
  *   `volumes`, `metodoPagamento` e `desconto` são os metafields
  *   `volume_pedido`, `metodo_pagamento` e `desconto` do Shopify, crus — quem
  *   lê os metafields é a rota do preview. `markup` troca o markup padrão da
- *   classificação (ver markup.js). `transporte` troca o bloco de transporte
+ *   classificação — número, ou híbrido para a franquia que mistura acessório e
+ *   vestuário (ver markup.js). `transporte` troca o bloco de transporte
  *   padrão (Correios) — é o da transportadora anexada ao cliente, lido pela
  *   rota do preview (ver transporteDaTransportadora em transporte.js).
- * @returns {{ payload: object, alertas: string[], markup: number, precosVarejo: number[] }}
- *   `precosVarejo` é o preço do Shopify de cada item, na mesma ordem de
- *   `itens` — fica FORA do payload (o Tiny não conhece o campo) e serve para a
- *   tela recalcular os itens quando alguém troca o markup.
+ * @returns {{ payload: object, alertas: string[], markup: number|object, precosVarejo: number[], acessorios: boolean[] }}
+ *   `precosVarejo` é o preço do Shopify de cada item e `acessorios` diz se ele
+ *   é acessório, na mesma ordem de `itens` — ficam FORA do payload (o Tiny não
+ *   conhece os campos) e servem para a tela recalcular os itens quando alguém
+ *   troca o markup.
  */
 
 /**
@@ -77,6 +79,7 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
   // como alerta: lá ele muda junto quando a pessoa troca o valor.
   const markup = opcoes.markup ?? markupPadrao(classificacao);
   const precosVarejo = [];
+  const acessorios = [];
 
   const usaCobranca = !!pedidoShopify.billingAddress;
   const endereco = pedidoShopify.billingAddress ?? pedidoShopify.shippingAddress ?? {};
@@ -138,8 +141,10 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
 
     const precoVarejo = Number(linha.originalUnitPriceSet?.shopMoney?.amount ?? 0);
     precosVarejo.push(precoVarejo);
-    const valorUnitario = valorComMarkup(precoVarejo, markup);
-   
+    const acessorio = ehAcessorio(linha.product?.productType);
+    acessorios.push(acessorio);
+    const valorUnitario = valorComMarkup(precoVarejo, markupDoItem(markup, acessorio));
+
     return {
       item: {
         codigo: linha.sku ?? '',
@@ -234,7 +239,7 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
     },
   };
 
-  return { payload, alertas, markup, precosVarejo };
+  return { payload, alertas, markup, precosVarejo, acessorios };
 }
 
 /** Soma dos itens da nota, para conferência visual na tela do rascunho. */

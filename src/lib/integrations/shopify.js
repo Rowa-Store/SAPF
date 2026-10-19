@@ -184,6 +184,39 @@ export async function listarPedidosRecentes({ limite = 50, cursor = null, termos
   };
 }
 
+const QUERY_TIPOS_DOS_ITENS = `
+query TiposDosItens($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on Order {
+      id
+      lineItems(first: 100) { nodes { product { productType } } }
+    }
+  }
+}`;
+
+// Cada pedido pede até 100 itens, o que pesa no custo da consulta — poucos
+// pedidos por chamada para não passar do limite de custo do Shopify.
+const PEDIDOS_POR_CONSULTA_DE_TIPOS = 4;
+
+/**
+ * Tipo de produto de cada item (até os 100 primeiros) dos pedidos `ids`, no
+ * formato `{ [gid]: string[] }`. A lista de pedidos só traz o primeiro item;
+ * isto é para quem precisa olhar todos (a marca de acessórios da franquia).
+ */
+export async function tiposDosItens(ids) {
+  const resultado = {};
+  for (let i = 0; i < ids.length; i += PEDIDOS_POR_CONSULTA_DE_TIPOS) {
+    const dados = await shopifyGraphQL(QUERY_TIPOS_DOS_ITENS, {
+      ids: ids.slice(i, i + PEDIDOS_POR_CONSULTA_DE_TIPOS),
+    });
+    for (const pedido of dados.nodes ?? []) {
+      if (!pedido?.id) continue;
+      resultado[pedido.id] = (pedido.lineItems?.nodes ?? []).map((l) => l.product?.productType ?? '');
+    }
+  }
+  return resultado;
+}
+
 // Trava contra laço sem fim: 20 páginas de 50 = 1000 pedidos num dia só.
 const MAXIMO_PAGINAS_DO_DIA = 20;
 

@@ -14,7 +14,9 @@
 //
 // O markup padrão vem da classificação do pedido. De vez em quando uma nota
 // precisa sair com outro markup — a tela do rascunho deixa trocar, e o novo
-// markup vale para TODOS os itens da nota (ver useIncluirRascunho).
+// markup vale para TODOS os itens da nota (ver useIncluirRascunho). A
+// exceção é o markup HÍBRIDO da franquia (abaixo), que dá um markup para os
+// acessórios e outro para o vestuário.
 //
 // Por cima do markup a tela do rascunho ainda aceita um DESCONTO EXTRA em
 // percentual, para a nota inteira. Ele é calculado sobre o valor que já saiu
@@ -30,12 +32,14 @@ export const MARKUP_PADRAO = {
   outro: 1,
 };
 
-// Franquia: o markup depende do PRIMEIRO item do pedido. Vestuário usa o
-// markup da franquia (cadastro ou padrão de franquia) e acessório usa 2,0 —
-// sempre para o pedido inteiro, mesmo que ele misture os dois. Quem diz o que
-// é acessório é o "Tipo de produto" do Shopify; Tênis conta como vestuário.
+// Franquia: o markup é decidido ITEM A ITEM. Acessório usa 2,0 e vestuário
+// usa o markup da franquia (cadastro ou padrão de franquia). Pedido que
+// mistura os dois sai com markup HÍBRIDO — `{ acessorio: 2.0, vestuario: 2.2 }`
+// —, em que cada item recebe o markup do seu tipo (ver markupDoItem). Quem diz
+// o que é acessório é o "Tipo de produto" do Shopify; Tênis conta como
+// vestuário.
 
-/** Markup de franquia quando o primeiro item do pedido é acessório. */
+/** Markup de franquia para os itens que são acessório. */
 export const MARKUP_FRANQUIA_ACESSORIO = 2.0;
 
 /** Tipos de produto do Shopify que são acessório (comparados sem acento e
@@ -65,6 +69,26 @@ function normalizarTipo(tipo) {
 /** true quando o tipo de produto do Shopify é acessório. */
 export function ehAcessorio(tipoProduto) {
   return TIPOS_ACESSORIO.includes(normalizarTipo(tipoProduto));
+}
+
+/** true quando o markup é híbrido (um para acessório, outro para vestuário). */
+export function ehMarkupHibrido(markup) {
+  return typeof markup === 'object' && markup !== null;
+}
+
+/** Markup que vale para um item: o do tipo dele quando o markup é híbrido,
+ *  ou o único markup da nota. */
+export function markupDoItem(markup, acessorio) {
+  if (!ehMarkupHibrido(markup)) return markup;
+  return acessorio ? markup.acessorio : markup.vestuario;
+}
+
+/** Os dois markups são o mesmo (número ou híbrido)? */
+export function mesmoMarkup(a, b) {
+  if (ehMarkupHibrido(a) || ehMarkupHibrido(b)) {
+    return ehMarkupHibrido(a) && ehMarkupHibrido(b) && a.acessorio === b.acessorio && a.vestuario === b.vestuario;
+  }
+  return a === b;
 }
 
 /** Atalhos da tela do rascunho; qualquer outro valor pode ser digitado. */
@@ -139,7 +163,9 @@ export function descontoDoMarkup(markup) {
   return Math.floor((1 - 1 / markup) * 10000 + FOLGA_TRUNCAMENTO) / 100;
 }
 
-/** "2,2" — como o markup aparece na tela e nos alertas. */
+/** "2,2" — como o markup aparece na tela e nos alertas. Híbrido vira
+ *  "2,0 + 2,2" (acessório + vestuário). */
 export function formatarMarkup(markup) {
+  if (ehMarkupHibrido(markup)) return `${formatarMarkup(markup.acessorio)} + ${formatarMarkup(markup.vestuario)}`;
   return Number(markup).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 4 });
 }
