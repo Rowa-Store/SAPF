@@ -218,6 +218,17 @@ export function useIncluirRascunho(id) {
   const totalNota = carregado
     ? itensEditados.reduce((soma, it) => soma + Number(it.valor_unitario || 0) * Number(it.quantidade || 0), 0)
     : 0;
+  const quantidadeItensNota = carregado
+    ? itensEditados.reduce((soma, it) => soma + Number(it.quantidade || 0), 0)
+    : 0;
+  // O Tiny fecha a nota em itens + frete − desconto; é esse valor que precisa
+  // bater com o total do pedido no Shopify. Diferença de até 1 centavo é
+  // arredondamento e não conta.
+  const totalShopify = dados?.pedido?.resumoShopify?.total;
+  const totalComDesconto = carregado
+    ? totalNota + Number(dados.pedido.valorFrete ?? 0) - Number(dados.pedido.valorDesconto ?? 0)
+    : 0;
+  const totalDivergente = carregado && totalShopify != null && Math.abs(totalComDesconto - totalShopify) > 0.01;
   // Escolher o transporte à mão resolve o metafield que não casou com o cadastro.
   const transporteBloqueado = transporte ? null : (dados?.transporteBloqueado ?? null);
   const notaFiscalNaTela =
@@ -246,6 +257,10 @@ export function useIncluirRascunho(id) {
     totalPaginas,
     itensDaPagina,
     totalNota,
+    totalComDesconto,
+    totalShopify,
+    totalDivergente,
+    quantidadeItensNota,
     itensForamEditados,
     podeIncluir,
     itensRemovidos,

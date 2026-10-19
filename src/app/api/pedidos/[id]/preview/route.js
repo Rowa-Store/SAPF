@@ -17,6 +17,34 @@ import {
 import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
+
+// Totais do pedido como o admin do Shopify mostra (Subtotal, Discount,
+// Shipping, Total, Paid) — só para conferência na tela, não entram na nota.
+// O subtotal do admin é antes do desconto; o currentSubtotalPriceSet da API
+// já vem descontado, então ele é recomposto a partir do total.
+function resumoDoShopify(pedido) {
+  const valor = (set) => Number(set?.shopMoney?.amount ?? 0);
+  const total = valor(pedido.currentTotalPriceSet);
+  const frete = valor(pedido.currentShippingPriceSet);
+  const desconto = valor(pedido.currentTotalDiscountsSet);
+  const impostos = valor(pedido.currentTotalTaxSet);
+  const nomesDesconto = (pedido.discountApplications?.nodes ?? [])
+    .map((d) => d.title || d.code)
+    .filter(Boolean);
+  return {
+    quantidadeItens: pedido.currentSubtotalLineItemsQuantity ?? 0,
+    subtotal: total - frete - impostos + desconto,
+    desconto,
+    descricaoDesconto: nomesDesconto.join(', '),
+    frete,
+    formaFrete: pedido.shippingLine?.title ?? '',
+    // totalWeight vem em gramas, como string.
+    pesoKg: Number(pedido.totalWeight ?? 0) / 1000,
+    impostos,
+    total,
+    pago: valor(pedido.totalReceivedSet),
+  };
+}
 export const runtime = 'nodejs';
 
 export async function GET(request, { params }) {
@@ -221,8 +249,8 @@ export async function GET(request, { params }) {
         metodoPagamento: metodoPagamento,
         volumePedido: volumePedido,
         // O que a tela mostra é o desconto que entrou na nota, não o texto cru.
-        valorDesconto: descontoDaNota(payload)
-
+        valorDesconto: descontoDaNota(payload),
+        resumoShopify: resumoDoShopify(pedido),
       },
       classificacao,
       payload,

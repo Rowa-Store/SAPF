@@ -8,6 +8,7 @@
 'use client';
 
 import { useState } from 'react';
+import Modal from '@/components/ui/Modal';
 import Paginacao from '@/components/ui/Paginacao';
 import { CAMPOS_CLIENTE } from '@/lib/fiscal/camposCliente';
 import {
@@ -46,6 +47,10 @@ export default function IncluirRascunho({ params }) {
     totalPaginas,
     itensDaPagina,
     totalNota,
+    totalComDesconto,
+    totalShopify,
+    totalDivergente,
+    quantidadeItensNota,
     itensForamEditados,
     podeIncluir,
     itensRemovidos,
@@ -79,6 +84,8 @@ export default function IncluirRascunho({ params }) {
   const [descontoDigitado, setDescontoDigitado] = useState('');
   const [erroDesconto, setErroDesconto] = useState(null);
   const [trocandoTransporte, setTrocandoTransporte] = useState(false);
+  const [mostrandoShopify, setMostrandoShopify] = useState(false);
+  const [comparandoTotais, setComparandoTotais] = useState(false);
 
   function handleMarkup(valor) {
     if (alterarMarkup(valor)) {
@@ -466,11 +473,26 @@ export default function IncluirRascunho({ params }) {
       <div className="cartao" style={{ marginTop: '1rem' }}>
         <div>
           <strong>Total da nota: {formatarMoeda(totalNota)}</strong>
+          {totalDivergente && (
+            <button
+              className="secundario pequeno"
+              style={{ color: 'var(--amarelo)', borderColor: 'var(--amarelo)', marginLeft: '0.75rem', fontWeight: 600 }}
+              onClick={() => setComparandoTotais(true)}
+              title="Comparar a nota com o pedido no Shopify"
+            >
+              ! valor divergente
+            </button>
+          )}
         </div>
         <div>Frete: {formatarMoeda(dados.pedido.valorFrete)}</div>
         {/* Desconto do metafield `desconto` do Shopify, já convertido em
             número e abatido do total pelo Tiny — ver desconto.js. */}
-        <div>Desconto: {formatarMoeda(dados.pedido.valorDesconto ?? 0)}</div>
+        <div>
+          Desconto: {formatarMoeda(dados.pedido.valorDesconto ?? 0)}
+          <span style={{ color: 'var(--tinta-fraca)', marginLeft: '0.75rem' }}>
+            (total com desconto: {formatarMoeda(totalNota - Number(dados.pedido.valorDesconto ?? 0))})
+          </span>
+        </div>
         <div>Método de pagamento (Shopify): {dados.pedido.metodoPagamento}</div>
         {/* O que vai na nota nem sempre é o que veio do Shopify: franquia com
             boleto vira "múltiplas" com 3 parcelas (ver pagamento.js). */}
@@ -495,6 +517,41 @@ export default function IncluirRascunho({ params }) {
             o alerta lá em cima avisa. */}
         <div>Quantidade de volumes: {dados.payload?.nota_fiscal?.quantidade_volumes ?? 1}</div>
       </div>
+
+      <Modal
+        aberto={comparandoTotais && totalDivergente}
+        titulo={`Divergência de valores — pedido ${dados.pedido.name}`}
+        aoFechar={() => setComparandoTotais(false)}
+        largura="58rem"
+      >
+        <ComparacaoTotais
+          nota={{
+            quantidadeItens: quantidadeItensNota,
+            subtotal: totalNota,
+            desconto: Number(dados.pedido.valorDesconto ?? 0),
+            frete: Number(dados.pedido.valorFrete ?? 0),
+            formaFrete: notaFiscalNaTela?.forma_frete ?? '',
+            total: totalComDesconto,
+          }}
+          shopify={dados.pedido.resumoShopify}
+        />
+      </Modal>
+
+      {/* Totais como o admin do Shopify mostra, para comparar com a nota —
+          ficam escondidos até alguém pedir. */}
+      {dados.pedido.resumoShopify && (
+        <>
+          <button
+            className="secundario"
+            style={{ padding: '0.15rem 0.5rem', fontSize: '0.8rem' }}
+            onClick={() => setMostrandoShopify((v) => !v)}
+            aria-expanded={mostrandoShopify}
+          >
+            {mostrandoShopify ? 'Ocultar valores do Shopify' : 'Mostrar valores do Shopify'}
+          </button>
+          {mostrandoShopify && <ResumoShopify resumo={dados.pedido.resumoShopify} />}
+        </>
+      )}
 
       {!resultado && !emissao && (
         <>
@@ -612,5 +669,133 @@ export default function IncluirRascunho({ params }) {
         <a href="/pedidos">Voltar para a tela de atacado</a>
       </p>
     </>
+  );
+}
+
+function ResumoShopify({ resumo }) {
+  const peso = resumo.pesoKg.toLocaleString('pt-BR', { minimumFractionDigits: 1 });
+  const linhas = [
+    ['Subtotal', `${resumo.quantidadeItens} ${resumo.quantidadeItens === 1 ? 'item' : 'itens'}`, formatarMoeda(resumo.subtotal)],
+    ['Desconto', resumo.descricaoDesconto, `-${formatarMoeda(resumo.desconto)}`],
+    ['Frete', [resumo.formaFrete, resumo.pesoKg > 0 && `(${peso} kg)`].filter(Boolean).join(' '), formatarMoeda(resumo.frete)],
+    ...(resumo.impostos > 0 ? [['Impostos', '', formatarMoeda(resumo.impostos)]] : []),
+  ];
+  return (
+    <div className="cartao" style={{ marginTop: '0.75rem' }}>
+      <table>
+        <tbody>
+          {linhas.map(([rotulo, detalhe, valor]) => (
+            <tr key={rotulo}>
+              <td>{rotulo}</td>
+              <td>{detalhe}</td>
+              <td className="num">{valor}</td>
+            </tr>
+          ))}
+          <tr>
+            <td><strong>Total</strong></td>
+            <td />
+            <td className="num"><strong>{formatarMoeda(resumo.total)}</strong></td>
+          </tr>
+          <tr>
+            <td>Pago</td>
+            <td />
+            <td className="num">{formatarMoeda(resumo.pago)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Dinheiro e peso no formato do admin do Shopify (R$13,762.00 / 7.0 kg), para
+// o lado do Shopify sair idêntico ao que se vê lá.
+const moedaShopify = (v) =>
+  `${v < 0 ? '-' : ''}R$${Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const pesoShopify = (kg) => `${kg.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg`;
+
+/**
+ * Nota do sistema x pedido no Shopify, lado a lado, em cartões claros para
+ * sair legível num print. O lado do Shopify copia o quadro de totais do admin
+ * (rótulos em inglês e números no formato de lá).
+ */
+function ComparacaoTotais({ nota, shopify }) {
+  const diferenca = nota.total - shopify.total;
+  const itens = (n) => `${n} ${n === 1 ? 'item' : 'items'}`;
+  const ladoNota = {
+    titulo: 'Sistema (nota no Tiny)',
+    linhas: [
+      ['Subtotal', `${nota.quantidadeItens} ${nota.quantidadeItens === 1 ? 'item' : 'itens'}`, formatarMoeda(nota.subtotal)],
+      ['Desconto', '', `-${formatarMoeda(nota.desconto)}`],
+      ['Frete', nota.formaFrete, formatarMoeda(nota.frete)],
+    ],
+    total: ['Total', formatarMoeda(nota.total)],
+  };
+  const ladoShopify = {
+    titulo: 'Shopify',
+    linhas: [
+      ['Subtotal', itens(shopify.quantidadeItens), moedaShopify(shopify.subtotal)],
+      ['Discount', shopify.descricaoDesconto, moedaShopify(-shopify.desconto)],
+      ['Shipping', [shopify.formaFrete, shopify.pesoKg > 0 && `(${pesoShopify(shopify.pesoKg)})`].filter(Boolean).join(' '), moedaShopify(shopify.frete)],
+      ...(shopify.impostos > 0 ? [['Taxes', '', moedaShopify(shopify.impostos)]] : []),
+    ],
+    total: ['Total', moedaShopify(shopify.total)],
+    rodape: ['Paid', moedaShopify(shopify.pago)],
+  };
+
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(22rem, 1fr))', gap: '1rem' }}>
+        <QuadroTotais {...ladoNota} />
+        <QuadroTotais {...ladoShopify} />
+      </div>
+      <p style={{ marginBottom: 0, color: 'var(--amarelo)', fontSize: '0.9rem' }}>
+        ! Divergência encontrada: <strong>{formatarMoeda(Math.abs(diferenca))}</strong>{' '}
+        {diferenca > 0 ? 'a mais na nota do que no Shopify' : 'a menos na nota do que no Shopify'}
+      </p>
+    </>
+  );
+}
+
+const estiloQuadro = {
+  background: '#fff',
+  color: '#303030',
+  border: '1px solid #e3e3e3',
+  borderRadius: '12px',
+  padding: '0.75rem 1rem',
+  fontSize: '0.85rem',
+  fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
+};
+const celula = { padding: '0.35rem 0.25rem', border: 'none', background: 'transparent', color: 'inherit' };
+
+function QuadroTotais({ titulo, linhas, total, rodape }) {
+  return (
+    <div>
+      <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>{titulo}</div>
+      <div style={estiloQuadro}>
+        <table style={{ width: '100%', border: 'none', borderCollapse: 'collapse' }}>
+          <tbody>
+            {linhas.map(([rotulo, detalhe, valor]) => (
+              <tr key={rotulo}>
+                <td style={{ ...celula, whiteSpace: 'nowrap' }}>{rotulo}</td>
+                <td style={{ ...celula, color: '#616161' }}>{detalhe}</td>
+                <td style={{ ...celula, textAlign: 'right', whiteSpace: 'nowrap' }}>{valor}</td>
+              </tr>
+            ))}
+            <tr style={{ fontWeight: 700 }}>
+              <td style={celula}>{total[0]}</td>
+              <td style={celula} />
+              <td style={{ ...celula, textAlign: 'right', whiteSpace: 'nowrap' }}>{total[1]}</td>
+            </tr>
+            {rodape && (
+              <tr style={{ borderTop: '1px solid #e3e3e3' }}>
+                <td style={{ ...celula, paddingTop: '0.6rem' }}>{rodape[0]}</td>
+                <td style={celula} />
+                <td style={{ ...celula, paddingTop: '0.6rem', textAlign: 'right' }}>{rodape[1]}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

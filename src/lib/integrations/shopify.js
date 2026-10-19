@@ -65,6 +65,13 @@ query PedidoAtacado($id: ID!, $cursor: String) {
     id name createdAt note
     customAttributes { key value }
     currentShippingPriceSet { shopMoney { amount } }
+    currentSubtotalLineItemsQuantity
+    currentTotalDiscountsSet { shopMoney { amount } }
+    currentTotalTaxSet       { shopMoney { amount } }
+    currentTotalPriceSet     { shopMoney { amount } }
+    totalReceivedSet         { shopMoney { amount } }
+    shippingLine { title }
+    totalWeight
     customer {
       id displayName email phone
       metafields(first: 20) { nodes { namespace key value } }
@@ -75,6 +82,7 @@ query PedidoAtacado($id: ID!, $cursor: String) {
       nodes {
         ... on DiscountCodeApplication { code value { ... on PricingPercentageValue { percentage } } }
         ... on ManualDiscountApplication { title value { ... on PricingPercentageValue { percentage } } }
+        ... on AutomaticDiscountApplication { title }
       }
     }
     lineItems(first: 100, after: $cursor) {
