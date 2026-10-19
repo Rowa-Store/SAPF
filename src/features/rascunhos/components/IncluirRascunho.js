@@ -146,6 +146,26 @@ export default function IncluirRascunho({ params }) {
   return (
     <>
       <h2>
+        <a
+          href="/pedidos"
+          aria-label="Voltar para a tela de atacado"
+          title="Voltar para a tela de atacado"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: '2rem',
+            height: '2rem',
+            marginRight: '0.6rem',
+            border: '1px solid var(--linha)',
+            borderRadius: '8px',
+            color: 'var(--tinta)',
+            textDecoration: 'none',
+            verticalAlign: 'middle',
+          }}
+        >
+          &lt;
+        </a>
         Incluir rascunho — pedido {dados.pedido.name}{' '}
         <span className={`marca marca-${dados.classificacao}`}>{dados.classificacao}</span>{' '}
         {dados.markupOrigem === 'acessorio' && <span className="marca marca-acessorio">acessórios</span>}
@@ -696,9 +716,6 @@ export default function IncluirRascunho({ params }) {
         temOriginal={Boolean(transporte)}
       />
 
-      <p style={{ marginTop: '2rem' }}>
-        <a href="/pedidos">Voltar para a tela de atacado</a>
-      </p>
     </>
   );
 }
