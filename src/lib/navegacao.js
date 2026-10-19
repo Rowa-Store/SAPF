@@ -12,6 +12,11 @@ export const AREAS = [
     descricao: 'Transferências de estoque entre lojas e a nota fiscal de cada uma.',
   },
   {
+    href: '/olist',
+    rotulo: 'Olist',
+    descricao: 'Compara um produto do Shopify com a Olist, lado a lado, e traz do Shopify o que estiver diferente ou faltando.',
+  },
+  {
     href: '/gtin',
     rotulo: 'GTIN',
     descricao: 'Script para corrigir os GTINs dos itens de uma nota direto na Olist.',

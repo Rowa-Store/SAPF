@@ -721,3 +721,88 @@ export function avisoDeTrocas(trocas) {
     ? ` O Tiny recusou produto pai — trocado pela variação: ${trocas.map((t) => `${t.de} → ${t.para}`).join(', ')}.`
     : '';
 }
+
+// ---------------------------------------------------------------------------
+// Cadastro de produtos (tela /olist)
+//
+// produto.incluir e produto.alterar recebem o mesmo envelope:
+// { produtos: [{ produto: {...} }] }, com `sequencia` para casar cada
+// produto com o registro da resposta. Um produto por chamada — a tela
+// cadastra um de cada vez e o erro do Tiny fica ligado ao produto certo.
+//
+// Escrevem na conta de PRODUÇÃO: a rota exige confirmação na tela.
+// ---------------------------------------------------------------------------
+
+/** Registro do único produto enviado, já conferido. O Tiny pode devolver
+ *  `retorno.status` OK com o registro em erro. */
+function registroDoProduto(retorno, endpoint) {
+  const registro = paraArray(retorno.registros)[0]?.registro ?? null;
+  if (registro?.status === 'Erro') {
+    const mensagens = paraArray(registro.erros).map((e) => e.erro ?? JSON.stringify(e)).join('; ');
+    throw new Error(`Tiny recusou a chamada ${endpoint}: ${mensagens || 'erro não detalhado'}`);
+  }
+  return registro;
+}
+
+/** Cadastro completo do produto (com as variações), pelo id do Tiny. */
+export async function obterProduto(id, conta = null) {
+  const retorno = await chamarTiny('produto.obter.php', { id: String(id) }, conta);
+  return retorno.produto ?? null;
+}
+
+/**
+ * Cadastro completo, no Tiny, de cada código pedido.
+ *
+ * Para gastar menos chamadas (a API limita por minuto), primeiro pesquisa
+ * pelos nomes — um nome do Shopify ("Legging Estrella - Rosa") acha todos os
+ * tamanhos de uma vez — e só os códigos que sobrarem são pesquisados um a um.
+ * Depois lê o cadastro completo de cada achado (NCM e peso não vêm na pesquisa).
+ *
+ * @returns {Promise<Record<string, { produto: object|null, duplicados?: number }>>}
+ *   chave = código normalizado; `produto: null` quando não existe no Tiny.
+ */
+export async function produtosDoTinyPorCodigo(codigos, { nomes = [], conta = null } = {}) {
+  const alvos = new Set(codigos.map(normalizarCodigo));
+  const achados = new Map();
+  const guardar = (p) => {
+    const codigo = normalizarCodigo(p.codigo);
+    if (!alvos.has(codigo)) return;
+    const lista = achados.get(codigo) ?? [];
+    if (!lista.some((x) => String(x.id) === String(p.id))) lista.push(p);
+    achados.set(codigo, lista);
+  };
+
+  // Uma chamada por vez: a API do Tiny limita chamadas por minuto.
+  for (const nome of [...new Set(nomes.filter(Boolean))]) {
+    for (const p of await pesquisarProdutos(nome, conta)) guardar(p);
+  }
+  for (const codigo of alvos) {
+    if (!achados.has(codigo)) for (const p of await pesquisarProdutos(codigo, conta)) guardar(p);
+  }
+
+  const resultado = {};
+  for (const codigo of alvos) {
+    const lista = achados.get(codigo) ?? [];
+    if (lista.length > 1) resultado[codigo] = { produto: null, duplicados: lista.length };
+    else resultado[codigo] = { produto: lista.length ? await obterProduto(lista[0].id, conta) : null };
+  }
+  return resultado;
+}
+
+/** Cria o produto no Tiny. Devolve o id novo. */
+export async function incluirProduto(produto, conta = null) {
+  const endpoint = 'produto.incluir.php';
+  const corpo = { produtos: [{ produto: { sequencia: '1', ...produto } }] };
+  const retorno = await chamarTiny(endpoint, { produto: JSON.stringify(corpo) }, conta);
+  const registro = registroDoProduto(retorno, endpoint);
+  return { id: registro?.id ? String(registro.id) : null, retorno };
+}
+
+/** Altera o produto `id` do Tiny. Variações sem `id` são incluídas. */
+export async function alterarProduto(id, produto, conta = null) {
+  const endpoint = 'produto.alterar.php';
+  const corpo = { produtos: [{ produto: { sequencia: '1', ...produto, id: String(id) } }] };
+  const retorno = await chamarTiny(endpoint, { produto: JSON.stringify(corpo) }, conta);
+  registroDoProduto(retorno, endpoint);
+  return { id: String(id), retorno };
+}

@@ -80,12 +80,14 @@ serviço não está configurado ou fora do ar.
 ### Criando as tabelas no Supabase
 
 No painel do Supabase: **SQL Editor > New query**, cole o conteúdo de
-`supabase/schema.sql` e clique em **Run**. São oito tabelas:
+`supabase/schema.sql` e clique em **Run**. São nove tabelas:
 `notas_processadas`, `itens_pendentes`, `configuracoes`, `cnpjs_franquia`,
-`lojas_fiscais`, `transportadoras`, `clientes_transportadora` e `clientes_ie`.
+`lojas_fiscais`, `transportadoras`, `clientes_transportadora`, `clientes_ie` e
+`produtos_olist`.
 Quem já tinha rodado o schema antes das transportadoras existirem roda só
 `supabase/transportadoras.sql`; antes de `clientes_ie`, roda
-`supabase/clientes-ie.sql`.
+`supabase/clientes-ie.sql`; antes de `produtos_olist`, roda
+`supabase/produtos-olist.sql`.
 
 `clientes_ie` guarda a inscrição estadual (IE) de cada cliente de atacado pelo
 CNPJ. O preview do pedido procura a IE ali; se não acha, consulta o
@@ -138,6 +140,32 @@ cadastra outras transportadoras e anexa clientes a elas pelo CNPJ:
   cidade e UF. Sem anexo, transportadora inativa ou falha no Supabase, fica com os
   Correios (os dois últimos com alerta na tela). A tela do rascunho mostra a
   transportadora que vai na nota. Rascunhos já enviados ao Tiny não mudam.
+
+---
+
+## Cadastro de produtos na Olist
+
+Tela `/olist` (aba **Olist** do menu), na conta da matriz (`TINY_API_TOKEN`).
+Sem produto pai: cada SKU do Shopify é um produto na Olist.
+
+1. Busca por SKU de qualquer tamanho (ou pelo nome): vem o produto do Shopify
+   com todos os tamanhos. Marcando **família**, vêm também as outras cores do
+   mesmo modelo — produtos com o mesmo nome antes do " - Cor" ("Legging
+   Estrella - Rosa", "Legging Estrella - Azul"...).
+2. Cada SKU aparece lado a lado com o cadastro na Olist (nome, preço, GTIN,
+   NCM, peso), com as diferenças destacadas, ou "produto não encontrado".
+3. **Trazer do Shopify** atualiza os SKUs diferentes e cadastra os que não
+   existem, todos de uma vez. Só vão os campos preenchidos no Shopify; vazio
+   lá não apaga nada na Olist. Exige marcar a confirmação.
+
+O NCM sai das palavras do nome do produto e do tipo de produto do Shopify,
+pelas regras em `src/lib/fiscal/ncm.js` (com a tabela de NCMs da Rowa).
+Produto que nenhuma regra reconhece vai sem NCM e não mexe no da Olist.
+Produto incluído entra com origem 0 (nacional).
+
+**Notificação:** a tela confere a cada 2 minutos os produtos já enviados por
+ela (tabela `produtos_olist`); o que mudou no Shopify depois do último envio
+aparece no aviso do topo, com a contagem no título da aba.
 
 ---
 

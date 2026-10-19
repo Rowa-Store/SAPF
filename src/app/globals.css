@@ -348,3 +348,26 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
 .campo-check { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; font-size: 0.9rem; color: var(--tinta); }
 .campo-check input { width: auto; }
 .campo-largo { grid-column: 1 / -1; }
+
+/* ---- /olist ---- */
+
+.aviso-atencao { border-color: var(--amarelo); background: var(--amarelo-fundo); }
+.lista-notificacao { list-style: none; padding: 0 !important; }
+.lista-notificacao li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--linha);
+}
+.linha-busca { display: flex; gap: 0.6rem; margin-bottom: 0.75rem; }
+.linha-busca button { flex-shrink: 0; }
+.linha-busca input { flex: 1; }
+.cabecalho-produto { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; align-items: baseline; margin-bottom: 0.6rem; }
+.tabela-paralela td { vertical-align: middle; }
+.tabela-paralela th.lado { text-align: center; border-left: 2px solid var(--linha); }
+.tabela-paralela th.lado:first-of-type { border-left: none; }
+.tabela-paralela .inicio-lado { border-left: 2px solid var(--linha); }
+.tabela-paralela td.celula-diferente { background: var(--amarelo-fundo); color: var(--amarelo); }
