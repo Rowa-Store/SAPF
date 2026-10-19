@@ -50,8 +50,6 @@ export default function IncluirRascunho({ params }) {
     totalComDesconto,
     totalShopify,
     totalDivergente,
-    quantidadeItensNota,
-    quantidadeLinhasNota,
     itensForamEditados,
     podeIncluir,
     itensRemovidos,
@@ -527,8 +525,6 @@ export default function IncluirRascunho({ params }) {
       >
         <ComparacaoTotais
           nota={{
-            quantidadeItens: quantidadeItensNota,
-            quantidadeLinhas: quantidadeLinhasNota,
             subtotal: totalNota,
             desconto: Number(dados.pedido.valorDesconto ?? 0),
             frete: Number(dados.pedido.valorFrete ?? 0),
@@ -728,8 +724,6 @@ function ComparacaoTotais({ nota, shopify }) {
     ['Total Produtos', formatarMoeda(nota.subtotal)],
     ['Valor do Frete', formatarMoeda(nota.frete)],
     ['Desconto', formatarMoeda(nota.desconto)],
-    ['Nº Itens', nota.quantidadeLinhas],
-    ['Qtd. Peças', nota.quantidadeItens],
     ['Total da Nota', formatarMoeda(nota.total)],
   ];
   const ladoShopify = {

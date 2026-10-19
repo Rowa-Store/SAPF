@@ -218,9 +218,6 @@ export function useIncluirRascunho(id) {
   const totalNota = carregado
     ? itensEditados.reduce((soma, it) => soma + Number(it.valor_unitario || 0) * Number(it.quantidade || 0), 0)
     : 0;
-  const quantidadeItensNota = carregado
-    ? itensEditados.reduce((soma, it) => soma + Number(it.quantidade || 0), 0)
-    : 0;
   // O Tiny fecha a nota em itens + frete − desconto; é esse valor que precisa
   // bater com o total do pedido no Shopify. Diferença de até 1 centavo é
   // arredondamento e não conta.
@@ -260,8 +257,6 @@ export function useIncluirRascunho(id) {
     totalComDesconto,
     totalShopify,
     totalDivergente,
-    quantidadeItensNota,
-    quantidadeLinhasNota: carregado ? itensEditados.length : 0,
     itensForamEditados,
     podeIncluir,
     itensRemovidos,
