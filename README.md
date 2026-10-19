@@ -1,4 +1,4 @@
-# SAPF — Shopify para Tiny (Olist)
+# SAP — Shopify para Tiny (Olist)
 
 Sistema que lê pedidos de atacado e de franquia no Shopify, monta a nota
 fiscal e cria o **rascunho** dentro do Tiny. A conferência e a emissão

@@ -7,7 +7,7 @@ export default function Inicio() {
   return (
     <>
       <div className="boas-vindas">
-        <h2>SAPF</h2>
+        <h2>SAP</h2>
         <p className="fraco">
           Pedidos de atacado e de franquia e transferências entre lojas do Shopify viram nota fiscal no
           Tiny. Escolha por onde começar.

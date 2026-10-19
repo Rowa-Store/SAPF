@@ -17,7 +17,7 @@ export default function SiteHeader() {
     <header className="topo">
       <a href="/" className="marca-app">
         <span className="marca-app-icone" aria-hidden="true" />
-        <h1>SAPF</h1>
+        <h1>SAP</h1>
       </a>
       <nav>
         {links.map((l) => {
