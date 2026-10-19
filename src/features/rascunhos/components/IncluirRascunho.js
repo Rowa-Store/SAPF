@@ -170,10 +170,6 @@ export default function IncluirRascunho({ params }) {
         <span className={`marca marca-${dados.classificacao}`}>{dados.classificacao}</span>{' '}
         {dados.markupOrigem === 'acessorio' && <span className="marca marca-acessorio">acessórios</span>}
       </h2>
-      <p className="fraco">
-        {dados.pedido.totalItens} itens lidos em {dados.pedido.paginasLidas} página(s).
-        {dados.pedido.origemCnpj && ` CNPJ encontrado em ${dados.pedido.origemCnpj}.`}
-      </p>
 
       {dados.notaEmitida ? (
         <div className="aviso">
