@@ -108,14 +108,36 @@ function palavrasSignificativas(normalizado) {
   return normalizado.split(' ').filter((p) => p.length >= 2 && !PALAVRAS_GENERICAS.has(p));
 }
 
+/** "Transportadora" sem nome ("transportadora", "Transp.", "via transportadora",
+ *  "transportadora do cliente"): a nota vai com a transportadora anexada ao
+ *  cliente. */
+const PALAVRAS_TRANSPORTADORA = new Set([
+  'transportadora', 'transportadoras', 'transportador', 'transportadores',
+  'transporte', 'transportes', 'transp', 'tranportadora', 'trasportadora',
+]);
+const PALAVRAS_DE_LIGACAO = new Set([
+  'via', 'por', 'pela', 'pelo', 'com', 'de', 'da', 'do', 'a', 'o', 'na', 'no',
+  'cliente', 'dele', 'dela', 'sua', 'propria', 'proprio', 'anexada', 'vinculada', 'cadastrada',
+]);
+
+function pedeTransportadoraDoCliente(normalizado) {
+  const palavras = normalizado.split(' ');
+  return (
+    palavras.some((p) => PALAVRAS_TRANSPORTADORA.has(p)) &&
+    palavras.every((p) => PALAVRAS_TRANSPORTADORA.has(p) || PALAVRAS_DE_LIGACAO.has(p))
+  );
+}
+
 /**
  * Lê o metafield e diz qual transporte a nota leva.
  *
  * @param {string} texto valor do metafield
  * @param {object[]} transportadoras linhas da tabela `transportadoras`
- * @returns {{ tipo: 'vazio'|'correios'|'retirada'|'transportadora'|'nao_cadastrada'|'ambigua'|'inativa',
+ * @returns {{ tipo: 'vazio'|'correios'|'retirada'|'do_cliente'|'transportadora'|'nao_cadastrada'|'ambigua'|'inativa',
  *   texto: string, transportadora?: object, candidatas?: object[] }}
  *   - vazio: metafield em branco — vale a regra antiga (cliente anexado ou Correios);
+ *   - do_cliente: "transportadora" sem nome — quem decide é a transportadora
+ *     anexada ao cliente, que precisa existir (ver a rota do preview);
  *   - nao_cadastrada / ambigua / inativa: a nota não pode sair até corrigir.
  */
 export function resolverTransporte(texto, transportadoras = []) {
@@ -124,6 +146,7 @@ export function resolverTransporte(texto, transportadoras = []) {
   if (!alvo) return { tipo: 'vazio', texto: bruto };
   if (alvo === 'correios' || alvo === 'correio') return { tipo: 'correios', texto: bruto };
   if (alvo === 'retirada' || alvo === 'retirar' || alvo === 'retira') return { tipo: 'retirada', texto: bruto };
+  if (pedeTransportadoraDoCliente(alvo)) return { tipo: 'do_cliente', texto: bruto };
 
   // Casa nos dois sentidos: "jadlog" acha "JADLOG LOGISTICA S.A." e
   // "Braspress Transportes Urgentes Ltda" acha "BRASPRESS".
@@ -234,6 +257,10 @@ export function resumoDoTransporte(dados, escolhido = null) {
     case 'correios':
     case 'transportadora':
       return `${nome} (metafield transportadora: "${informado.texto}")`;
+    case 'do_cliente':
+      return dados?.transportadora
+        ? `${nome} (anexada ao cliente — metafield transportadora: "${informado.texto}")`
+        : `"${informado.texto}" pede a transportadora do cliente, mas ele não tem uma anexada — a nota não pode ser criada`;
     case 'nao_cadastrada':
     case 'ambigua':
     case 'inativa':

@@ -153,6 +153,11 @@ export async function GET(request, { params }) {
     // (/pedidos/transportadoras) sai com o transporte dela; sem anexo, a nota
     // fica com os Correios. Falha na consulta também cai nos Correios, mas
     // avisa — a pessoa pode estar esperando a transportadora.
+    //
+    // Metafield "transportadora" sem nome (ou variações — ver
+    // resolverTransporte): também vale a anexada ao cliente, mas aqui o
+    // pedido pediu transportadora, então sem anexo (ou anexo inativo, ou
+    // falha na consulta) a criação fica BLOQUEADA em vez de cair nos Correios.
     let transporte;
     let transportadora = null;
     let transporteResolvido = { tipo: 'vazio', texto: '' };
@@ -172,22 +177,44 @@ export async function GET(request, { params }) {
         }
       }
       if (transporteBloqueado) alertas.push(transporteBloqueado);
-    } else if (cnpj) {
-      const resp = await transportadoraDoCliente(cnpj);
+    }
+    const pedeDoCliente = transporteResolvido.tipo === 'do_cliente';
+    if ((transporteResolvido.tipo === 'vazio' && !transporteInformado.trim()) || pedeDoCliente) {
+      const resp = cnpj ? await transportadoraDoCliente(cnpj) : { ok: true, transportadora: null };
       if (!resp.ok) {
         console.error(`[preview] Falha ao buscar a transportadora do cliente ${cnpj} no Supabase:`, resp.erro);
-        alertas.push(
-          'Não foi possível ler a transportadora deste cliente no cadastro — a nota saiu com os Correios. ' +
-            'Confira antes de continuar.'
-        );
+        if (pedeDoCliente) {
+          transporteBloqueado =
+            `O pedido pede "${transporteInformado}" (metafield transportadora), mas não foi possível ler ` +
+            `a transportadora anexada a este cliente: ${resp.erro}`;
+          alertas.push(transporteBloqueado);
+        } else {
+          alertas.push(
+            'Não foi possível ler a transportadora deste cliente no cadastro — a nota saiu com os Correios. ' +
+              'Confira antes de continuar.'
+          );
+        }
       } else if (resp.transportadora && !resp.transportadora.ativo) {
-        alertas.push(
-          `O cliente está anexado à transportadora ${resp.transportadora.nome}, mas ela está inativa — ` +
-            'a nota saiu com os Correios.'
-        );
+        if (pedeDoCliente) {
+          transporteBloqueado =
+            `O pedido pede "${transporteInformado}" (metafield transportadora) e o cliente está anexado à ` +
+            `transportadora ${resp.transportadora.nome}, mas ela está inativa. Reative ou escolha outra.`;
+          alertas.push(transporteBloqueado);
+        } else {
+          alertas.push(
+            `O cliente está anexado à transportadora ${resp.transportadora.nome}, mas ela está inativa — ` +
+              'a nota saiu com os Correios.'
+          );
+        }
       } else if (resp.transportadora) {
         transportadora = { id: resp.transportadora.id, nome: resp.transportadora.nome };
         transporte = transporteDaTransportadora(resp.transportadora);
+      } else if (pedeDoCliente) {
+        transporteBloqueado =
+          `O pedido pede "${transporteInformado}" (metafield transportadora) sem dizer qual, e o cliente ` +
+          `${cnpj ? 'não está anexado a nenhuma transportadora' : 'está sem CNPJ'}. Anexe o cliente em ` +
+          '/pedidos/transportadoras, escreva o nome da transportadora no Shopify ou troque nesta tela.';
+        alertas.push(transporteBloqueado);
       }
     }
 
@@ -274,7 +301,8 @@ export async function GET(request, { params }) {
         candidatas: (transporteResolvido.candidatas ?? []).map((t) => t.nome),
       },
       // Mensagem que impede criar a nota (transporte não cadastrado,
-      // ambíguo, inativo ou cadastro ilegível); null = pode criar.
+      // ambíguo, inativo, "transportadora" sem anexo no cliente ou cadastro
+      // ilegível); null = pode criar.
       transporteBloqueado,
       totalNota: totalDaNota(payload),
       alertas,
