@@ -80,14 +80,12 @@ serviço não está configurado ou fora do ar.
 ### Criando as tabelas no Supabase
 
 No painel do Supabase: **SQL Editor > New query**, cole o conteúdo de
-`supabase/schema.sql` e clique em **Run**. São nove tabelas:
+`supabase/schema.sql` e clique em **Run**. São oito tabelas:
 `notas_processadas`, `itens_pendentes`, `configuracoes`, `cnpjs_franquia`,
-`lojas_fiscais`, `transportadoras`, `clientes_transportadora`, `clientes_ie` e
-`produtos_olist`.
+`lojas_fiscais`, `transportadoras`, `clientes_transportadora` e `clientes_ie`.
 Quem já tinha rodado o schema antes das transportadoras existirem roda só
 `supabase/transportadoras.sql`; antes de `clientes_ie`, roda
-`supabase/clientes-ie.sql`; antes de `produtos_olist`, roda
-`supabase/produtos-olist.sql`.
+`supabase/clientes-ie.sql`.
 
 `clientes_ie` guarda a inscrição estadual (IE) de cada cliente de atacado pelo
 CNPJ. O preview do pedido procura a IE ali; se não acha, consulta o
@@ -163,9 +161,7 @@ pelas regras em `src/lib/fiscal/ncm.js` (com a tabela de NCMs da Rowa).
 Produto que nenhuma regra reconhece vai sem NCM e não mexe no da Olist.
 Produto incluído entra com origem 0 (nacional).
 
-**Notificação:** a tela confere a cada 2 minutos os produtos já enviados por
-ela (tabela `produtos_olist`); o que mudou no Shopify depois do último envio
-aparece no aviso do topo, com a contagem no título da aba.
+Tudo é lido na hora do Shopify e do Tiny — nada fica guardado no Supabase.
 
 ---
 

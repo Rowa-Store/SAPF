@@ -5,7 +5,6 @@
 // Corpo: { busca, familia, skus, confirmacao }. A comparação é refeita aqui
 // (Shopify e Tiny lidos de novo) e só os SKUs pedidos são enviados.
 
-import { registrarProdutosOlist } from '@/lib/db';
 import { alterarProduto, incluirProduto } from '@/lib/integrations/tiny';
 import { compararBusca } from '@/lib/olist/comparacao';
 import { normalizarCodigo, produtoParaAlterar, produtoParaIncluir } from '@/lib/olist/produtoTiny';
@@ -31,11 +30,9 @@ export async function POST(request) {
   }
 
   const resultados = [];
-  const produtosCompletos = [];
   // Um SKU por vez: a API do Tiny limita chamadas por minuto, e o erro de um
   // não pode impedir os outros.
   for (const produto of comparacao.produtos) {
-    let todosOk = true;
     for (const linha of produto.linhas) {
       try {
         if (linha.situacao === 'nao_encontrado') {
@@ -48,7 +45,6 @@ export async function POST(request) {
         } else if (linha.situacao === 'igual') {
           resultados.push({ sku: linha.sku, ok: true, acao: 'igual', tinyId: linha.tiny.id });
         } else {
-          todosOk = false;
           resultados.push({
             sku: linha.sku,
             ok: false,
@@ -59,17 +55,10 @@ export async function POST(request) {
           });
         }
       } catch (e) {
-        todosOk = false;
         resultados.push({ sku: linha.sku, ok: false, erro: e.message });
       }
     }
-    if (todosOk) produtosCompletos.push(produto);
   }
 
-  // A Olist já foi alterada: falha no Supabase só vira aviso.
-  const gravado = await registrarProdutosOlist(produtosCompletos);
-  return Response.json({
-    resultados,
-    avisoRegistro: gravado.ok ? null : `Os produtos foram enviados, mas o histórico não foi gravado: ${gravado.erro}`,
-  });
+  return Response.json({ resultados });
 }

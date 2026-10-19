@@ -91,7 +91,6 @@ export function compararProdutos(produtos, doTiny) {
     id: produto.id,
     titulo: produto.title,
     tipo: produto.productType,
-    atualizadoEm: produto.updatedAt,
     linhas: produto.variants.map((variante) => {
       const sku = String(variante.sku ?? '').trim();
       const shopify = ladoShopify(produto, variante);

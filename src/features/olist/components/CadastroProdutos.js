@@ -9,7 +9,7 @@
 
 import { useState } from 'react';
 import AbasOlist from '@/components/ui/AbasOlist';
-import { formatarDataHoraCurta, formatarMoedaOuTraco } from '@/lib/format';
+import { formatarMoedaOuTraco } from '@/lib/format';
 import { CAMPOS } from '@/lib/olist/produtoTiny';
 import { useProdutosOlist } from '../hooks/useProdutosOlist';
 
@@ -44,37 +44,6 @@ function MarcaSituacao({ linha, resultado }) {
   }
   const [classe, rotulo] = SITUACAO[linha.situacao];
   return <span className={`marca ${classe}`}>{rotulo}</span>;
-}
-
-function Notificacoes({ notificacoes, comparar, dispensar }) {
-  if (!notificacoes.length) return null;
-  return (
-    <div className="aviso aviso-atencao" role="status">
-      <strong>
-        {notificacoes.length === 1
-          ? '1 produto mudou no Shopify depois do último envio à Olist.'
-          : `${notificacoes.length} produtos mudaram no Shopify depois do último envio à Olist.`}
-      </strong>
-      <ul className="lista-notificacao">
-        {notificacoes.map((n) => (
-          <li key={n.id}>
-            <span>
-              <span className="forte">{n.titulo}</span>{' '}
-              <span className="fraco">— alterado em {formatarDataHoraCurta(n.atualizadoEm)}</span>
-            </span>
-            <span className="acoes-linha">
-              <button className="pequeno" onClick={() => comparar(n.titulo, false)}>
-                Comparar
-              </button>
-              <button className="secundario pequeno" onClick={() => dispensar(n)}>
-                Dispensar
-              </button>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
 }
 
 function TabelaProduto({ produto, resultados }) {
@@ -160,8 +129,6 @@ export default function CadastroProdutos() {
     enviando,
     trazerDoShopify,
     resultados,
-    notificacoes,
-    dispensar,
   } = useProdutosOlist();
   const [termo, setTermo] = useState('');
   const [familia, setFamilia] = useState(false);
@@ -175,16 +142,6 @@ export default function CadastroProdutos() {
       <div className="cabecalho-pagina">
         <h2>Cadastro de produtos</h2>
       </div>
-
-      <Notificacoes
-        notificacoes={notificacoes}
-        comparar={(titulo, comFamilia) => {
-          setTermo(titulo);
-          setFamilia(comFamilia);
-          comparar(titulo, comFamilia);
-        }}
-        dispensar={dispensar}
-      />
 
       <form
         className="cartao"

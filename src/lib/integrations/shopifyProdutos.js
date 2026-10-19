@@ -9,7 +9,7 @@
 import { shopifyGraphQL } from './shopify.js';
 
 const CAMPOS_PRODUTO = `
-  id title productType vendor updatedAt
+  id title productType vendor
   variants(first: 100) {
     nodes {
       sku title price barcode
@@ -26,11 +26,6 @@ query ProdutoPorSku($busca: String!) {
 const QUERY_POR_TITULO = `
 query ProdutosPorTitulo($busca: String!) {
   products(first: 50, query: $busca) { nodes { ${CAMPOS_PRODUTO} } }
-}`;
-
-const QUERY_ATUALIZACOES = `
-query AtualizacoesProdutos($ids: [ID!]!) {
-  nodes(ids: $ids) { ... on Product { id title updatedAt } }
 }`;
 
 /** Aspas para a sintaxe de busca do Shopify. */
@@ -100,26 +95,4 @@ export async function buscarProdutosParaOlist(termo, { familia = false } = {}) {
   }
 
   return produtos.sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
-}
-
-// Limite de ids por chamada de `nodes` no Admin API.
-const IDS_POR_CONSULTA = 250;
-
-/** `{ [gid]: { titulo, atualizadoEm } }` dos produtos pedidos. Produto
- *  apagado no Shopify não volta no mapa. */
-export async function atualizacoesDosProdutos(ids) {
-  const resultado = {};
-  for (let i = 0; i < ids.length; i += IDS_POR_CONSULTA) {
-    const dados = await shopifyGraphQL(QUERY_ATUALIZACOES, { ids: ids.slice(i, i + IDS_POR_CONSULTA) });
-    for (const p of dados.nodes ?? []) {
-      if (p?.id) resultado[p.id] = { titulo: p.title, atualizadoEm: p.updatedAt };
-    }
-  }
-  return resultado;
-}
-
-/** Aceita "123" ou o gid completo e sempre devolve o gid do produto. */
-export function paraGidProduto(id) {
-  const texto = String(id ?? '');
-  return texto.startsWith('gid://') ? texto : `gid://shopify/Product/${texto}`;
 }

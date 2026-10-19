@@ -1,10 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { idNumerico } from '@/lib/utils';
-
-// De quanto em quanto tempo a tela confere se algum produto mudou no Shopify.
-const INTERVALO_NOTIFICACAO_MS = 2 * 60 * 1000;
+import { useState } from 'react';
 
 // O que o "trazer do Shopify" envia: o resto já está igual ou não dá para enviar.
 const SITUACOES_A_ENVIAR = ['diferente', 'nao_encontrado'];
@@ -17,8 +13,7 @@ async function lerJson(resposta, padrao) {
 
 /**
  * /olist — busca um produto, compara Shopify x Olist SKU a SKU e traz do
- * Shopify o que estiver diferente ou faltando. Também acompanha os produtos
- * já enviados que mudaram no Shopify (notificação do topo).
+ * Shopify o que estiver diferente ou faltando.
  */
 export function useProdutosOlist() {
   // Última busca feita: { busca, familia } — é ela que o "trazer" repete.
@@ -31,34 +26,6 @@ export function useProdutosOlist() {
   // sku -> { ok, acao, erro } do último "trazer do Shopify"
   const [resultados, setResultados] = useState({});
   const [aviso, setAviso] = useState(null);
-  const [notificacoes, setNotificacoes] = useState([]);
-
-  const carregarNotificacoes = useCallback(async () => {
-    try {
-      const corpo = await lerJson(await fetch('/api/olist/notificacoes'), 'Falha ao ler as notificações');
-      setNotificacoes(corpo.atualizados);
-    } catch {
-      // Sem notificação não impede a tela; tenta de novo no próximo ciclo.
-    }
-  }, []);
-
-  useEffect(() => {
-    carregarNotificacoes();
-    const timer = setInterval(carregarNotificacoes, INTERVALO_NOTIFICACAO_MS);
-    return () => clearInterval(timer);
-  }, [carregarNotificacoes]);
-
-  // A contagem vai também no título da aba, para a notificação aparecer
-  // mesmo com a tela em segundo plano.
-  const totalNotificacoes = notificacoes.length;
-  useEffect(() => {
-    if (!totalNotificacoes) return undefined;
-    const original = document.title;
-    document.title = `(${totalNotificacoes}) ${original}`;
-    return () => {
-      document.title = original;
-    };
-  }, [totalNotificacoes]);
 
   async function comparar(busca, familia) {
     const nova = { busca: busca.trim(), familia };
@@ -102,28 +69,13 @@ export function useProdutosOlist() {
       const enviados = corpo.resultados.filter((r) => r.ok && r.acao !== 'igual').length;
       setAviso(
         `${enviados} SKU(s) enviados à Olist.` +
-          (falhas ? ` ${falhas} com erro — veja na tabela.` : '') +
-          (corpo.avisoRegistro ? ` ${corpo.avisoRegistro}` : '')
+          (falhas ? ` ${falhas} com erro — veja na tabela.` : '')
       );
       setConfirmado(false);
-      carregarNotificacoes();
     } catch (e) {
       setErro(e.message);
     } finally {
       setEnviando(false);
-    }
-  }
-
-  async function dispensar(notificacao) {
-    try {
-      const parametros = new URLSearchParams({ atualizadoEm: notificacao.atualizadoEm });
-      await lerJson(
-        await fetch(`/api/olist/notificacoes/${idNumerico(notificacao.id)}?${parametros}`, { method: 'DELETE' }),
-        'Falha ao dispensar'
-      );
-      setNotificacoes((atual) => atual.filter((n) => n.id !== notificacao.id));
-    } catch (e) {
-      setErro(e.message);
     }
   }
 
@@ -141,7 +93,5 @@ export function useProdutosOlist() {
     enviando,
     trazerDoShopify,
     resultados,
-    notificacoes,
-    dispensar,
   };
 }
