@@ -24,6 +24,11 @@ query ProdutoPorSku($busca: String!) {
   productVariants(first: 5, query: $busca) { nodes { product { ${CAMPOS_PRODUTO} } } }
 }`;
 
+const QUERY_POR_ID = `
+query ProdutoPorId($id: ID!) {
+  product(id: $id) { ${CAMPOS_PRODUTO} }
+}`;
+
 const QUERY_POR_TITULO = `
 query ProdutosPorTitulo($busca: String!) {
   products(first: 50, query: $busca) { nodes { ${CAMPOS_PRODUTO} } }
@@ -96,4 +101,13 @@ export async function buscarProdutosParaOlist(termo, { familia = false } = {}) {
   }
 
   return produtos.sort((a, b) => a.title.localeCompare(b.title, 'pt-BR'));
+}
+
+/** Um produto do Shopify pelo id (gid ou número), no mesmo formato da busca. */
+export async function obterProdutoParaOlist(id) {
+  const texto = String(id ?? '');
+  const gid = texto.startsWith('gid://') ? texto : `gid://shopify/Product/${texto}`;
+  const dados = await shopifyGraphQL(QUERY_POR_ID, { id: gid });
+  if (!dados.product) throw new Error(`Produto ${gid} não encontrado no Shopify.`);
+  return semRepetidos([dados.product])[0];
 }

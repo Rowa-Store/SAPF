@@ -484,6 +484,15 @@ export async function garantirContribuinteIcms(cnpj, { clienteNota } = {}) {
 // toda nota estouraria o limite de chamadas por minuto da API.
 // ---------------------------------------------------------------------------
 
+/**
+ * true quando o Tiny recusou por excesso de chamadas por minuto ("API
+ * Bloqueada - Excedido o número de acessos a API", ou HTTP 429). Nada foi
+ * gravado: quem chama pode esperar e tentar de novo.
+ */
+export function erroDeLimite(mensagem) {
+  return /api bloqueada|excedido o n[uú]mero de acessos|respondeu 429/i.test(String(mensagem ?? ''));
+}
+
 /** true quando o erro do Tiny é o de produto pai informado no item. */
 export function erroDeProdutoPai(mensagem) {
   return /produto pai/i.test(String(mensagem ?? ''));

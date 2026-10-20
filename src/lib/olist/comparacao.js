@@ -2,7 +2,7 @@
 // pela rota que mostra a comparação e pela que traz do Shopify, que refaz
 // a leitura em vez de confiar no que a tela mandou.
 
-import { buscarProdutosParaOlist } from '../integrations/shopifyProdutos.js';
+import { buscarProdutosParaOlist, obterProdutoParaOlist } from '../integrations/shopifyProdutos.js';
 import { produtoPaiNoTiny, variacoesDoPai } from '../integrations/tiny.js';
 import { compararProduto, normalizarCodigo } from './produtoTiny.js';
 
@@ -32,4 +32,13 @@ export async function compararBusca({ busca, familia = false, skus = null }) {
     comparados.push(compararProduto(produto, noTiny, variacoesDoPai));
   }
   return { produtos: comparados, cadastros };
+}
+
+/** Um produto do Shopify (pelo id) comparado com o pai dele na Olist —
+ *  o que a gravação usa, um produto por requisição. */
+export async function compararProdutoPorId(produtoId) {
+  const produto = await obterProdutoParaOlist(produtoId);
+  const codigos = produto.variants.map((v) => String(v.sku ?? '').trim()).filter(Boolean);
+  const noTiny = await produtoPaiNoTiny({ nome: produto.title, codigos });
+  return { produto: compararProduto(produto, noTiny, variacoesDoPai), cadastro: noTiny.pai };
 }

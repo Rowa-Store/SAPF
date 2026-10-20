@@ -160,7 +160,9 @@ um produto por cor, uma variante por tamanho.
    peso e o preço das variações marcadas; as outras variações vão com o id e
    o preço de hoje, para não serem apagadas nem duplicadas) e inclui as
    variações que faltam. Sem pai na Olist, cadastra o pai sem código com as
-   variações marcadas.
+   variações marcadas. Os produtos vão numa fila, um por requisição: se o
+   Tiny recusar por limite de chamadas por minuto, a tela espera 60 s e tenta
+   o mesmo produto de novo (até 5 vezes).
 
 O NCM não vem do Shopify: sai das palavras do nome e do tipo de produto,
 pelas regras em `src/lib/fiscal/ncm.js` (com a tabela de NCMs da Rowa).

@@ -392,7 +392,42 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
   border-radius: 12px;
   overflow: hidden;
   margin: 0 0 1.5rem;
+  position: relative;
 }
+/* Enquanto o produto está na fila do envio: camada por cima, com o estado. */
+.par-progresso {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 18, 17, 0.6);
+  backdrop-filter: blur(2px);
+}
+.par-progresso-caixa {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.7rem 1.1rem;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--papel-alt);
+  color: var(--tinta);
+  font-weight: 500;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+.girando {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  border: 3px solid var(--azul-fundo);
+  border-top-color: var(--azul);
+  animation: girar 0.8s linear infinite;
+}
+.girando.parado { animation: none; border-top-color: var(--tinta-fraca); }
+@keyframes girar { to { transform: rotate(360deg); } }
+.olist-titulo .marca { font-size: 0.75rem; }
 .par-linha { display: grid; grid-template-columns: 1fr 1fr; }
 .par-linha + .par-linha .lado-olist { border-top: 1px solid var(--olist-linha); }
 

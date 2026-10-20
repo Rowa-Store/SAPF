@@ -3,6 +3,7 @@
 // cadastro de cada SKU na Olist. `familia=1` traz também as outras cores do
 // mesmo modelo. Só lê.
 
+import { erroDeLimite } from '@/lib/integrations/tiny';
 import { compararBusca } from '@/lib/olist/comparacao';
 import { erroJson } from '@/lib/utils';
 
@@ -18,6 +19,9 @@ export async function GET(request) {
     const { produtos } = await compararBusca({ busca, familia: parametros.get('familia') === '1' });
     return Response.json({ produtos });
   } catch (e) {
+    if (erroDeLimite(e.message)) {
+      return erroJson('Limite de chamadas por minuto da Olist atingido. Espere um minuto e busque de novo.', 429);
+    }
     return erroJson(e.message, 502);
   }
 }

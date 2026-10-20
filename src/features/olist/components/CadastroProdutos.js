@@ -64,13 +64,15 @@ function textoDaGrade(grade, opcao) {
 }
 
 /** Cabeçalho do lado da Olist: o pai, ou por que ele não está lá. */
-function PaiOlist({ produto, caixaProduto }) {
+function PaiOlist({ produto, caixaProduto, naFila }) {
   return (
     <div className="lado-olist olist-cabecalho">
       <span className="olist-marca">olist</span>
       <div className="olist-titulo">
         {caixaProduto}
         <span>{produto.olist?.nome ?? produto.titulo}</span>
+        {naFila?.estado === 'ok' && <span className="marca marca-ok">OK</span>}
+        {naFila?.estado === 'erro' && <span className="marca marca-erro">com erro</span>}
       </div>
       {produto.situacao === 'encontrado' ? (
         <div className="olist-campos olist-campos-pai">
@@ -191,6 +193,26 @@ function VarianteShopify({ linha }) {
   );
 }
 
+const TEXTO_NA_FILA = {
+  fila: () => 'Na fila…',
+  enviando: () => 'Enviando à Olist…',
+  aguardando: ({ segundos }) => `Limite de chamadas da Olist — tentando de novo em ${segundos}s`,
+};
+
+/** Camada por cima do produto enquanto ele está na fila do envio. */
+function ProgressoNaFila({ naFila }) {
+  const texto = TEXTO_NA_FILA[naFila?.estado];
+  if (!texto) return null;
+  return (
+    <div className="par-progresso" role="status">
+      <div className="par-progresso-caixa">
+        <span className={`girando${naFila.estado === 'fila' ? ' parado' : ''}`} aria-hidden="true" />
+        <span>{texto(naFila)}</span>
+      </div>
+    </div>
+  );
+}
+
 // Filtros da lista: só mudam o que aparece, sem consultar de novo.
 const FILTROS = [
   { chave: 'todos', rotulo: 'Todos', mostra: () => true },
@@ -198,7 +220,7 @@ const FILTROS = [
   { chave: 'desatualizados', rotulo: 'Desatualizados', mostra: (l) => l.situacao === 'diferente' },
 ];
 
-function ParProduto({ produto, resultados, enviavel, selecionados, marcar, verErro }) {
+function ParProduto({ produto, resultados, enviavel, selecionados, marcar, verErro, naFila }) {
   const skusEnviaveis = produto.linhas.filter(enviavel).map((l) => l.sku);
   const marcados = skusEnviaveis.filter((sku) => selecionados.has(sku)).length;
   const caixaProduto = skusEnviaveis.length > 0 && (
@@ -213,8 +235,9 @@ function ParProduto({ produto, resultados, enviavel, selecionados, marcar, verEr
   );
   return (
     <section className="par-produto">
+      <ProgressoNaFila naFila={naFila} />
       <div className="par-linha">
-        <PaiOlist produto={produto} caixaProduto={caixaProduto} />
+        <PaiOlist produto={produto} caixaProduto={caixaProduto} naFila={naFila} />
         <PaiShopify produto={produto} />
       </div>
       {produto.linhas.map((l, i) => (
@@ -251,6 +274,7 @@ export default function CadastroProdutos() {
     enviando,
     trazerDoShopify,
     resultados,
+    fila,
   } = useProdutosOlist();
   const [termo, setTermo] = useState('');
   // { sku, erro } do "erro ao enviar" clicado
@@ -349,6 +373,7 @@ export default function CadastroProdutos() {
               selecionados={selecionados}
               marcar={marcar}
               verErro={setErroAberto}
+              naFila={fila[p.id]}
             />
           ))}
 
