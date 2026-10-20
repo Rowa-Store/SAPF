@@ -139,7 +139,12 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
       alertas.push(`Item "${linha.title}" está sem SKU no Shopify.`);
     }
 
-    const precoVarejo = Number(linha.originalUnitPriceSet?.shopMoney?.amount ?? 0);
+    // Preço da peça já com o desconto dado nela no Shopify (ex.: R$ 20 a menos
+    // na peça); o desconto do pedido inteiro não entra aqui — é o markup que
+    // faz esse papel na nota.
+    const precoVarejo = Number(
+      linha.discountedUnitPriceSet?.shopMoney?.amount ?? linha.originalUnitPriceSet?.shopMoney?.amount ?? 0
+    );
     precosVarejo.push(precoVarejo);
     const acessorio = ehAcessorio(linha.product?.productType);
     acessorios.push(acessorio);
