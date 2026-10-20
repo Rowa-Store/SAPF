@@ -11,6 +11,7 @@
 
 import { useState } from 'react';
 import AbasOlist from '@/components/ui/AbasOlist';
+import Modal from '@/components/ui/Modal';
 import { formatarMoedaOuTraco } from '@/lib/format';
 import { CAMPOS_PAI } from '@/lib/olist/produtoTiny';
 import { useProdutosOlist } from '../hooks/useProdutosOlist';
@@ -34,15 +35,15 @@ const SITUACAO = {
   sem_sku: ['marca-erro', 'sem SKU no Shopify'],
 };
 
-function MarcaSituacao({ linha, resultado }) {
+function MarcaSituacao({ linha, resultado, verErro }) {
   if (resultado?.ok && resultado.acao !== 'igual') {
     return <span className="marca marca-ok">{resultado.acao === 'incluido' ? 'incluído' : 'atualizado'}</span>;
   }
   if (resultado && !resultado.ok) {
     return (
-      <span className="marca marca-erro" title={resultado.erro}>
+      <button className="marca marca-erro" onClick={() => verErro({ sku: linha.sku, erro: resultado.erro })}>
         erro ao enviar
-      </span>
+      </button>
     );
   }
   const [classe, rotulo] = SITUACAO[linha.situacao];
@@ -123,7 +124,7 @@ function PaiShopify({ produto }) {
 }
 
 /** Uma variação (tamanho) do lado da Olist. */
-function VariacaoOlist({ linha, resultado, enviavel, selecionado, marcar }) {
+function VariacaoOlist({ linha, resultado, enviavel, selecionado, marcar, verErro }) {
   return (
     <div className="lado-olist">
       <div className="olist-variacao">
@@ -154,7 +155,7 @@ function VariacaoOlist({ linha, resultado, enviavel, selecionado, marcar }) {
           </>
         )}
         <div className="olist-situacao">
-          <MarcaSituacao linha={linha} resultado={resultado} />
+          <MarcaSituacao linha={linha} resultado={resultado} verErro={verErro} />
         </div>
       </div>
       {linha.situacao === 'fora_do_pai' && (
@@ -190,7 +191,14 @@ function VarianteShopify({ linha }) {
   );
 }
 
-function ParProduto({ produto, resultados, enviavel, selecionados, marcar }) {
+// Filtros da lista: só mudam o que aparece, sem consultar de novo.
+const FILTROS = [
+  { chave: 'todos', rotulo: 'Todos', mostra: () => true },
+  { chave: 'nao_cadastrados', rotulo: 'Não cadastrados', mostra: (l) => l.situacao === 'nova' },
+  { chave: 'desatualizados', rotulo: 'Desatualizados', mostra: (l) => l.situacao === 'diferente' },
+];
+
+function ParProduto({ produto, resultados, enviavel, selecionados, marcar, verErro }) {
   const skusEnviaveis = produto.linhas.filter(enviavel).map((l) => l.sku);
   const marcados = skusEnviaveis.filter((sku) => selecionados.has(sku)).length;
   const caixaProduto = skusEnviaveis.length > 0 && (
@@ -217,6 +225,7 @@ function ParProduto({ produto, resultados, enviavel, selecionados, marcar }) {
             enviavel={enviavel(l)}
             selecionado={selecionados.has(l.sku)}
             marcar={marcar}
+            verErro={verErro}
           />
           <VarianteShopify linha={l} />
         </div>
@@ -244,7 +253,19 @@ export default function CadastroProdutos() {
     resultados,
   } = useProdutosOlist();
   const [termo, setTermo] = useState('');
+  // { sku, erro } do "erro ao enviar" clicado
+  const [erroAberto, setErroAberto] = useState(null);
   const [familia, setFamilia] = useState(false);
+  const [filtro, setFiltro] = useState('todos');
+
+  const mostra = FILTROS.find((f) => f.chave === filtro).mostra;
+  const todasAsLinhas = (produtos ?? []).flatMap((p) => p.linhas);
+  const visiveis = (produtos ?? [])
+    .map((p) => ({ ...p, linhas: p.linhas.filter(mostra) }))
+    .filter((p) => p.linhas.length);
+  // "Marcar todos" vale para o que o filtro está mostrando.
+  const enviaveisVisiveis = visiveis.flatMap((p) => p.linhas).filter(enviavel);
+  const marcadosVisiveis = enviaveisVisiveis.filter((l) => selecionados.has(l.sku)).length;
 
   const incluir = aEnviar.filter((l) => l.situacao === 'nova').length;
   const atualizar = aEnviar.length - incluir;
@@ -303,7 +324,23 @@ export default function CadastroProdutos() {
 
       {!carregando && produtos?.length > 0 && (
         <>
-          {produtos.map((p) => (
+          <div className="filtros-olist" role="group" aria-label="Filtrar SKUs">
+            {FILTROS.map((f) => (
+              <button
+                key={f.chave}
+                type="button"
+                className={`filtro-chip${filtro === f.chave ? ' ativo' : ''}`}
+                aria-pressed={filtro === f.chave}
+                onClick={() => setFiltro(f.chave)}
+              >
+                {f.rotulo} <span className="filtro-contagem">{todasAsLinhas.filter(f.mostra).length}</span>
+              </button>
+            ))}
+          </div>
+
+          {visiveis.length === 0 && <div className="vazio">Nenhum SKU neste filtro.</div>}
+
+          {visiveis.map((p) => (
             <ParProduto
               key={p.id}
               produto={p}
@@ -311,6 +348,7 @@ export default function CadastroProdutos() {
               enviavel={enviavel}
               selecionados={selecionados}
               marcar={marcar}
+              verErro={setErroAberto}
             />
           ))}
 
@@ -326,12 +364,21 @@ export default function CadastroProdutos() {
                       .join(' · ')}
               </span>
               <div className="grupo-botoes">
-                <button
-                  className="link"
-                  onClick={() => marcar(enviaveis.map((l) => l.sku), aEnviar.length < enviaveis.length)}
-                >
-                  {aEnviar.length < enviaveis.length ? `Marcar todos (${enviaveis.length})` : 'Desmarcar todos'}
-                </button>
+                {enviaveisVisiveis.length > 0 && (
+                  <button
+                    className="link"
+                    onClick={() =>
+                      marcar(
+                        enviaveisVisiveis.map((l) => l.sku),
+                        marcadosVisiveis < enviaveisVisiveis.length
+                      )
+                    }
+                  >
+                    {marcadosVisiveis < enviaveisVisiveis.length
+                      ? `Marcar todos (${enviaveisVisiveis.length})`
+                      : 'Desmarcar todos'}
+                  </button>
+                )}
                 <button onClick={trazerDoShopify} disabled={enviando || aEnviar.length === 0}>
                   {enviando ? 'Enviando…' : `Trazer do Shopify (${aEnviar.length})`}
                 </button>
@@ -340,6 +387,15 @@ export default function CadastroProdutos() {
           )}
         </>
       )}
+
+      <Modal aberto={!!erroAberto} titulo={`Erro ao enviar ${erroAberto?.sku ?? ''}`} aoFechar={() => setErroAberto(null)}>
+        {erroAberto && (
+          <>
+            <p className="fraco" style={{ marginTop: 0 }}>Resposta da Olist (Tiny) ao gravar este SKU:</p>
+            <pre className="texto-erro">{erroAberto.erro}</pre>
+          </>
+        )}
+      </Modal>
     </>
   );
 }
