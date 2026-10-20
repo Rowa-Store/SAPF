@@ -823,6 +823,27 @@ export async function produtoPaiNoTiny({ nome, codigos = [] }, conta = null) {
   return { pai, foraDoPai };
 }
 
+/**
+ * Uma página da lista inteira de produtos da conta (produtos.pesquisa sem
+ * termo, 100 por página): pais, variações e produtos simples. Usada pela
+ * limpeza de GTIN (/olist/gtin).
+ *
+ * @returns {Promise<{ itens: object[], paginas: number }>}
+ */
+export async function paginaDeProdutosDaConta(pagina, conta = null) {
+  let retorno;
+  try {
+    retorno = await chamarTiny('produtos.pesquisa.php', { pesquisa: '', pagina: String(pagina) }, conta);
+  } catch (erro) {
+    if (/não retornou registros|nao retornou registros/i.test(erro.message)) return { itens: [], paginas: 0 };
+    throw erro;
+  }
+  return {
+    itens: paraArray(retorno.produtos).map((p) => p.produto ?? p),
+    paginas: Number(retorno.numero_paginas) || 1,
+  };
+}
+
 /** Cria o produto no Tiny. Devolve o id novo. */
 export async function incluirProduto(produto, conta = null) {
   const endpoint = 'produto.incluir.php';

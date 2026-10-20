@@ -8,6 +8,7 @@ import { usePathname } from 'next/navigation';
 const ABAS = [
   { href: '/olist', rotulo: 'Cadastro de produtos' },
   { href: '/olist/diagnostico', rotulo: 'Diagnóstico' },
+  { href: '/olist/gtin', rotulo: 'Limpar GTIN' },
 ];
 
 export default function AbasOlist() {
