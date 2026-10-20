@@ -20,20 +20,29 @@ export const dynamic = 'force-dynamic';
 
 // Totais do pedido como o admin do Shopify mostra (Subtotal, Discount,
 // Shipping, Total, Paid) — só para conferência na tela, não entram na nota.
-// O subtotal do admin é antes do desconto; o currentSubtotalPriceSet da API
-// já vem descontado, então ele é recomposto a partir do total.
+// O admin embute no Subtotal o desconto dado item a item (R$ X na peça) e só
+// lista em Discount o desconto do pedido inteiro (o "carrinho"). O
+// currentSubtotalPriceSet da API já vem com os dois descontados, então o
+// subtotal do admin é ele mais o desconto do carrinho.
 function resumoDoShopify(pedido) {
   const valor = (set) => Number(set?.shopMoney?.amount ?? 0);
   const total = valor(pedido.currentTotalPriceSet);
   const frete = valor(pedido.currentShippingPriceSet);
-  const desconto = valor(pedido.currentTotalDiscountsSet);
+  const desconto = valor(pedido.currentCartDiscountAmountSet);
   const impostos = valor(pedido.currentTotalTaxSet);
-  const nomesDesconto = (pedido.discountApplications?.nodes ?? [])
-    .map((d) => d.title || d.code)
-    .filter(Boolean);
+  // Só os descontos do pedido inteiro — os de item já estão no subtotal.
+  // Sem repetir: cada desconto manual vem com o mesmo título.
+  const nomesDesconto = [
+    ...new Set(
+      (pedido.discountApplications?.nodes ?? [])
+        .filter((d) => d.targetSelection === 'ALL')
+        .map((d) => d.title || d.code)
+        .filter(Boolean)
+    ),
+  ];
   return {
     quantidadeItens: pedido.currentSubtotalLineItemsQuantity ?? 0,
-    subtotal: total - frete - impostos + desconto,
+    subtotal: valor(pedido.currentSubtotalPriceSet) + desconto,
     desconto,
     descricaoDesconto: nomesDesconto.join(', '),
     frete,

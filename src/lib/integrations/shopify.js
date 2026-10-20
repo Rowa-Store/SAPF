@@ -66,6 +66,8 @@ query PedidoAtacado($id: ID!, $cursor: String) {
     customAttributes { key value }
     currentShippingPriceSet { shopMoney { amount } }
     currentSubtotalLineItemsQuantity
+    currentSubtotalPriceSet      { shopMoney { amount } }
+    currentCartDiscountAmountSet { shopMoney { amount } }
     currentTotalDiscountsSet { shopMoney { amount } }
     currentTotalTaxSet       { shopMoney { amount } }
     currentTotalPriceSet     { shopMoney { amount } }
@@ -78,8 +80,9 @@ query PedidoAtacado($id: ID!, $cursor: String) {
     }
     billingAddress  { company address1 address2 city provinceCode zip }
     shippingAddress { company address1 address2 city provinceCode zip }
-    discountApplications(first: 5) {
+    discountApplications(first: 20) {
       nodes {
+        targetSelection
         ... on DiscountCodeApplication { code value { ... on PricingPercentageValue { percentage } } }
         ... on ManualDiscountApplication { title value { ... on PricingPercentageValue { percentage } } }
         ... on AutomaticDiscountApplication { title }
