@@ -35,10 +35,11 @@ export async function compararBusca({ busca, familia = false, skus = null }) {
 }
 
 /** Um produto do Shopify (pelo id) comparado com o pai dele na Olist —
- *  o que a gravação usa, um produto por requisição. */
-export async function compararProdutoPorId(produtoId) {
+ *  o que a gravação usa, um produto por requisição. `catalogo`: os registros
+ *  do catálogo do Tiny que o diagnóstico já leu (ver produtoPaiNoTiny). */
+export async function compararProdutoPorId(produtoId, { catalogo = null } = {}) {
   const produto = await obterProdutoParaOlist(produtoId);
   const codigos = produto.variants.map((v) => String(v.sku ?? '').trim()).filter(Boolean);
-  const noTiny = await produtoPaiNoTiny({ nome: produto.title, codigos });
+  const noTiny = await produtoPaiNoTiny({ nome: produto.title, codigos }, null, catalogo);
   return { produto: compararProduto(produto, noTiny, variacoesDoPai), cadastro: noTiny.pai };
 }

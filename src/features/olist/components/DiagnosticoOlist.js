@@ -1,8 +1,10 @@
 // /olist/diagnostico — varredura das diferenças de cadastro entre o Shopify
 // e a Olist.
 //
-// Anda pelos produtos ativos do Shopify de 20 em 20 e compara cada um com o
-// pai dele na Olist (a mesma comparação do cadastro de produtos). A lista
+// Anda pelos produtos ativos do Shopify de 20 em 20, os mais recentes
+// primeiro, e compara cada um com o pai dele na Olist (a mesma comparação do
+// cadastro de produtos). Depois da primeira, "atualizar" refaz só o que mudou
+// no Shopify ou na Olist desde o último diagnóstico (ver useDiagnosticoOlist). A lista
 // mostra só o que tem divergência ou não está cadastrado; os iguais entram
 // só na contagem. Por padrão a lista traz só os desatualizados e os sem
 // cadastro; "listar todos os problemas" mostra também os que só se corrigem
@@ -53,8 +55,9 @@ function linkDoCadastro(produto) {
 export default function DiagnosticoOlist() {
   const {
     estado,
-    lotes,
-    verificados,
+    trabalho,
+    concluido,
+    conhecidos,
     iguais,
     divergentes,
     falhas,
@@ -62,7 +65,6 @@ export default function DiagnosticoOlist() {
     erro,
     aviso,
     setAviso,
-    inicio,
     correcao,
     iniciar,
     continuar,
@@ -106,6 +108,7 @@ export default function DiagnosticoOlist() {
   const escondidos = divergentes.length - comListados.length;
 
   const rodando = estado === 'rodando' || estado === 'pausando';
+  const atualizando = trabalho?.modo === 'atualizacao';
   const corrigindo = estado === 'corrigindo';
   const visiveis = filtro === 'todos' ? comListados : comListados.filter((p) => p.problemas.includes(filtro));
   const corrigiveis = visiveis.filter((p) => p.enviaveis?.length);
@@ -123,8 +126,9 @@ export default function DiagnosticoOlist() {
 
       <div className="cartao">
         <p className="fraco" style={{ marginTop: 0 }}>
-          Compara todos os produtos ativos do Shopify com a Olist, de 20 em 20, e lista os que estão diferentes ou não
-          cadastrados. A varredura só lê; o “Corrigir todos” é que grava na Olist.
+          Compara os produtos ativos do Shopify com a Olist, de 20 em 20 e dos mais recentes para os mais antigos, e lista
+          os que estão diferentes ou não cadastrados. “Atualizar” refaz só o que mudou no Shopify ou na Olist desde o
+          último diagnóstico. A varredura só lê; o “Corrigir todos” é que grava na Olist.
         </p>
         <div className="grupo-botoes">
           {rodando || corrigindo ? (
@@ -134,12 +138,20 @@ export default function DiagnosticoOlist() {
           ) : (
             <>
               {estado === 'pausado' && <button onClick={continuar}>Continuar</button>}
-              <button className={estado === 'pausado' ? 'secundario' : undefined} onClick={iniciar}>
-                {estado === 'parado' ? 'Iniciar varredura' : 'Recomeçar varredura'}
+              {concluido && (
+                <button className={estado === 'pausado' ? 'secundario' : undefined} onClick={() => iniciar('atualizacao')}>
+                  Atualizar diagnóstico
+                </button>
+              )}
+              <button
+                className={estado === 'pausado' || concluido ? 'secundario' : undefined}
+                onClick={() => iniciar('completo')}
+              >
+                {estado === 'parado' ? 'Iniciar varredura' : 'Varredura completa'}
               </button>
             </>
           )}
-          {inicio && <span className="fraco">Último diagnóstico: {formatarDataHoraCurta(inicio)}</span>}
+          {concluido && <span className="fraco">Último diagnóstico concluído: {formatarDataHoraCurta(concluido)}</span>}
         </div>
         <label className="campo-check" style={{ marginTop: '0.75rem' }}>
           <input type="checkbox" checked={todosProblemas} onChange={(e) => trocarTodosProblemas(e.target.checked)} />
@@ -162,19 +174,33 @@ export default function DiagnosticoOlist() {
         </div>
       )}
 
-      {estado !== 'parado' && !corrigindo && (
+      {trabalho && !corrigindo && (
         <p className="fraco" role="status">
-          Lote {lotes} · {verificados} produto(s) verificados · {iguais} iguais · {comListados.length} {todosProblemas ? 'com problema' : 'desatualizados ou sem cadastro'}
+          {atualizando ? `Atualização desde ${formatarDataHoraCurta(trabalho.base)}` : 'Varredura completa'}
+          {trabalho.fase !== 'catalogo' && ` · lote ${trabalho.lotes} · ${trabalho.verificados} verificados agora`}
+          {' '}· {conhecidos} no diagnóstico · {iguais} iguais · {comListados.length} {todosProblemas ? 'com problema' : 'desatualizados ou sem cadastro'}
           {escondidos > 0 && ` · ${escondidos} com outros problemas (marque “listar todos” para ver)`}
           {falhas.length > 0 && ` · ${falhas.length} com erro`}
-          {estado === 'fim' && ' — varredura concluída.'}
+          {estado === 'fim' && ' — concluída.'}
           {estado === 'pausado' && ' — pausada.'}
+          {trabalho.catalogo.indisponivel && (
+            <>
+              <br />
+              Não deu para ler o catálogo da Olist ({trabalho.catalogo.indisponivel}) — comparando produto a produto, mais
+              devagar{atualizando && '; mudanças feitas só na Olist ficam para a varredura completa'}.
+            </>
+          )}
           {atual && (
             <>
               <br />
-              {atual.segundos
-                ? `Limite de chamadas da Olist — tentando “${atual.titulo}” de novo em ${atual.segundos}s`
-                : `Comparando “${atual.titulo}”…`}
+              {atual.catalogo
+                ? `Lendo o catálogo da Olist — página ${trabalho.catalogo.pagina}` +
+                  (trabalho.catalogo.paginas ? ` de ${trabalho.catalogo.paginas}` : '') +
+                  ` (${trabalho.catalogo.lidos} registros)` +
+                  (atual.segundos ? ` · limite de chamadas, tentando de novo em ${atual.segundos}s` : '…')
+                : atual.segundos
+                  ? `Limite de chamadas da Olist — tentando “${atual.titulo}” de novo em ${atual.segundos}s`
+                  : `Comparando “${atual.titulo}”…`}
             </>
           )}
         </p>

@@ -113,26 +113,39 @@ export async function obterProdutoParaOlist(id) {
 }
 
 const QUERY_PAGINA = `
-query PaginaDeProdutos($primeiros: Int!, $depois: String) {
-  products(first: $primeiros, after: $depois, query: "status:active", sortKey: TITLE) {
-    nodes { id title }
+query PaginaDeProdutos($primeiros: Int!, $depois: String, $busca: String!, $ordem: ProductSortKeys!) {
+  products(first: $primeiros, after: $depois, query: $busca, sortKey: $ordem, reverse: true) {
+    nodes { id title status createdAt variants(first: 100) { nodes { sku } } }
     pageInfo { hasNextPage endCursor }
   }
 }`;
 
 /**
- * Uma página de produtos ativos do Shopify, por título — a varredura do
- * diagnóstico (/olist/diagnostico) anda por elas. Só id e título: a
- * comparação de cada um relê o produto inteiro.
+ * Uma página de produtos do Shopify para a varredura do diagnóstico
+ * (/olist/diagnostico), os mais recentes primeiro. Sem `desde`: os ativos,
+ * pela data de criação. Com `desde` (ISO): os alterados depois dela, de
+ * qualquer status — quem deixou de estar ativo sai do diagnóstico —, pela
+ * data de alteração. Só id, título e SKUs: a comparação relê o produto.
  *
- * @returns {Promise<{ produtos: { id: string, titulo: string }[], proximo: string|null }>}
+ * @returns {Promise<{ produtos: { id, titulo, status, criado, skus: string[] }[], proximo: string|null }>}
  *   proximo: cursor da página seguinte (null na última).
  */
-export async function paginaDeProdutos({ cursor = null, tamanho = 20 } = {}) {
-  const dados = await shopifyGraphQL(QUERY_PAGINA, { primeiros: tamanho, depois: cursor });
+export async function paginaDeProdutos({ cursor = null, tamanho = 20, desde = null } = {}) {
+  const dados = await shopifyGraphQL(QUERY_PAGINA, {
+    primeiros: tamanho,
+    depois: cursor,
+    busca: desde ? `updated_at:>'${new Date(desde).toISOString()}'` : 'status:active',
+    ordem: desde ? 'UPDATED_AT' : 'CREATED_AT',
+  });
   const { nodes = [], pageInfo } = dados.products ?? {};
   return {
-    produtos: nodes.map((p) => ({ id: p.id, titulo: p.title })),
+    produtos: nodes.map((p) => ({
+      id: p.id,
+      titulo: p.title,
+      status: p.status,
+      criado: p.createdAt,
+      skus: (p.variants?.nodes ?? []).map((v) => String(v.sku ?? '').trim()).filter(Boolean),
+    })),
     proximo: pageInfo?.hasNextPage ? pageInfo.endCursor : null,
   };
 }

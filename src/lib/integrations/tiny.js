@@ -26,6 +26,7 @@
 // fiscalmente. As funções de nota aceitam uma `conta` (ver tinyContas.js);
 // sem ela, vale a conta da matriz.
 
+import { normalizarCodigo, normalizarNome } from '../olist/chaves.js';
 import { somenteDigitos } from '../utils.js';
 
 const BASE_PADRAO = 'https://api.tiny.com.br/api2';
@@ -498,24 +499,13 @@ export function erroDeProdutoPai(mensagem) {
   return /produto pai/i.test(String(mensagem ?? ''));
 }
 
-function normalizarOpcao(valor) {
-  return String(valor ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-}
+const normalizarOpcao = normalizarNome;
 
 /** Valores da grade de uma variação do Tiny — vem como objeto ou como lista. */
 function valoresDaGrade(grade) {
   if (!grade) return [];
   if (Array.isArray(grade)) return grade.map((g) => g?.valor ?? g?.value ?? '').filter(Boolean);
   return Object.values(grade).filter((v) => typeof v === 'string' && v);
-}
-
-/** Código comparável: o Tiny casa o código sem ligar para caixa nem espaços nas pontas. */
-function normalizarCodigo(codigo) {
-  return String(codigo ?? '').trim().toUpperCase();
 }
 
 /** Resultado de produtos.pesquisa (casa por código e por nome). `filtros`
@@ -786,23 +776,32 @@ export function variacoesDoPai(cadastro) {
  * Os SKUs que não estão nas variações do pai são procurados no resto da
  * conta: código usado em outro produto não pode virar variação nova.
  *
+ * `catalogo` (o diagnóstico manda): os registros do produtos.pesquisa que
+ * casam com o nome ou com algum dos códigos, já lidos do catálogo — no lugar
+ * das pesquisas por nome e por código. Só o produto.obter continua.
+ *
+ * @param {object[]|null} catalogo
  * @returns {Promise<{ pai: object|null, duplicados?: number,
  *   foraDoPai: Record<string, { id: string, tipoVariacao: string }> }>}
  *   foraDoPai: por código normalizado.
  */
-export async function produtoPaiNoTiny({ nome, codigos = [] }, conta = null) {
+export async function produtoPaiNoTiny({ nome, codigos = [] }, conta = null, catalogo = null) {
   const alvo = normalizarOpcao(nome);
+  const produtosPorCodigoOuCatalogo = catalogo
+    ? async (codigo) => catalogo.filter((p) => normalizarCodigo(p.codigo) === normalizarCodigo(codigo))
+    : (codigo) => produtosPorCodigo(codigo, conta);
   // Uma chamada por vez: a API do Tiny limita chamadas por minuto.
-  const pais = (await pesquisarProdutos(nome, conta, { situacao: 'A' })).filter(
-    (p) => p.tipoVariacao === 'P' && normalizarOpcao(p.nome) === alvo
-  );
+  const porNome = catalogo
+    ? catalogo.filter((p) => !p.situacao || p.situacao === 'A')
+    : await pesquisarProdutos(nome, conta, { situacao: 'A' });
+  const pais = porNome.filter((p) => p.tipoVariacao === 'P' && normalizarOpcao(p.nome) === alvo);
   if (pais.length > 1) return { pai: null, duplicados: pais.length, foraDoPai: {} };
 
   let idPai = pais[0]?.id ?? null;
   const achadosPorCodigo = {};
   if (!idPai) {
     for (const codigo of codigos) {
-      const produtos = await produtosPorCodigo(codigo, conta);
+      const produtos = await produtosPorCodigoOuCatalogo(codigo);
       achadosPorCodigo[normalizarCodigo(codigo)] = produtos;
       const variacao = produtos.find((p) => p.tipoVariacao === 'V');
       if (!variacao) continue;
@@ -817,10 +816,32 @@ export async function produtoPaiNoTiny({ nome, codigos = [] }, conta = null) {
   for (const codigo of codigos) {
     const chave = normalizarCodigo(codigo);
     if (doPai.has(chave)) continue;
-    const produtos = achadosPorCodigo[chave] ?? (await produtosPorCodigo(codigo, conta));
+    const produtos = achadosPorCodigo[chave] ?? (await produtosPorCodigoOuCatalogo(codigo));
     if (produtos.length) foraDoPai[chave] = { id: String(produtos[0].id), tipoVariacao: produtos[0].tipoVariacao };
   }
   return { pai, foraDoPai };
+}
+
+/**
+ * Uma página do catálogo inteiro da conta (produtos.pesquisa sem termo, 100
+ * por página): pais, variações e produtos simples, de qualquer situação. O
+ * diagnóstico lê tudo uma vez no começo da varredura e, daí em diante, só
+ * chama o produto.obter.
+ *
+ * @returns {Promise<{ itens: object[], paginas: number }>}
+ */
+export async function paginaDoCatalogo(pagina, conta = null) {
+  let retorno;
+  try {
+    retorno = await chamarTiny('produtos.pesquisa.php', { pesquisa: '', pagina: String(pagina) }, conta);
+  } catch (erro) {
+    if (/não retornou registros|nao retornou registros/i.test(erro.message)) return { itens: [], paginas: 0 };
+    throw erro;
+  }
+  return {
+    itens: paraArray(retorno.produtos).map((p) => p.produto ?? p),
+    paginas: Number(retorno.numero_paginas) || 1,
+  };
 }
 
 /** Cria o produto no Tiny. Devolve o id novo. */
