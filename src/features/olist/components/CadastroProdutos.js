@@ -239,8 +239,6 @@ export default function CadastroProdutos() {
     aEnviar,
     selecionados,
     marcar,
-    confirmado,
-    setConfirmado,
     enviando,
     trazerDoShopify,
     resultados,
@@ -319,31 +317,22 @@ export default function CadastroProdutos() {
           {enviaveis.length === 0 ? (
             <p className="fraco">Tudo igual entre o Shopify e a Olist — nada para trazer.</p>
           ) : (
-            <div className="confirmacao barra-envio">
-              <p style={{ marginTop: 0 }}>
-                {aEnviar.length === 0 ? (
-                  <strong>Marque os SKUs (ou o produto inteiro) que quer trazer do Shopify.</strong>
-                ) : (
-                  <strong>
-                    Trazer do Shopify: {atualizar > 0 && `${atualizar} SKU(s) atualizado(s)`}
-                    {atualizar > 0 && incluir > 0 && ' e '}
-                    {incluir > 0 && `${incluir} SKU(s) cadastrado(s)`} na Olist.
-                  </strong>
-                )}{' '}
-                Junto vão o nome, o NCM e o peso do produto; o que estiver vazio do lado de cá fica como está na Olist.{' '}
+            <div className="barra-lote barra-envio">
+              <span className="barra-lote-contagem">
+                {aEnviar.length === 0
+                  ? 'Marque os SKUs que quer trazer do Shopify.'
+                  : [atualizar > 0 && `${atualizar} para atualizar`, incluir > 0 && `${incluir} para cadastrar`]
+                      .filter(Boolean)
+                      .join(' · ')}
+              </span>
+              <div className="grupo-botoes">
                 <button
                   className="link"
                   onClick={() => marcar(enviaveis.map((l) => l.sku), aEnviar.length < enviaveis.length)}
                 >
                   {aEnviar.length < enviaveis.length ? `Marcar todos (${enviaveis.length})` : 'Desmarcar todos'}
                 </button>
-              </p>
-              <label>
-                <input type="checkbox" checked={confirmado} onChange={(e) => setConfirmado(e.target.checked)} />
-                <span>Entendo que isto grava na conta de produção da Olist.</span>
-              </label>
-              <div className="grupo-botoes" style={{ marginTop: '0.75rem' }}>
-                <button onClick={trazerDoShopify} disabled={!confirmado || enviando || aEnviar.length === 0}>
+                <button onClick={trazerDoShopify} disabled={enviando || aEnviar.length === 0}>
                   {enviando ? 'Enviando…' : `Trazer do Shopify (${aEnviar.length})`}
                 </button>
               </div>

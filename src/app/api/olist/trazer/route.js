@@ -1,7 +1,7 @@
 // POST /api/olist/trazer — "trazer do Shopify": grava na Olist os SKUs
-// marcados. ESCREVE NA CONTA DE PRODUÇÃO — exige `confirmacao: true`.
+// marcados. ESCREVE NA CONTA DE PRODUÇÃO.
 //
-// Corpo: { busca, familia, skus, confirmacao }. A comparação é refeita aqui
+// Corpo: { busca, familia, skus }. A comparação é refeita aqui
 // (Shopify e Tiny lidos de novo). Na Olist cada cor é um pai sem código com
 // os tamanhos como variações, então a gravação é por produto:
 //   - pai existe: produto.alterar no pai — nome, NCM e peso do pai, e o
@@ -28,9 +28,6 @@ const MOTIVO = {
 export async function POST(request) {
   const corpo = await request.json().catch(() => null);
   if (!corpo) return erroJson('Corpo da requisição inválido: era esperado um JSON.', 400);
-  if (corpo.confirmacao !== true) {
-    return erroJson('Confirme na tela que os produtos vão ser gravados na Olist de produção.', 400);
-  }
   const skus = Array.isArray(corpo.skus) ? corpo.skus.filter(Boolean) : [];
   if (!skus.length) return erroJson('Nenhum SKU para trazer.', 400);
   const pedidos = new Set(skus.map(normalizarCodigo));

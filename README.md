@@ -160,7 +160,7 @@ um produto por cor, uma variante por tamanho.
    peso e o preço das variações marcadas; as outras variações vão com o id e
    o preço de hoje, para não serem apagadas nem duplicadas) e inclui as
    variações que faltam. Sem pai na Olist, cadastra o pai sem código com as
-   variações marcadas. Exige marcar a confirmação.
+   variações marcadas.
 
 O NCM não vem do Shopify: sai das palavras do nome e do tipo de produto,
 pelas regras em `src/lib/fiscal/ncm.js` (com a tabela de NCMs da Rowa).

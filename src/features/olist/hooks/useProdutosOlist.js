@@ -21,7 +21,6 @@ export function useProdutosOlist() {
   const [produtos, setProdutos] = useState(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(null);
-  const [confirmado, setConfirmado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   // sku -> { ok, acao, erro } do último "trazer do Shopify"
   const [resultados, setResultados] = useState({});
@@ -38,7 +37,6 @@ export function useProdutosOlist() {
     setAviso(null);
     setResultados({});
     setSelecionados(new Set());
-    setConfirmado(false);
     try {
       const parametros = new URLSearchParams({ busca: nova.busca, ...(familia ? { familia: '1' } : {}) });
       const corpo = await lerJson(await fetch(`/api/olist/comparar?${parametros}`), 'Falha na comparação');
@@ -73,7 +71,7 @@ export function useProdutosOlist() {
         await fetch('/api/olist/trazer', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...consulta, skus: aEnviar.map((l) => l.sku), confirmacao: confirmado }),
+          body: JSON.stringify({ ...consulta, skus: aEnviar.map((l) => l.sku) }),
         }),
         'Falha ao trazer do Shopify'
       );
@@ -86,7 +84,6 @@ export function useProdutosOlist() {
         `${enviados} SKU(s) enviados à Olist.` +
           (falhas ? ` ${falhas} com erro — veja na tabela.` : '')
       );
-      setConfirmado(false);
     } catch (e) {
       setErro(e.message);
     } finally {
@@ -107,8 +104,6 @@ export function useProdutosOlist() {
     aEnviar,
     selecionados,
     marcar,
-    confirmado,
-    setConfirmado,
     enviando,
     trazerDoShopify,
     resultados,

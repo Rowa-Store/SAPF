@@ -356,7 +356,7 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
 .linha-busca input { flex: 1; }
 .caixa-selecao { width: auto; margin: 0; flex-shrink: 0; }
 /* Fica grudada no pé da tela ao rolar uma família grande: o envio está sempre à mão. */
-.barra-envio { position: sticky; bottom: 0.75rem; z-index: 2; background: color-mix(in srgb, var(--papel) 70%, var(--alerta) 12%); }
+.barra-envio { top: auto; bottom: 0.75rem; margin: 0; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45); }
 
 /* Comparação: cada SKU numa linha, a Olist à esquerda e o Shopify à direita,
    cada lado imitando a tela do próprio sistema — a Olist escura, com rótulo
