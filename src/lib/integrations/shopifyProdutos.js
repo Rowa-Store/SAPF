@@ -13,6 +13,7 @@ const CAMPOS_PRODUTO = `
   variants(first: 100) {
     nodes {
       sku title price barcode
+      selectedOptions { name value }
       inventoryItem { measurement { weight { unit value } } }
     }
   }

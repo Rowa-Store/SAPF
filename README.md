@@ -144,17 +144,23 @@ cadastra outras transportadoras e anexa clientes a elas pelo CNPJ:
 ## Cadastro de produtos na Olist
 
 Tela `/olist` (aba **Olist** do menu), na conta da matriz (`TINY_API_TOKEN`).
-Sem produto pai: cada SKU do Shopify é um produto na Olist.
+Na Olist, cada cor é um **produto pai sem código** ("Calça Cool - Azul
+Marinho") e os tamanhos são as **variações**, com o SKU. No Shopify é igual:
+um produto por cor, uma variante por tamanho.
 
 1. Busca por SKU de qualquer tamanho (ou pelo nome): vem o produto do Shopify
    com todos os tamanhos. Marcando **família**, vêm também as outras cores do
-   mesmo modelo — produtos com o mesmo nome antes do " - Cor" ("Legging
-   Estrella - Rosa", "Legging Estrella - Azul"...).
-2. Cada SKU aparece lado a lado com o cadastro na Olist (nome, preço, NCM,
-   peso), com as diferenças destacadas, ou "produto não encontrado".
-3. **Trazer do Shopify** atualiza os SKUs marcados que estão diferentes e
-   cadastra os que não existem. Peso vazio no Shopify não apaga o da Olist.
-   Exige marcar a confirmação.
+   mesmo modelo — produtos com o mesmo nome antes do " - Cor".
+2. O pai é achado na Olist pelo nome igual ao título do Shopify (entre os
+   ativos) ou pelo pai de uma variação com o SKU. A tela mostra, lado a lado,
+   o pai (nome, NCM, peso) e cada variação (preço), com as diferenças
+   destacadas. SKU que não está no pai aparece como "não está na Olist"; se
+   ele existir em outro produto, fica bloqueado.
+3. **Trazer do Shopify** grava os SKUs marcados: altera o pai (nome, NCM,
+   peso e o preço das variações marcadas; as outras variações vão com o id e
+   o preço de hoje, para não serem apagadas nem duplicadas) e inclui as
+   variações que faltam. Sem pai na Olist, cadastra o pai sem código com as
+   variações marcadas. Exige marcar a confirmação.
 
 O NCM não vem do Shopify: sai das palavras do nome e do tipo de produto,
 pelas regras em `src/lib/fiscal/ncm.js` (com a tabela de NCMs da Rowa).

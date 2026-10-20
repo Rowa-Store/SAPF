@@ -3,7 +3,7 @@
 import { useState } from 'react';
 
 // O que o "trazer do Shopify" envia: o resto já está igual ou não dá para enviar.
-const SITUACOES_A_ENVIAR = ['diferente', 'nao_encontrado'];
+const SITUACOES_A_ENVIAR = ['diferente', 'nova'];
 
 async function lerJson(resposta, padrao) {
   const corpo = await resposta.json().catch(() => ({}));

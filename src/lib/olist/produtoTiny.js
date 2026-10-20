@@ -1,38 +1,28 @@
-// produtoTiny.js — comparação SKU a SKU entre o Shopify e a Olist (Tiny), e
-// o payload do "trazer do Shopify".
+// produtoTiny.js — comparação entre o Shopify e a Olist (Tiny), e o payload
+// do "trazer do Shopify".
 //
-// Sem produto pai: cada variante do Shopify (cada SKU) é um produto da
-// Olist. Achado pelo código, é atualizado; não achado, é incluído como
-// produto simples.
+// Modelo da Olist: cada cor é um produto PAI sem código ("Calça Cool - Azul
+// Marinho"), com os tamanhos como VARIAÇÕES — o SKU fica na variação. No
+// Shopify é o mesmo desenho: um produto por cor, uma variante por tamanho.
+// Então produto do Shopify <-> pai da Olist, e variante <-> variação.
 //
-// Só vai para o Tiny o campo que o Shopify tem preenchido — peso vazio do
-// lado de cá não apaga o que já está na Olist.
+//   - Do pai: nome (título do Shopify), NCM (regra do código, fiscal/ncm.js)
+//     e peso.
+//   - Da variação: preço. O tamanho (grade) só aparece.
+//   - O GTIN aparece do lado do Shopify só para consulta: vai sempre VAZIO.
 //
-// O GTIN aparece do lado do Shopify só para consulta: para o Tiny ele vai
-// sempre VAZIO (inclusive na atualização, apagando o que estiver lá).
-//
-// O NCM não vem do Shopify: sai só das regras do código (fiscal/ncm.js). Por
-// isso ele é campo só do lado da Olist — comparado com o NCM da regra, que
-// fica em `linha.ncm`. Sem regra para o produto, o NCM da Olist não é tocado.
+// Campo sem valor do lado de cá (peso vazio, produto sem regra de NCM) não
+// é comparado nem apaga o que está na Olist.
 
 import { ncmDoProduto } from '../fiscal/ncm.js';
 import { valorMonetario } from '../utils.js';
 
-/** Campos da tela, na ordem. `soOlist`: não existe no Shopify.
- *  `soShopify`: só para consulta — não é comparado nem enviado. */
-export const CAMPOS = [
+/** Campos do pai, na ordem da tela. `soOlist`: não existe no Shopify. */
+export const CAMPOS_PAI = [
   { chave: 'nome', rotulo: 'Nome' },
-  { chave: 'preco', rotulo: 'Preço' },
-  { chave: 'gtin', rotulo: 'GTIN', soShopify: true },
   { chave: 'ncm', rotulo: 'NCM', soOlist: true },
-  { chave: 'peso', rotulo: 'Peso (kg)' },
+  { chave: 'peso', rotulo: 'Peso' },
 ];
-
-/** Os campos que aparecem do lado do Shopify. */
-export const CAMPOS_SHOPIFY = CAMPOS.filter((c) => !c.soOlist);
-
-/** Os campos que aparecem do lado da Olist — os comparados. */
-export const CAMPOS_OLIST = CAMPOS.filter((c) => !c.soShopify);
 
 // Origem da mercadoria (tabela da NF-e) dos produtos incluídos: 0 = nacional.
 const ORIGEM_PADRAO = '0';
@@ -55,26 +45,11 @@ function numeroOuNull(valor) {
   return valor === '' || valor == null || !Number.isFinite(n) ? null : n;
 }
 
-/** Os campos de CAMPOS de um lado e do outro, no mesmo formato. */
-function ladoShopify(produto, variante) {
-  const tamanho = variante.title && variante.title !== 'Default Title' ? ` - ${variante.title}` : '';
-  return {
-    nome: `${produto.title}${tamanho}`,
-    preco: numeroOuNull(variante.price),
-    gtin: String(variante.barcode ?? '').trim() || null,
-    peso: pesoEmKg(variante),
-  };
-}
-
-function ladoTiny(produto) {
-  return {
-    id: String(produto.id),
-    nome: produto.nome ?? null,
-    preco: numeroOuNull(produto.preco),
-    ncm: String(produto.ncm ?? '').trim() || null,
-    peso: numeroOuNull(produto.peso_liquido) || numeroOuNull(produto.peso_bruto),
-    tipoVariacao: produto.tipoVariacao ?? null,
-  };
+/** Opções reais da variante ({ Tamanho: 'P' }), sem a "Title" automática. */
+function gradeDaVariante(variante) {
+  return Object.fromEntries(
+    (variante.selectedOptions ?? []).filter((o) => o.name !== 'Title').map((o) => [o.name, o.value])
+  );
 }
 
 const COMPARAVEL = {
@@ -84,85 +59,149 @@ const COMPARAVEL = {
   peso: (v) => (v == null ? null : Number(v).toFixed(3)),
 };
 
-/** Campos com valor do lado de cá (Shopify, ou a regra no caso do NCM)
- *  que estão diferentes na Olist. */
-function camposDiferentes(esperado, tiny) {
-  return CAMPOS_OLIST.map((c) => c.chave).filter(
-    (chave) => esperado[chave] != null && COMPARAVEL[chave](esperado[chave]) !== COMPARAVEL[chave](tiny?.[chave])
+/** Campos com valor do lado de cá que estão diferentes na Olist. */
+function diferentes(chaves, esperado, olist) {
+  return chaves.filter(
+    (chave) => esperado[chave] != null && COMPARAVEL[chave](esperado[chave]) !== COMPARAVEL[chave](olist?.[chave])
   );
 }
 
 /**
- * Uma linha por SKU dos produtos do Shopify, com o lado da Olist.
+ * Comparação de um produto do Shopify com o pai da Olist.
  *
- * @param {object[]} produtos buscarProdutosParaOlist
- * @param {Record<string, { produto: object|null, duplicados?: number }>} doTiny produtosDoTinyPorCodigo
+ * @param {object} produto buscarProdutosParaOlist
+ * @param {{ pai: object|null, duplicados?: number, foraDoPai: object }} noTiny produtoPaiNoTiny
+ * @param {(cadastro: object) => object[]} variacoesDoPai
  */
-export function compararProdutos(produtos, doTiny) {
-  return produtos.map((produto) => {
-    const ncm = ncmDoProduto({ titulo: produto.title, tipo: produto.productType });
-    return {
-      id: produto.id,
-      titulo: produto.title,
-      tipo: produto.productType,
-      status: produto.status,
-      linhas: produto.variants.map((variante) => {
-        const sku = String(variante.sku ?? '').trim();
-        const shopify = ladoShopify(produto, variante);
-        const base = { sku, shopify, ncm, tiny: null, diferencas: [] };
-        if (!sku) return { ...base, situacao: 'sem_sku' };
+export function compararProduto(produto, noTiny, variacoesDoPai) {
+  const { pai, duplicados, foraDoPai = {} } = noTiny;
+  const esperado = {
+    nome: produto.title,
+    ncm: ncmDoProduto({ titulo: produto.title, tipo: produto.productType }),
+    peso: produto.variants.map(pesoEmKg).find((p) => p != null) ?? null,
+  };
+  const olist = pai && {
+    id: String(pai.id),
+    nome: pai.nome ?? null,
+    ncm: String(pai.ncm ?? '').trim() || null,
+    peso: numeroOuNull(pai.peso_liquido) || numeroOuNull(pai.peso_bruto),
+    preco: numeroOuNull(pai.preco),
+  };
+  const diferencasPai = olist ? diferentes(['nome', 'ncm', 'peso'], esperado, olist) : [];
+  const variacoes = new Map((pai ? variacoesDoPai(pai) : []).map((v) => [normalizarCodigo(v.codigo), v]));
 
-        const achado = doTiny[normalizarCodigo(sku)] ?? { produto: null };
-        if (achado.duplicados) return { ...base, situacao: 'duplicado', duplicados: achado.duplicados };
-        if (!achado.produto) return { ...base, situacao: 'nao_encontrado' };
-
-        const tiny = ladoTiny(achado.produto);
-        const diferencas = camposDiferentes({ ...shopify, ncm }, tiny);
-        return { ...base, tiny, situacao: diferencas.length ? 'diferente' : 'igual', diferencas };
-      }),
+  const linhas = produto.variants.map((variante) => {
+    const sku = String(variante.sku ?? '').trim();
+    const shopify = {
+      preco: numeroOuNull(variante.price),
+      gtin: String(variante.barcode ?? '').trim() || null,
+      opcao: variante.title !== 'Default Title' ? variante.title : null,
     };
-  });
-}
+    const base = { sku, shopify, grade: gradeDaVariante(variante), olist: null, diferencas: [] };
+    if (!sku) return { ...base, situacao: 'sem_sku' };
+    if (duplicados) return { ...base, situacao: 'bloqueado' };
 
-/** Campos que vão para o Tiny: os do Shopify mais o NCM da regra (os
- *  vazios ficam de fora). */
-function camposDaLinha({ shopify, ncm }) {
+    const variacao = variacoes.get(normalizarCodigo(sku));
+    if (!variacao) {
+      const fora = foraDoPai[normalizarCodigo(sku)];
+      return fora ? { ...base, situacao: 'fora_do_pai', foraDoPai: fora } : { ...base, situacao: 'nova' };
+    }
+
+    // Variação sem preço próprio vale o preço do pai.
+    const precoOlist = numeroOuNull(variacao.preco) || olist.preco;
+    const daOlist = { id: variacao.id, preco: precoOlist, grade: variacao.grade };
+    const diferencas = diferentes(['preco'], shopify, daOlist);
+    // O pai é gravado junto com as variações: pai diferente torna a variação enviável.
+    const situacao = diferencas.length || diferencasPai.length ? 'diferente' : 'igual';
+    return { ...base, olist: daOlist, diferencas, situacao };
+  });
+
   return {
-    nome: shopify.nome,
-    ...(shopify.preco != null ? { preco: valorMonetario(shopify.preco) } : {}),
-    gtin: '',
-    ...(ncm ? { ncm } : {}),
-    ...(shopify.peso != null ? { peso_liquido: shopify.peso, peso_bruto: shopify.peso } : {}),
+    id: produto.id,
+    titulo: produto.title,
+    tipo: produto.productType,
+    status: produto.status,
+    situacao: duplicados ? 'duplicado' : pai ? 'encontrado' : 'nao_encontrado',
+    duplicados: duplicados ?? null,
+    esperado,
+    olist,
+    diferencasPai,
+    linhas,
   };
 }
 
-/** Payload de produto.incluir para um SKU que não existe na Olist. */
-export function produtoParaIncluir(linha) {
+/** Campos do pai que vêm do lado de cá (os vazios ficam de fora). */
+function camposDoPai(esperado) {
   return {
-    codigo: linha.sku,
+    nome: esperado.nome,
+    ...(esperado.ncm ? { ncm: esperado.ncm } : {}),
+    ...(esperado.peso != null ? { peso_liquido: esperado.peso, peso_bruto: esperado.peso } : {}),
+  };
+}
+
+function variacaoNova(linha) {
+  return { variacao: { codigo: linha.sku, preco: valorMonetario(linha.shopify.preco), gtin: '', grade: linha.grade } };
+}
+
+/** Menor preço entre as variantes do Shopify — o preço que a Olist mostra no pai. */
+function precoDoPai(comparado) {
+  const precos = comparado.linhas.map((l) => l.shopify.preco).filter((p) => p != null);
+  return precos.length ? valorMonetario(Math.min(...precos)) : undefined;
+}
+
+/** Payload de produto.incluir: pai sem código com as variações escolhidas. */
+export function paiParaIncluir(comparado, linhas) {
+  return {
+    codigo: '',
     unidade: 'UN',
+    preco: precoDoPai(comparado),
     origem: ORIGEM_PADRAO,
     situacao: 'A',
     tipo: 'P',
-    classe_produto: 'S',
-    ...camposDaLinha(linha),
+    classe_produto: 'V',
+    gtin: '',
+    ...camposDoPai(comparado.esperado),
+    variacoes: linhas.map(variacaoNova),
   };
 }
 
 /**
- * Payload de produto.alterar. O que não vem do Shopify (unidade, origem,
- * situação...) é repetido do cadastro atual, para a alteração não zerar nada.
+ * Payload de produto.alterar do pai. O que não vem do Shopify (código,
+ * unidade, origem, situação...) é repetido do cadastro atual. Vão TODAS as
+ * variações que o pai já tem, com o id — as não escolhidas com o preço de
+ * hoje —, para a alteração não apagar nem duplicar nenhuma; as escolhidas
+ * levam o preço do Shopify, e as que faltam entram sem id (são incluídas).
+ *
+ * @param {object[]} variacoesAtuais variacoesDoPai(cadastro)
  */
-export function produtoParaAlterar(linha, cadastroTiny) {
+export function paiParaAlterar(comparado, cadastro, variacoesAtuais, linhas) {
+  const escolhidas = new Map(linhas.map((l) => [normalizarCodigo(l.sku), l]));
+  const existentes = variacoesAtuais.map((v) => {
+    const linha = escolhidas.get(normalizarCodigo(v.codigo));
+    return {
+      variacao: {
+        id: v.id,
+        codigo: v.codigo,
+        preco: linha ? valorMonetario(linha.shopify.preco) : v.preco,
+        // Variação não escolhida fica como está.
+        ...(linha ? { gtin: '' } : {}),
+        grade: v.grade,
+      },
+    };
+  });
+  const novas = linhas.filter((l) => l.situacao === 'nova').map(variacaoNova);
+
   return {
-    codigo: cadastroTiny.codigo ?? linha.sku,
-    nome: cadastroTiny.nome,
-    unidade: cadastroTiny.unidade || 'UN',
-    preco: cadastroTiny.preco,
-    origem: cadastroTiny.origem ?? ORIGEM_PADRAO,
-    situacao: cadastroTiny.situacao || 'A',
-    tipo: cadastroTiny.tipo || 'P',
-    ...(cadastroTiny.ncm ? { ncm: cadastroTiny.ncm } : {}),
-    ...camposDaLinha(linha),
+    codigo: cadastro.codigo ?? '',
+    unidade: cadastro.unidade || 'UN',
+    preco: precoDoPai(comparado) ?? cadastro.preco,
+    origem: cadastro.origem ?? ORIGEM_PADRAO,
+    situacao: cadastro.situacao || 'A',
+    tipo: cadastro.tipo || 'P',
+    classe_produto: 'V',
+    gtin: '',
+    ...(cadastro.ncm ? { ncm: cadastro.ncm } : {}),
+    ...camposDoPai(comparado.esperado),
+    variacoes: [...existentes, ...novas],
   };
 }

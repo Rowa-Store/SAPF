@@ -387,13 +387,15 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
 .olist-marca, .shopify-marca { display: block; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 0.4rem; }
 .olist-marca { color: var(--olist-azul); }
 .olist-titulo { display: flex; gap: 0.6rem; align-items: center; font-size: 1.05rem; }
-.olist-topo { display: flex; gap: 0.75rem; align-items: flex-start; justify-content: space-between; margin-bottom: 0.75rem; }
 .olist-sku { display: flex; gap: 0.6rem; align-items: center; margin: 0; cursor: pointer; }
 .olist-rotulo { display: block; font-size: 0.8rem; color: var(--olist-rotulo); }
 .olist-valor { display: block; font-size: 0.95rem; color: var(--olist-texto); }
-.olist-campos { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 0.75rem 1rem; }
+.olist-campos { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 0.75rem 1rem; }
+.olist-campos-pai, .shopify-campos-pai { margin-top: 0.9rem; }
+.olist-variacao { display: grid; grid-template-columns: 1.6fr 1fr 1fr auto; gap: 0.75rem 1rem; align-items: start; }
+.olist-situacao { justify-self: end; }
 .olist-campos > div { min-width: 0; }
-.olist-vazio { margin: 0; color: var(--olist-rotulo); font-size: 0.9rem; }
+.olist-vazio { margin: 0.75rem 0 0; color: var(--olist-rotulo); font-size: 0.9rem; }
 .lado-olist .campo-diferente .olist-valor { color: var(--amarelo); }
 .lado-olist .valor-novo { display: block; font-size: 0.8rem; color: var(--amarelo); white-space: nowrap; }
 .lado-olist input[type="checkbox"] { accent-color: var(--olist-azul); }
@@ -413,7 +415,8 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
   box-shadow: 0 1px 0 rgba(26, 26, 26, 0.07);
   padding: 0.75rem 0.9rem;
 }
-.shopify-campos { display: grid; grid-template-columns: 2fr 1fr 1.3fr 0.8fr; gap: 0.6rem 0.75rem; }
+.shopify-campos { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 0.6rem 0.75rem; }
+.shopify-campos-pai { grid-template-columns: 2fr 1fr; }
 .shopify-campos > div { min-width: 0; }
 .shopify-rotulo { display: block; font-weight: 550; margin-bottom: 0.25rem; }
 .shopify-campo {
@@ -429,5 +432,5 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
 
 @media (max-width: 56rem) {
   .par-linha { grid-template-columns: 1fr; }
-  .olist-campos, .shopify-campos { grid-template-columns: 1fr 1fr; }
+  .olist-campos, .shopify-campos, .olist-variacao { grid-template-columns: 1fr 1fr; }
 }

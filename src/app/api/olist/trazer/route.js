@@ -1,17 +1,29 @@
-// POST /api/olist/trazer — "trazer do Shopify": para cada SKU pedido,
-// atualiza o produto na Olist com os dados do Shopify ou, se ele não existe
-// lá, inclui. ESCREVE NA CONTA DE PRODUÇÃO — exige `confirmacao: true`.
+// POST /api/olist/trazer — "trazer do Shopify": grava na Olist os SKUs
+// marcados. ESCREVE NA CONTA DE PRODUÇÃO — exige `confirmacao: true`.
 //
 // Corpo: { busca, familia, skus, confirmacao }. A comparação é refeita aqui
-// (Shopify e Tiny lidos de novo) e só os SKUs pedidos são enviados.
+// (Shopify e Tiny lidos de novo). Na Olist cada cor é um pai sem código com
+// os tamanhos como variações, então a gravação é por produto:
+//   - pai existe: produto.alterar no pai — nome, NCM e peso do pai, e o
+//     preço das variações marcadas; SKU marcado que falta vira variação nova;
+//   - pai não existe: produto.incluir do pai com as variações marcadas.
 
-import { alterarProduto, incluirProduto } from '@/lib/integrations/tiny';
+import { alterarProduto, incluirProduto, variacoesDoPai } from '@/lib/integrations/tiny';
 import { compararBusca } from '@/lib/olist/comparacao';
-import { normalizarCodigo, produtoParaAlterar, produtoParaIncluir } from '@/lib/olist/produtoTiny';
+import { normalizarCodigo, paiParaAlterar, paiParaIncluir } from '@/lib/olist/produtoTiny';
 import { erroJson } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+
+// Situações de SKU que a gravação aceita; as outras voltam como erro.
+const GRAVAVEIS = ['diferente', 'nova', 'igual'];
+
+const MOTIVO = {
+  sem_sku: 'Variante sem SKU no Shopify.',
+  bloqueado: 'Há mais de um produto ativo com este nome na Olist — corrija lá antes.',
+  fora_do_pai: 'O SKU já existe na Olist em outro produto — corrija lá antes.',
+};
 
 export async function POST(request) {
   const corpo = await request.json().catch(() => null);
@@ -21,6 +33,7 @@ export async function POST(request) {
   }
   const skus = Array.isArray(corpo.skus) ? corpo.skus.filter(Boolean) : [];
   if (!skus.length) return erroJson('Nenhum SKU para trazer.', 400);
+  const pedidos = new Set(skus.map(normalizarCodigo));
 
   let comparacao;
   try {
@@ -30,33 +43,29 @@ export async function POST(request) {
   }
 
   const resultados = [];
-  // Um SKU por vez: a API do Tiny limita chamadas por minuto, e o erro de um
-  // não pode impedir os outros.
+  // Um produto por vez: a API do Tiny limita chamadas por minuto, e o erro
+  // de um não pode impedir os outros.
   for (const produto of comparacao.produtos) {
-    for (const linha of produto.linhas) {
-      try {
-        if (linha.situacao === 'nao_encontrado') {
-          const { id } = await incluirProduto(produtoParaIncluir(linha));
-          resultados.push({ sku: linha.sku, ok: true, acao: 'incluido', tinyId: id });
-        } else if (linha.situacao === 'diferente') {
-          const cadastro = comparacao.doTiny[normalizarCodigo(linha.sku)].produto;
-          await alterarProduto(linha.tiny.id, produtoParaAlterar(linha, cadastro));
-          resultados.push({ sku: linha.sku, ok: true, acao: 'atualizado', tinyId: linha.tiny.id });
-        } else if (linha.situacao === 'igual') {
-          resultados.push({ sku: linha.sku, ok: true, acao: 'igual', tinyId: linha.tiny.id });
-        } else {
-          resultados.push({
-            sku: linha.sku,
-            ok: false,
-            erro:
-              linha.situacao === 'duplicado'
-                ? `O código está em ${linha.duplicados} produtos na Olist — corrija lá antes.`
-                : 'Variante sem SKU no Shopify.',
-          });
-        }
-      } catch (e) {
-        resultados.push({ sku: linha.sku, ok: false, erro: e.message });
+    const marcadas = produto.linhas.filter((l) => pedidos.has(normalizarCodigo(l.sku)));
+    const linhas = marcadas.filter((l) => GRAVAVEIS.includes(l.situacao));
+    for (const l of marcadas.filter((x) => !GRAVAVEIS.includes(x.situacao))) {
+      resultados.push({ sku: l.sku, ok: false, erro: MOTIVO[l.situacao] ?? 'Não dá para gravar este SKU.' });
+    }
+    if (!linhas.length) continue;
+
+    try {
+      const cadastro = comparacao.cadastros[produto.id];
+      let acao;
+      if (cadastro) {
+        await alterarProduto(cadastro.id, paiParaAlterar(produto, cadastro, variacoesDoPai(cadastro), linhas));
+        acao = 'atualizado';
+      } else {
+        await incluirProduto(paiParaIncluir(produto, linhas));
+        acao = 'incluido';
       }
+      for (const l of linhas) resultados.push({ sku: l.sku, ok: true, acao: l.situacao === 'nova' ? 'incluido' : acao });
+    } catch (e) {
+      for (const l of linhas) resultados.push({ sku: l.sku, ok: false, erro: e.message });
     }
   }
 

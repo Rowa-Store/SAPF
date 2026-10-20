@@ -509,11 +509,12 @@ function normalizarCodigo(codigo) {
   return String(codigo ?? '').trim().toUpperCase();
 }
 
-/** Resultado de produtos.pesquisa (casa por código e por nome). */
-async function pesquisarProdutos(termo, conta) {
+/** Resultado de produtos.pesquisa (casa por código e por nome). `filtros`
+ *  vai junto na chamada (ex.: { situacao: 'A' } só os ativos). */
+async function pesquisarProdutos(termo, conta, filtros = {}) {
   let retorno;
   try {
-    retorno = await chamarTiny('produtos.pesquisa.php', { pesquisa: String(termo).trim() }, conta);
+    retorno = await chamarTiny('produtos.pesquisa.php', { pesquisa: String(termo).trim(), ...filtros }, conta);
   } catch (erro) {
     if (/não retornou registros|nao retornou registros/i.test(erro.message)) return [];
     throw erro;
@@ -750,43 +751,67 @@ export async function obterProduto(id, conta = null) {
   return retorno.produto ?? null;
 }
 
+/** Grade da variação como objeto ({ Tamanho: 'P' }) — o Tiny devolve como
+ *  objeto ou como lista, e o produto.alterar recebe objeto. */
+function gradeComoObjeto(grade) {
+  if (!grade) return {};
+  if (!Array.isArray(grade)) return { ...grade };
+  return Object.fromEntries(
+    grade.map((g) => [g?.chave ?? g?.nome ?? g?.tipo ?? '', g?.valor ?? g?.value ?? '']).filter(([k, v]) => k && v)
+  );
+}
+
+/** Variações de um produto pai do Tiny, já desembrulhadas. */
+export function variacoesDoPai(cadastro) {
+  return paraArray(cadastro?.variacoes)
+    .map((v) => v.variacao ?? v)
+    .map((v) => ({ id: String(v.id), codigo: String(v.codigo ?? '').trim(), preco: v.preco, grade: gradeComoObjeto(v.grade) }));
+}
+
 /**
- * Cadastro completo, no Tiny, de cada código pedido.
+ * Produto pai da Olist que corresponde a um produto do Shopify (uma cor).
  *
- * Para gastar menos chamadas (a API limita por minuto), primeiro pesquisa
- * pelos nomes — um nome do Shopify ("Legging Estrella - Rosa") acha todos os
- * tamanhos de uma vez — e só os códigos que sobrarem são pesquisados um a um.
- * Depois lê o cadastro completo de cada achado (NCM e peso não vêm na pesquisa).
+ * Na Olist, cada cor é um pai SEM código, com os tamanhos como variações (o
+ * SKU fica na variação). O pai é achado pelo nome igual ao título do Shopify
+ * entre os ativos; se não há, pelo pai de uma variação com algum dos SKUs.
+ * Os SKUs que não estão nas variações do pai são procurados no resto da
+ * conta: código usado em outro produto não pode virar variação nova.
  *
- * @returns {Promise<Record<string, { produto: object|null, duplicados?: number }>>}
- *   chave = código normalizado; `produto: null` quando não existe no Tiny.
+ * @returns {Promise<{ pai: object|null, duplicados?: number,
+ *   foraDoPai: Record<string, { id: string, tipoVariacao: string }> }>}
+ *   foraDoPai: por código normalizado.
  */
-export async function produtosDoTinyPorCodigo(codigos, { nomes = [], conta = null } = {}) {
-  const alvos = new Set(codigos.map(normalizarCodigo));
-  const achados = new Map();
-  const guardar = (p) => {
-    const codigo = normalizarCodigo(p.codigo);
-    if (!alvos.has(codigo)) return;
-    const lista = achados.get(codigo) ?? [];
-    if (!lista.some((x) => String(x.id) === String(p.id))) lista.push(p);
-    achados.set(codigo, lista);
-  };
-
+export async function produtoPaiNoTiny({ nome, codigos = [] }, conta = null) {
+  const alvo = normalizarOpcao(nome);
   // Uma chamada por vez: a API do Tiny limita chamadas por minuto.
-  for (const nome of [...new Set(nomes.filter(Boolean))]) {
-    for (const p of await pesquisarProdutos(nome, conta)) guardar(p);
-  }
-  for (const codigo of alvos) {
-    if (!achados.has(codigo)) for (const p of await pesquisarProdutos(codigo, conta)) guardar(p);
+  const pais = (await pesquisarProdutos(nome, conta, { situacao: 'A' })).filter(
+    (p) => p.tipoVariacao === 'P' && normalizarOpcao(p.nome) === alvo
+  );
+  if (pais.length > 1) return { pai: null, duplicados: pais.length, foraDoPai: {} };
+
+  let idPai = pais[0]?.id ?? null;
+  const achadosPorCodigo = {};
+  if (!idPai) {
+    for (const codigo of codigos) {
+      const produtos = await produtosPorCodigo(codigo, conta);
+      achadosPorCodigo[normalizarCodigo(codigo)] = produtos;
+      const variacao = produtos.find((p) => p.tipoVariacao === 'V');
+      if (!variacao) continue;
+      idPai = (await obterProduto(variacao.id, conta))?.idProdutoPai ?? null;
+      if (idPai) break;
+    }
   }
 
-  const resultado = {};
-  for (const codigo of alvos) {
-    const lista = achados.get(codigo) ?? [];
-    if (lista.length > 1) resultado[codigo] = { produto: null, duplicados: lista.length };
-    else resultado[codigo] = { produto: lista.length ? await obterProduto(lista[0].id, conta) : null };
+  const pai = idPai ? await obterProduto(idPai, conta) : null;
+  const doPai = new Set(variacoesDoPai(pai).map((v) => normalizarCodigo(v.codigo)));
+  const foraDoPai = {};
+  for (const codigo of codigos) {
+    const chave = normalizarCodigo(codigo);
+    if (doPai.has(chave)) continue;
+    const produtos = achadosPorCodigo[chave] ?? (await produtosPorCodigo(codigo, conta));
+    if (produtos.length) foraDoPai[chave] = { id: String(produtos[0].id), tipoVariacao: produtos[0].tipoVariacao };
   }
-  return resultado;
+  return { pai, foraDoPai };
 }
 
 /** Cria o produto no Tiny. Devolve o id novo. */
@@ -798,7 +823,8 @@ export async function incluirProduto(produto, conta = null) {
   return { id: registro?.id ? String(registro.id) : null, retorno };
 }
 
-/** Altera o produto `id` do Tiny. Variações sem `id` são incluídas. */
+/** Altera o produto `id` do Tiny. Variações sem `id` são incluídas — por
+ *  isso quem altera um pai manda as variações que já existem com o id delas. */
 export async function alterarProduto(id, produto, conta = null) {
   const endpoint = 'produto.alterar.php';
   const corpo = { produtos: [{ produto: { sequencia: '1', ...produto, id: String(id) } }] };

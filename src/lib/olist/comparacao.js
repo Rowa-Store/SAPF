@@ -3,24 +3,33 @@
 // a leitura em vez de confiar no que a tela mandou.
 
 import { buscarProdutosParaOlist } from '../integrations/shopifyProdutos.js';
-import { produtosDoTinyPorCodigo } from '../integrations/tiny.js';
-import { compararProdutos, normalizarCodigo } from './produtoTiny.js';
+import { produtoPaiNoTiny, variacoesDoPai } from '../integrations/tiny.js';
+import { compararProduto, normalizarCodigo } from './produtoTiny.js';
 
 /**
+ * Cada produto do Shopify (uma cor) comparado com o pai dele na Olist.
+ *
  * @param {{ busca: string, familia?: boolean, skus?: string[] }} filtro
- *   `skus` restringe a consulta ao Tiny a estes códigos (e a comparação aos
- *   produtos que têm algum deles).
+ *   `skus` restringe aos produtos que têm algum destes SKUs — os outros nem
+ *   são consultados no Tiny.
+ * @returns {Promise<{ produtos: object[], cadastros: Record<string, object|null> }>}
+ *   cadastros: o cadastro completo do pai na Olist, por id do produto do Shopify.
  */
 export async function compararBusca({ busca, familia = false, skus = null }) {
   let produtos = await buscarProdutosParaOlist(busca, { familia });
-  const pedidos = skus ? new Set(skus.map(normalizarCodigo)) : null;
-  if (pedidos) {
-    produtos = produtos
-      .map((p) => ({ ...p, variants: p.variants.filter((v) => pedidos.has(normalizarCodigo(v.sku))) }))
-      .filter((p) => p.variants.length);
+  if (skus) {
+    const pedidos = new Set(skus.map(normalizarCodigo));
+    produtos = produtos.filter((p) => p.variants.some((v) => pedidos.has(normalizarCodigo(v.sku))));
   }
 
-  const codigos = produtos.flatMap((p) => p.variants.map((v) => v.sku)).filter((s) => String(s ?? '').trim());
-  const doTiny = await produtosDoTinyPorCodigo(codigos, { nomes: produtos.map((p) => p.title) });
-  return { produtos: compararProdutos(produtos, doTiny), doTiny };
+  const comparados = [];
+  const cadastros = {};
+  // Um produto por vez: a API do Tiny limita chamadas por minuto.
+  for (const produto of produtos) {
+    const codigos = produto.variants.map((v) => String(v.sku ?? '').trim()).filter(Boolean);
+    const noTiny = await produtoPaiNoTiny({ nome: produto.title, codigos });
+    cadastros[produto.id] = noTiny.pai;
+    comparados.push(compararProduto(produto, noTiny, variacoesDoPai));
+  }
+  return { produtos: comparados, cadastros };
 }
