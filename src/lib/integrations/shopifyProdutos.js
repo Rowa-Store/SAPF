@@ -130,7 +130,7 @@ query PaginaDeProdutos($primeiros: Int!, $depois: String, $busca: String!, $orde
  * @returns {Promise<{ produtos: { id, titulo, status, criado, skus: string[] }[], proximo: string|null }>}
  *   proximo: cursor da página seguinte (null na última).
  */
-export async function paginaDeProdutos({ cursor = null, tamanho = 20, desde = null } = {}) {
+export async function paginaDeProdutos({ cursor = null, tamanho = 50, desde = null } = {}) {
   const dados = await shopifyGraphQL(QUERY_PAGINA, {
     primeiros: tamanho,
     depois: cursor,

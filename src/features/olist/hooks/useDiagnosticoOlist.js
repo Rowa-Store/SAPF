@@ -1,23 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { normalizarCodigo, normalizarNome } from '@/lib/olist/chaves';
 
-// Varredura do diagnóstico, em três fases:
-//
-//   1. catálogo — lê o catálogo inteiro da Olist (produtos.pesquisa, 100 por
-//      página). Com ele, a comparação de cada produto não pesquisa no Tiny
-//      por nome nem por SKU: produto que não está na Olist sai sem nenhuma
-//      chamada, e o cadastrado gasta só o produto.obter do pai. Se o Tiny não
-//      deixar ler o catálogo, a comparação volta a pesquisar produto a produto.
-//   2. shopify — lê o Shopify de 20 em 20, os mais recentes primeiro, e
-//      compara cada um. Na varredura completa, todos os ativos; no
-//      "atualizar", só os alterados no Shopify desde o último diagnóstico.
-//   3. tiny — só no "atualizar": os produtos já conhecidos cujo cadastro na
-//      Olist mudou desde o último diagnóstico (diferença entre o catálogo de
-//      antes e o de agora: nome, código, preço, situação), mais os que deram
-//      erro. NCM e peso não vêm no catálogo — mudança só deles na Olist fica
-//      para a varredura completa.
+// Varredura do diagnóstico: lê o Shopify de 50 em 50, os mais recentes
+// primeiro, e compara cada um com a Olist. Na varredura completa, todos os
+// ativos; no "atualizar", só os alterados no Shopify desde o último
+// diagnóstico, mais os que deram erro — mudança feita só na Olist fica para a
+// varredura completa.
 //
 // Um produto por requisição, com uma pausa entre eles; se o Tiny recusar por
 // limite de chamadas (429), espera e tenta de novo. Dá para pausar e
@@ -27,14 +16,13 @@ import { normalizarCodigo, normalizarNome } from '@/lib/olist/chaves';
 // mesma fila, e relê o produto depois: o que ficou igual sai da lista.
 const PAUSA_ENTRE_PRODUTOS_MS = 1500;
 const ESPERA_LIMITE_S = 60;
-const TAMANHO_DO_LOTE = 20;
+const TAMANHO_DO_LOTE = 50;
 const SALVAR_A_CADA_MS = 2000;
 
-// Guardados neste navegador: o diagnóstico e o catálogo da Olist do último
-// diagnóstico (a base do "atualizar"). O catálogo sendo lido fica só na
-// memória — se a página recarregar no meio, a leitura recomeça.
+// O último diagnóstico fica guardado neste navegador.
 const CHAVE_GUARDADA = 'sapf:diagnostico-olist';
-const CHAVE_CATALOGO = 'sapf:diagnostico-olist:catalogo';
+// Guardado por uma versão anterior, que lia o catálogo inteiro da Olist.
+const CHAVE_CATALOGO_ANTIGA = 'sapf:diagnostico-olist:catalogo';
 const VERSAO = 2;
 
 // Situações de SKU que o "trazer do Shopify" corrige.
@@ -107,52 +95,6 @@ function resumir(produto) {
   };
 }
 
-// --- Catálogo da Olist -------------------------------------------------------
-// Guardado como listas, não objetos: é o maior pedaço do que fica no navegador.
-const CAMPOS_CATALOGO = ['id', 'nome', 'codigo', 'tipoVariacao', 'situacao', 'preco'];
-const compactar = (item) => CAMPOS_CATALOGO.map((c) => item[c]);
-const expandir = (lista) => Object.fromEntries(CAMPOS_CATALOGO.map((c, i) => [c, lista[i]]));
-
-/** O que conta como "o cadastro mudou" de um registro do catálogo. */
-const assinatura = (item) => [item.nome, item.codigo, item.tipoVariacao, item.situacao, item.preco].join('|');
-// Chaves de casamento, como o Tiny compara: nome do pai e código (SKU).
-const chavesDoRegistro = (item) => [`n:${normalizarNome(item.nome)}`, `c:${normalizarCodigo(item.codigo)}`];
-const chavesDoProduto = (p) => [`n:${normalizarNome(p.titulo)}`, ...p.skus.map((sku) => `c:${normalizarCodigo(sku)}`)];
-
-/** Índice do catálogo pelas chaves de nome e de código. */
-function indexar(catalogo) {
-  const indice = new Map();
-  for (const item of catalogo) {
-    for (const chave of chavesDoRegistro(item)) {
-      if (chave === 'n:' || chave === 'c:') continue;
-      if (!indice.has(chave)) indice.set(chave, []);
-      indice.get(chave).push(item);
-    }
-  }
-  return indice;
-}
-
-/** Registros do catálogo que casam com o produto (pelo nome ou por um SKU). */
-function candidatos(indice, produto) {
-  const achados = new Map();
-  for (const chave of chavesDoProduto(produto)) for (const item of indice.get(chave) ?? []) achados.set(item.id, item);
-  return [...achados.values()].map(({ id, nome, codigo, tipoVariacao, situacao }) => ({ id, nome, codigo, tipoVariacao, situacao }));
-}
-
-/** Chaves (nome e código) de todo registro que entrou, saiu ou mudou entre os dois catálogos. */
-function chavesQueMudaram(anterior, atual) {
-  const antes = new Map(anterior.map((i) => [i.id, i]));
-  const agora = new Map(atual.map((i) => [i.id, i]));
-  const chaves = new Set();
-  for (const id of new Set([...antes.keys(), ...agora.keys()])) {
-    const a = antes.get(id);
-    const b = agora.get(id);
-    if (a && b && assinatura(a) === assinatura(b)) continue;
-    for (const item of [a, b]) if (item) chavesDoRegistro(item).forEach((c) => chaves.add(c));
-  }
-  return chaves;
-}
-
 // --- Guardado no navegador ---------------------------------------------------
 function ler(chave) {
   try {
@@ -192,10 +134,6 @@ export function useDiagnosticoOlist() {
   //   concluido: quando começou a última varredura que foi até o fim — o
   //     "atualizar" procura o que mudou depois disso.
   const dados = useRef({ trabalho: null, produtos: {}, concluido: null });
-  // Catálogo da Olist: o do último diagnóstico e o que está sendo lido.
-  const catalogo = useRef([]);
-  const catalogoNovo = useRef([]);
-  const indice = useRef(null);
   const pausar = useRef(false);
   const ultimoSalvo = useRef(0);
   // Estado em que a varredura estava antes do "corrigir" — volta a ele no fim.
@@ -217,11 +155,12 @@ export function useDiagnosticoOlist() {
     const g = ler(CHAVE_GUARDADA);
     if (g?.versao !== VERSAO) return;
     dados.current = { trabalho: g.trabalho ?? null, produtos: g.produtos ?? {}, concluido: g.concluido ?? null };
-    catalogo.current = (ler(CHAVE_CATALOGO) ?? []).map(expandir);
+    gravar(CHAVE_CATALOGO_ANTIGA, null);
     const t = dados.current.trabalho;
-    // O catálogo que estava sendo lido não foi guardado: a leitura recomeça.
-    if (t?.fase === 'catalogo') t.catalogo = { pagina: 1, paginas: null, lidos: 0, indisponivel: null };
-    if (t && t.fase !== 'catalogo' && !t.catalogo.indisponivel) indice.current = indexar(catalogo.current);
+    // Varredura da versão que lia o catálogo: segue pelo Shopify, e o que
+    // ela tinha posto na fila é refeito no fim.
+    if (t?.fase === 'catalogo') t.fase = 'shopify';
+    if (t?.fase === 'tiny') t.fase = 'erros';
     setEstado(!t ? 'parado' : t.fase === 'fim' ? 'fim' : 'pausado');
     setVersaoDaTela((v) => v + 1);
   }, []);
@@ -236,18 +175,13 @@ export function useDiagnosticoOlist() {
     return true;
   }
 
-  /** Compara um produto, esperando enquanto o Tiny recusar por limite. Com
-   *  `doCatalogo`, usa os registros do catálogo em vez de pesquisar no Tiny.
+  /** Compara um produto, esperando enquanto o Tiny recusar por limite.
    *  Devolve null se pausaram durante a espera (o produto fica pendente). */
-  async function comparar(id, aoEsperar, doCatalogo = null) {
+  async function comparar(id, aoEsperar) {
     for (;;) {
       let resposta;
       try {
-        resposta = await fetch('/api/olist/comparar', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ produtoId: id, catalogo: doCatalogo }),
-        });
+        resposta = await fetch(`/api/olist/comparar?${new URLSearchParams({ produtoId: id })}`);
       } catch (e) {
         return { erro: `Falha de rede: ${e.message}` };
       }
@@ -265,11 +199,7 @@ export function useDiagnosticoOlist() {
   async function verificar(item) {
     const t = dados.current.trabalho;
     setAtual({ titulo: item.titulo });
-    const r = await comparar(
-      item.id,
-      (segundos) => setAtual({ titulo: item.titulo, segundos }),
-      indice.current ? candidatos(indice.current, item) : null
-    );
+    const r = await comparar(item.id, (segundos) => setAtual({ titulo: item.titulo, segundos }));
     if (!r) return false;
     const { id, titulo, criado, skus } = item;
     dados.current.produtos = {
@@ -288,70 +218,13 @@ export function useDiagnosticoOlist() {
     return true;
   }
 
-  /** Fase 1. false se pausaram ou deu erro que não seja do catálogo. */
-  async function lerCatalogo() {
-    const t = dados.current.trabalho;
-    const c = t.catalogo;
-    while (c.paginas == null || c.pagina <= c.paginas) {
-      if (pausar.current) return false;
-      setAtual({ catalogo: true });
-      let resposta;
-      try {
-        resposta = await fetch(`/api/olist/catalogo?${new URLSearchParams({ pagina: String(c.pagina) })}`);
-      } catch (e) {
-        setErro(`Falha de rede ao ler o catálogo da Olist: ${e.message}`);
-        return false;
-      }
-      if (resposta.status === 429) {
-        if (!(await esperarLimite((segundos) => setAtual({ catalogo: true, segundos })))) return false;
-        continue;
-      }
-      const corpo = await resposta.json().catch(() => ({}));
-      if (!resposta.ok) {
-        // O Tiny não deixou ler o catálogo: segue comparando produto a produto.
-        c.indisponivel = corpo.erro ?? 'Falha ao ler o catálogo';
-        break;
-      }
-      catalogoNovo.current = [...catalogoNovo.current, ...corpo.itens];
-      c.paginas = corpo.paginas;
-      c.pagina += 1;
-      c.lidos = catalogoNovo.current.length;
-      redesenhar();
-      if (c.pagina <= c.paginas) await esperar(PAUSA_ENTRE_PRODUTOS_MS);
-    }
-
-    if (c.indisponivel) {
-      indice.current = null;
-    } else {
-      // No "atualizar": produtos conhecidos cujo cadastro na Olist mudou, e os que deram erro.
-      if (t.modo === 'atualizacao') {
-        const mudaram = chavesQueMudaram(catalogo.current, catalogoNovo.current);
-        t.filaTiny = Object.entries(dados.current.produtos)
-          .filter(([, p]) => p.erro || chavesDoProduto(p).some((k) => mudaram.has(k)))
-          .sort(([, a], [, b]) => maisRecentesPrimeiro(a, b))
-          .map(([id]) => id);
-      }
-      catalogo.current = catalogoNovo.current;
-      indice.current = indexar(catalogo.current);
-      gravar(CHAVE_CATALOGO, catalogo.current.map(compactar));
-    }
-    catalogoNovo.current = [];
-    if (t.modo === 'atualizacao' && c.indisponivel) {
-      // Sem catálogo não dá para saber o que mudou na Olist: refaz só os que deram erro.
-      t.filaTiny = Object.entries(dados.current.produtos).filter(([, p]) => p.erro).map(([id]) => id);
-    }
-    t.fase = 'shopify';
-    redesenhar(true);
-    return true;
-  }
-
-  /** Fase 2. false se pausaram ou deu erro. */
+  /** Lê o Shopify de 50 em 50 e compara cada um. false se pausaram ou deu erro. */
   async function varrerShopify() {
     const t = dados.current.trabalho;
     while (!pausar.current) {
       if (!t.pendentes.length) {
         if (!t.temMais) {
-          t.fase = 'tiny';
+          t.fase = 'erros';
           redesenhar(true);
           return true;
         }
@@ -389,21 +262,19 @@ export function useDiagnosticoOlist() {
     return false;
   }
 
-  /** Fase 3. false se pausaram. */
-  async function varrerMudancasDaOlist() {
+  /** No "atualizar": refaz os que deram erro no último diagnóstico. false se pausaram. */
+  async function refazerErros() {
     const t = dados.current.trabalho;
-    while (t.filaTiny.length) {
+    while (t.refazer.length) {
       if (pausar.current) return false;
-      const id = t.filaTiny[0];
+      const id = t.refazer[0];
       const produto = dados.current.produtos[id];
-      // Já visto nesta varredura (alterado também no Shopify) ou saiu do diagnóstico.
+      // Já visto nesta varredura (alterado no Shopify) ou saiu do diagnóstico.
       if (produto && produto.verificadoEm !== t.inicio) {
-        if (t.feitosNaOlist % TAMANHO_DO_LOTE === 0) t.lotes += 1;
         if (!(await verificar({ id, ...produto }))) return false;
-        t.feitosNaOlist += 1;
         await esperar(PAUSA_ENTRE_PRODUTOS_MS);
       }
-      t.filaTiny = t.filaTiny.slice(1);
+      t.refazer = t.refazer.slice(1);
       redesenhar();
     }
     return true;
@@ -414,10 +285,9 @@ export function useDiagnosticoOlist() {
     setErro(null);
     setEstado('rodando');
     const t = dados.current.trabalho;
+    t.refazer ??= t.filaTiny ?? [];
     const terminou =
-      (t.fase !== 'catalogo' || (await lerCatalogo())) &&
-      (t.fase !== 'shopify' || (await varrerShopify())) &&
-      (t.fase !== 'tiny' || (await varrerMudancasDaOlist()));
+      (t.fase !== 'shopify' || (await varrerShopify())) && (t.fase !== 'erros' || (await refazerErros()));
     setAtual(null);
     if (terminou) {
       t.fase = 'fim';
@@ -439,19 +309,21 @@ export function useDiagnosticoOlist() {
         modo: atualizacao ? 'atualizacao' : 'completo',
         inicio: new Date().toISOString(),
         base: atualizacao ? dados.current.concluido : null,
-        fase: 'catalogo',
-        catalogo: { pagina: 1, paginas: null, lidos: 0, indisponivel: null },
+        fase: 'shopify',
         cursor: null,
         temMais: true,
         pendentes: [],
-        filaTiny: [],
-        feitosNaOlist: 0,
+        // No "atualizar", os que deram erro no último diagnóstico são refeitos no fim.
+        refazer: atualizacao
+          ? Object.entries(dados.current.produtos)
+              .filter(([, p]) => p.erro)
+              .sort(([, a], [, b]) => maisRecentesPrimeiro(a, b))
+              .map(([id]) => id)
+          : [],
         lotes: 0,
         verificados: 0,
       },
     };
-    catalogoNovo.current = [];
-    indice.current = null;
     setCorrecao({});
     setAviso(null);
     rodar();
@@ -502,8 +374,8 @@ export function useDiagnosticoOlist() {
 
   /**
    * Corrige, um por vez, os produtos dados (os que o filtro mostra) que têm
-   * algo para trazer do Shopify. Depois de gravar, relê direto no Tiny (o
-   * catálogo já ficou velho): o que ficou igual sai da lista; o que continua
+   * algo para trazer do Shopify. Depois de gravar, relê: o que ficou igual
+   * sai da lista; o que continua
    * diferente fica com o resumo novo.
    */
   async function corrigir(produtos) {

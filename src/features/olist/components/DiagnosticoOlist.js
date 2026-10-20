@@ -1,10 +1,10 @@
 // /olist/diagnostico — varredura das diferenças de cadastro entre o Shopify
 // e a Olist.
 //
-// Anda pelos produtos ativos do Shopify de 20 em 20, os mais recentes
+// Anda pelos produtos ativos do Shopify de 50 em 50, os mais recentes
 // primeiro, e compara cada um com o pai dele na Olist (a mesma comparação do
 // cadastro de produtos). Depois da primeira, "atualizar" refaz só o que mudou
-// no Shopify ou na Olist desde o último diagnóstico (ver useDiagnosticoOlist). A lista
+// no Shopify desde o último diagnóstico e o que deu erro (ver useDiagnosticoOlist). A lista
 // mostra só o que tem divergência ou não está cadastrado; os iguais entram
 // só na contagem. Por padrão a lista traz só os desatualizados e os sem
 // cadastro; "listar todos os problemas" mostra também os que só se corrigem
@@ -126,9 +126,10 @@ export default function DiagnosticoOlist() {
 
       <div className="cartao">
         <p className="fraco" style={{ marginTop: 0 }}>
-          Compara os produtos ativos do Shopify com a Olist, de 20 em 20 e dos mais recentes para os mais antigos, e lista
-          os que estão diferentes ou não cadastrados. “Atualizar” refaz só o que mudou no Shopify ou na Olist desde o
-          último diagnóstico. A varredura só lê; o “Corrigir todos” é que grava na Olist.
+          Compara os produtos ativos do Shopify com a Olist, de 50 em 50 e dos mais recentes para os mais antigos, e lista
+          os que estão diferentes ou não cadastrados. “Atualizar” refaz só o que mudou no Shopify desde o último
+          diagnóstico e o que deu erro — mudança feita só na Olist aparece na varredura completa. A varredura só lê; o
+          “Corrigir todos” é que grava na Olist.
         </p>
         <div className="grupo-botoes">
           {rodando || corrigindo ? (
@@ -177,30 +178,18 @@ export default function DiagnosticoOlist() {
       {trabalho && !corrigindo && (
         <p className="fraco" role="status">
           {atualizando ? `Atualização desde ${formatarDataHoraCurta(trabalho.base)}` : 'Varredura completa'}
-          {trabalho.fase !== 'catalogo' && ` · lote ${trabalho.lotes} · ${trabalho.verificados} verificados agora`}
+          {` · lote ${trabalho.lotes} · ${trabalho.verificados} verificados agora`}
           {' '}· {conhecidos} no diagnóstico · {iguais} iguais · {comListados.length} {todosProblemas ? 'com problema' : 'desatualizados ou sem cadastro'}
           {escondidos > 0 && ` · ${escondidos} com outros problemas (marque “listar todos” para ver)`}
           {falhas.length > 0 && ` · ${falhas.length} com erro`}
           {estado === 'fim' && ' — concluída.'}
           {estado === 'pausado' && ' — pausada.'}
-          {trabalho.catalogo.indisponivel && (
-            <>
-              <br />
-              Não deu para ler o catálogo da Olist ({trabalho.catalogo.indisponivel}) — comparando produto a produto, mais
-              devagar{atualizando && '; mudanças feitas só na Olist ficam para a varredura completa'}.
-            </>
-          )}
           {atual && (
             <>
               <br />
-              {atual.catalogo
-                ? `Lendo o catálogo da Olist — página ${trabalho.catalogo.pagina}` +
-                  (trabalho.catalogo.paginas ? ` de ${trabalho.catalogo.paginas}` : '') +
-                  ` (${trabalho.catalogo.lidos} registros)` +
-                  (atual.segundos ? ` · limite de chamadas, tentando de novo em ${atual.segundos}s` : '…')
-                : atual.segundos
-                  ? `Limite de chamadas da Olist — tentando “${atual.titulo}” de novo em ${atual.segundos}s`
-                  : `Comparando “${atual.titulo}”…`}
+              {atual.segundos
+                ? `Limite de chamadas da Olist — tentando “${atual.titulo}” de novo em ${atual.segundos}s`
+                : `Comparando “${atual.titulo}”…`}
             </>
           )}
         </p>
