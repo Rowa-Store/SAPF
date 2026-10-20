@@ -5,7 +5,10 @@
 
 import { usePathname } from 'next/navigation';
 
-const ABAS = [{ href: '/olist', rotulo: 'Cadastro de produtos' }];
+const ABAS = [
+  { href: '/olist', rotulo: 'Cadastro de produtos' },
+  { href: '/olist/diagnostico', rotulo: 'Diagnóstico' },
+];
 
 export default function AbasOlist() {
   const caminho = usePathname();

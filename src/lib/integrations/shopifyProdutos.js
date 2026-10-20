@@ -111,3 +111,28 @@ export async function obterProdutoParaOlist(id) {
   if (!dados.product) throw new Error(`Produto ${gid} não encontrado no Shopify.`);
   return semRepetidos([dados.product])[0];
 }
+
+const QUERY_PAGINA = `
+query PaginaDeProdutos($primeiros: Int!, $depois: String) {
+  products(first: $primeiros, after: $depois, query: "status:active", sortKey: TITLE) {
+    nodes { id title }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+/**
+ * Uma página de produtos ativos do Shopify, por título — a varredura do
+ * diagnóstico (/olist/diagnostico) anda por elas. Só id e título: a
+ * comparação de cada um relê o produto inteiro.
+ *
+ * @returns {Promise<{ produtos: { id: string, titulo: string }[], proximo: string|null }>}
+ *   proximo: cursor da página seguinte (null na última).
+ */
+export async function paginaDeProdutos({ cursor = null, tamanho = 20 } = {}) {
+  const dados = await shopifyGraphQL(QUERY_PAGINA, { primeiros: tamanho, depois: cursor });
+  const { nodes = [], pageInfo } = dados.products ?? {};
+  return {
+    produtos: nodes.map((p) => ({ id: p.id, titulo: p.title })),
+    proximo: pageInfo?.hasNextPage ? pageInfo.endCursor : null,
+  };
+}

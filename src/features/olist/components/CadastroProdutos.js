@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import AbasOlist from '@/components/ui/AbasOlist';
 import Modal from '@/components/ui/Modal';
 import { formatarMoedaOuTraco } from '@/lib/format';
@@ -277,6 +277,15 @@ export default function CadastroProdutos() {
   // { sku, erro } do "erro ao enviar" clicado
   const [erroAberto, setErroAberto] = useState(null);
   const [familia, setFamilia] = useState(false);
+
+  // /olist?busca=... (o "Abrir" do diagnóstico) já chega buscando.
+  useEffect(() => {
+    const busca = new URLSearchParams(window.location.search).get('busca');
+    if (!busca) return;
+    setTermo(busca);
+    comparar(busca, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const incluir = aEnviar.filter((l) => l.situacao === 'nova').length;
   const atualizar = aEnviar.length - incluir;
