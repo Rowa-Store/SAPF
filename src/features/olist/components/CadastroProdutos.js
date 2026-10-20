@@ -14,7 +14,7 @@ import AbasOlist from '@/components/ui/AbasOlist';
 import Modal from '@/components/ui/Modal';
 import { formatarMoedaOuTraco } from '@/lib/format';
 import { CAMPOS_PAI } from '@/lib/olist/produtoTiny';
-import { useProdutosOlist } from '../hooks/useProdutosOlist';
+import { FILTROS, useProdutosOlist } from '../hooks/useProdutosOlist';
 
 const FORMATO = {
   preco: formatarMoedaOuTraco,
@@ -213,13 +213,6 @@ function ProgressoNaFila({ naFila }) {
   );
 }
 
-// Filtros da lista: só mudam o que aparece, sem consultar de novo.
-const FILTROS = [
-  { chave: 'todos', rotulo: 'Todos', mostra: () => true },
-  { chave: 'nao_cadastrados', rotulo: 'Não cadastrados', mostra: (l) => l.situacao === 'nova' },
-  { chave: 'desatualizados', rotulo: 'Desatualizados', mostra: (l) => l.situacao === 'diferente' },
-];
-
 function ParProduto({ produto, resultados, enviavel, selecionados, marcar, verErro, naFila }) {
   const skusEnviaveis = produto.linhas.filter(enviavel).map((l) => l.sku);
   const marcados = skusEnviaveis.filter((sku) => selecionados.has(sku)).length;
@@ -269,6 +262,10 @@ export default function CadastroProdutos() {
     enviavel,
     enviaveis,
     aEnviar,
+    visiveis,
+    contagens,
+    filtro,
+    trocarFiltro,
     selecionados,
     marcar,
     enviando,
@@ -280,16 +277,6 @@ export default function CadastroProdutos() {
   // { sku, erro } do "erro ao enviar" clicado
   const [erroAberto, setErroAberto] = useState(null);
   const [familia, setFamilia] = useState(false);
-  const [filtro, setFiltro] = useState('todos');
-
-  const mostra = FILTROS.find((f) => f.chave === filtro).mostra;
-  const todasAsLinhas = (produtos ?? []).flatMap((p) => p.linhas);
-  const visiveis = (produtos ?? [])
-    .map((p) => ({ ...p, linhas: p.linhas.filter(mostra) }))
-    .filter((p) => p.linhas.length);
-  // "Marcar todos" vale para o que o filtro está mostrando.
-  const enviaveisVisiveis = visiveis.flatMap((p) => p.linhas).filter(enviavel);
-  const marcadosVisiveis = enviaveisVisiveis.filter((l) => selecionados.has(l.sku)).length;
 
   const incluir = aEnviar.filter((l) => l.situacao === 'nova').length;
   const atualizar = aEnviar.length - incluir;
@@ -355,9 +342,9 @@ export default function CadastroProdutos() {
                 type="button"
                 className={`filtro-chip${filtro === f.chave ? ' ativo' : ''}`}
                 aria-pressed={filtro === f.chave}
-                onClick={() => setFiltro(f.chave)}
+                onClick={() => trocarFiltro(f.chave)}
               >
-                {f.rotulo} <span className="filtro-contagem">{todasAsLinhas.filter(f.mostra).length}</span>
+                {f.rotulo} <span className="filtro-contagem">{contagens[f.chave]}</span>
               </button>
             ))}
           </div>
@@ -389,21 +376,12 @@ export default function CadastroProdutos() {
                       .join(' · ')}
               </span>
               <div className="grupo-botoes">
-                {enviaveisVisiveis.length > 0 && (
-                  <button
-                    className="link"
-                    onClick={() =>
-                      marcar(
-                        enviaveisVisiveis.map((l) => l.sku),
-                        marcadosVisiveis < enviaveisVisiveis.length
-                      )
-                    }
-                  >
-                    {marcadosVisiveis < enviaveisVisiveis.length
-                      ? `Marcar todos (${enviaveisVisiveis.length})`
-                      : 'Desmarcar todos'}
-                  </button>
-                )}
+                <button
+                  className="link"
+                  onClick={() => marcar(enviaveis.map((l) => l.sku), aEnviar.length < enviaveis.length)}
+                >
+                  {aEnviar.length < enviaveis.length ? `Marcar todos (${enviaveis.length})` : 'Desmarcar todos'}
+                </button>
                 <button onClick={trazerDoShopify} disabled={enviando || aEnviar.length === 0}>
                   {enviando ? 'Enviando…' : `Trazer do Shopify (${aEnviar.length})`}
                 </button>

@@ -14,6 +14,14 @@ const MAXIMO_TENTATIVAS = 5;
 
 const esperar = (ms) => new Promise((resolver) => setTimeout(resolver, ms));
 
+// Filtros da lista: só mudam o que aparece, sem consultar de novo. Seleção,
+// "marcar todos" e envio valem só para o que o filtro mostra.
+export const FILTROS = [
+  { chave: 'todos', rotulo: 'Todos', mostra: () => true },
+  { chave: 'nao_cadastrados', rotulo: 'Não cadastrados', mostra: (l) => l.situacao === 'nova' },
+  { chave: 'desatualizados', rotulo: 'Desatualizados', mostra: (l) => l.situacao === 'diferente' },
+];
+
 async function lerJson(resposta, padrao) {
   const corpo = await resposta.json().catch(() => ({}));
   if (!resposta.ok) throw new Error(corpo.erro ?? padrao);
@@ -38,6 +46,7 @@ export function useProdutosOlist() {
   const [selecionados, setSelecionados] = useState(() => new Set());
   // id do produto -> { estado: fila|enviando|aguardando|ok|erro, segundos? }
   const [fila, setFila] = useState({});
+  const [filtro, setFiltro] = useState('todos');
 
   async function comparar(busca, familia) {
     const nova = { busca: busca.trim(), familia };
@@ -63,8 +72,25 @@ export function useProdutosOlist() {
 
   /** true quando o SKU pode ir para a Olist (e ainda não foi). */
   const enviavel = (linha) => SITUACOES_A_ENVIAR.includes(linha.situacao) && !resultados[linha.sku]?.ok;
-  const enviaveis = (produtos ?? []).flatMap((p) => p.linhas).filter(enviavel);
+  const mostra = FILTROS.find((f) => f.chave === filtro).mostra;
+  // O que acabou de ser enviado continua na tela mesmo saindo do filtro
+  // (ex.: ficou igual depois de gravado), para o resultado não sumir.
+  const visiveis = (produtos ?? [])
+    .map((p) => ({ ...p, linhas: p.linhas.filter((l) => mostra(l) || resultados[l.sku]) }))
+    .filter((p) => p.linhas.length);
+  const contagens = Object.fromEntries(
+    FILTROS.map((f) => [f.chave, (produtos ?? []).flatMap((p) => p.linhas).filter(f.mostra).length])
+  );
+  const enviaveis = visiveis.flatMap((p) => p.linhas).filter(enviavel);
   const aEnviar = enviaveis.filter((l) => selecionados.has(l.sku));
+
+  /** Troca o filtro e desmarca o que ele deixa de mostrar. */
+  function trocarFiltro(chave) {
+    const novoMostra = FILTROS.find((f) => f.chave === chave).mostra;
+    const continuam = new Set((produtos ?? []).flatMap((p) => p.linhas).filter(novoMostra).map((l) => l.sku));
+    setFiltro(chave);
+    setSelecionados((atual) => new Set([...atual].filter((sku) => continuam.has(sku))));
+  }
 
   /** Marca ou desmarca os SKUs (um só, ou todos os de um produto). */
   function marcar(skus, marcado) {
@@ -109,8 +135,37 @@ export function useProdutosOlist() {
     }
   }
 
+  /**
+   * Relê o produto depois de gravado e troca na tela. SKU que o Tiny disse
+   * ter gravado mas que continua diferente vira erro — a gravação não pegou.
+   * Se a releitura falhar (ex.: limite), fica o que o Tiny respondeu.
+   */
+  async function releerProduto(id, resultadosDoProduto) {
+    let atualizado;
+    try {
+      const corpo = await lerJson(
+        await fetch(`/api/olist/comparar?${new URLSearchParams({ produtoId: id })}`),
+        'Falha ao reler'
+      );
+      atualizado = corpo.produtos[0];
+    } catch {
+      return resultadosDoProduto;
+    }
+    setProdutos((atual) => atual.map((p) => (p.id === id ? atualizado : p)));
+    return resultadosDoProduto.map((r) => {
+      const linha = atualizado.linhas.find((l) => l.sku === r.sku);
+      if (!r.ok || !linha || linha.situacao === 'igual') return r;
+      const campos = [...atualizado.diferencasPai, ...linha.diferencas].join(', ') || linha.situacao;
+      return {
+        sku: r.sku,
+        ok: false,
+        erro: `A Olist respondeu OK, mas ao ler o produto de novo o SKU continua diferente (${campos}).`,
+      };
+    });
+  }
+
   async function trazerDoShopify() {
-    const itens = (produtos ?? [])
+    const itens = visiveis
       .map((p) => ({ id: p.id, skus: p.linhas.filter((l) => enviavel(l) && selecionados.has(l.sku)).map((l) => l.sku) }))
       .filter((item) => item.skus.length);
     if (!itens.length) return;
@@ -124,7 +179,11 @@ export function useProdutosOlist() {
     let falhas = 0;
     for (const [i, item] of itens.entries()) {
       if (i > 0) await esperar(PAUSA_ENTRE_PRODUTOS_MS);
-      const resultadosDoProduto = await enviarProduto(item);
+      let resultadosDoProduto = await enviarProduto(item);
+      if (resultadosDoProduto.some((r) => r.ok)) {
+        await esperar(PAUSA_ENTRE_PRODUTOS_MS);
+        resultadosDoProduto = await releerProduto(item.id, resultadosDoProduto);
+      }
       setResultados((atual) => ({ ...atual, ...Object.fromEntries(resultadosDoProduto.map((r) => [r.sku, r])) }));
       // O que foi enviado sai da seleção; o que deu erro fica marcado para tentar de novo.
       marcar(resultadosDoProduto.filter((r) => r.ok).map((r) => r.sku), false);
@@ -148,6 +207,10 @@ export function useProdutosOlist() {
     enviavel,
     enviaveis,
     aEnviar,
+    visiveis,
+    contagens,
+    filtro,
+    trocarFiltro,
     selecionados,
     marcar,
     enviando,
