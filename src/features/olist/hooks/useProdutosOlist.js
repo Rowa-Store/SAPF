@@ -72,21 +72,22 @@ export function useProdutosOlist() {
 
   /** true quando o SKU pode ir para a Olist (e ainda não foi). */
   const enviavel = (linha) => SITUACOES_A_ENVIAR.includes(linha.situacao) && !resultados[linha.sku]?.ok;
-  const mostra = FILTROS.find((f) => f.chave === filtro).mostra;
-  // O que acabou de ser enviado continua na tela mesmo saindo do filtro
-  // (ex.: ficou igual depois de gravado), para o resultado não sumir.
+  // Nos filtros (fora o "Todos"), o SKU já gravado com sucesso sai da lista
+  // e da contagem: não está mais "desatualizado" nem "não cadastrado".
+  const noFiltro = (f) => (l) => f.mostra(l) && (f.chave === 'todos' || !resultados[l.sku]?.ok);
+  const mostra = noFiltro(FILTROS.find((f) => f.chave === filtro));
   const visiveis = (produtos ?? [])
-    .map((p) => ({ ...p, linhas: p.linhas.filter((l) => mostra(l) || resultados[l.sku]) }))
+    .map((p) => ({ ...p, linhas: p.linhas.filter(mostra) }))
     .filter((p) => p.linhas.length);
   const contagens = Object.fromEntries(
-    FILTROS.map((f) => [f.chave, (produtos ?? []).flatMap((p) => p.linhas).filter(f.mostra).length])
+    FILTROS.map((f) => [f.chave, (produtos ?? []).flatMap((p) => p.linhas).filter(noFiltro(f)).length])
   );
   const enviaveis = visiveis.flatMap((p) => p.linhas).filter(enviavel);
   const aEnviar = enviaveis.filter((l) => selecionados.has(l.sku));
 
   /** Troca o filtro e desmarca o que ele deixa de mostrar. */
   function trocarFiltro(chave) {
-    const novoMostra = FILTROS.find((f) => f.chave === chave).mostra;
+    const novoMostra = noFiltro(FILTROS.find((f) => f.chave === chave));
     const continuam = new Set((produtos ?? []).flatMap((p) => p.linhas).filter(novoMostra).map((l) => l.sku));
     setFiltro(chave);
     setSelecionados((atual) => new Set([...atual].filter((sku) => continuam.has(sku))));
