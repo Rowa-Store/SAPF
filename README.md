@@ -150,16 +150,17 @@ Sem produto pai: cada SKU do Shopify é um produto na Olist.
    com todos os tamanhos. Marcando **família**, vêm também as outras cores do
    mesmo modelo — produtos com o mesmo nome antes do " - Cor" ("Legging
    Estrella - Rosa", "Legging Estrella - Azul"...).
-2. Cada SKU aparece lado a lado com o cadastro na Olist (nome, preço, GTIN,
-   NCM, peso), com as diferenças destacadas, ou "produto não encontrado".
-3. **Trazer do Shopify** atualiza os SKUs diferentes e cadastra os que não
-   existem, todos de uma vez. Só vão os campos preenchidos no Shopify; vazio
-   lá não apaga nada na Olist. Exige marcar a confirmação.
+2. Cada SKU aparece lado a lado com o cadastro na Olist (nome, preço, NCM,
+   peso), com as diferenças destacadas, ou "produto não encontrado".
+3. **Trazer do Shopify** atualiza os SKUs marcados que estão diferentes e
+   cadastra os que não existem. Peso vazio no Shopify não apaga o da Olist.
+   Exige marcar a confirmação.
 
-O NCM sai das palavras do nome do produto e do tipo de produto do Shopify,
+O NCM não vem do Shopify: sai das palavras do nome e do tipo de produto,
 pelas regras em `src/lib/fiscal/ncm.js` (com a tabela de NCMs da Rowa).
 Produto que nenhuma regra reconhece vai sem NCM e não mexe no da Olist.
-Produto incluído entra com origem 0 (nacional).
+O GTIN aparece do lado do Shopify só para consulta e vai sempre vazio para a
+Olist. Produto incluído entra com origem 0 (nacional).
 
 Tudo é lido na hora do Shopify e do Tiny — nada fica guardado no Supabase.
 

@@ -9,7 +9,7 @@
 import { shopifyGraphQL } from './shopify.js';
 
 const CAMPOS_PRODUTO = `
-  id title productType vendor
+  id title productType vendor status
   variants(first: 100) {
     nodes {
       sku title price barcode

@@ -5,20 +5,34 @@
 // Olist. Achado pelo código, é atualizado; não achado, é incluído como
 // produto simples.
 //
-// Só vai para o Tiny o campo que o Shopify tem preenchido — GTIN, peso ou
-// NCM vazios do lado de cá não apagam o que já está na Olist.
+// Só vai para o Tiny o campo que o Shopify tem preenchido — peso vazio do
+// lado de cá não apaga o que já está na Olist.
+//
+// O GTIN aparece do lado do Shopify só para consulta: para o Tiny ele vai
+// sempre VAZIO (inclusive na atualização, apagando o que estiver lá).
+//
+// O NCM não vem do Shopify: sai só das regras do código (fiscal/ncm.js). Por
+// isso ele é campo só do lado da Olist — comparado com o NCM da regra, que
+// fica em `linha.ncm`. Sem regra para o produto, o NCM da Olist não é tocado.
 
 import { ncmDoProduto } from '../fiscal/ncm.js';
 import { valorMonetario } from '../utils.js';
 
-/** Campos comparados, na ordem da tela. */
+/** Campos da tela, na ordem. `soOlist`: não existe no Shopify.
+ *  `soShopify`: só para consulta — não é comparado nem enviado. */
 export const CAMPOS = [
   { chave: 'nome', rotulo: 'Nome' },
   { chave: 'preco', rotulo: 'Preço' },
-  { chave: 'gtin', rotulo: 'GTIN' },
-  { chave: 'ncm', rotulo: 'NCM' },
+  { chave: 'gtin', rotulo: 'GTIN', soShopify: true },
+  { chave: 'ncm', rotulo: 'NCM', soOlist: true },
   { chave: 'peso', rotulo: 'Peso (kg)' },
 ];
+
+/** Os campos que aparecem do lado do Shopify. */
+export const CAMPOS_SHOPIFY = CAMPOS.filter((c) => !c.soOlist);
+
+/** Os campos que aparecem do lado da Olist — os comparados. */
+export const CAMPOS_OLIST = CAMPOS.filter((c) => !c.soShopify);
 
 // Origem da mercadoria (tabela da NF-e) dos produtos incluídos: 0 = nacional.
 const ORIGEM_PADRAO = '0';
@@ -48,7 +62,6 @@ function ladoShopify(produto, variante) {
     nome: `${produto.title}${tamanho}`,
     preco: numeroOuNull(variante.price),
     gtin: String(variante.barcode ?? '').trim() || null,
-    ncm: ncmDoProduto({ titulo: produto.title, tipo: produto.productType }),
     peso: pesoEmKg(variante),
   };
 }
@@ -58,7 +71,6 @@ function ladoTiny(produto) {
     id: String(produto.id),
     nome: produto.nome ?? null,
     preco: numeroOuNull(produto.preco),
-    gtin: String(produto.gtin ?? '').trim() || null,
     ncm: String(produto.ncm ?? '').trim() || null,
     peso: numeroOuNull(produto.peso_liquido) || numeroOuNull(produto.peso_bruto),
     tipoVariacao: produto.tipoVariacao ?? null,
@@ -68,15 +80,15 @@ function ladoTiny(produto) {
 const COMPARAVEL = {
   nome: (v) => String(v ?? '').replace(/\s+/g, ' ').trim().toLowerCase(),
   preco: (v) => (v == null ? null : Number(v).toFixed(2)),
-  gtin: (v) => String(v ?? '').trim(),
   ncm: (v) => String(v ?? '').replace(/\D+/g, ''),
   peso: (v) => (v == null ? null : Number(v).toFixed(3)),
 };
 
-/** Campos que o Shopify tem preenchidos e que estão diferentes na Olist. */
-function camposDiferentes(shopify, tiny) {
-  return CAMPOS.map((c) => c.chave).filter(
-    (chave) => shopify[chave] != null && COMPARAVEL[chave](shopify[chave]) !== COMPARAVEL[chave](tiny?.[chave])
+/** Campos com valor do lado de cá (Shopify, ou a regra no caso do NCM)
+ *  que estão diferentes na Olist. */
+function camposDiferentes(esperado, tiny) {
+  return CAMPOS_OLIST.map((c) => c.chave).filter(
+    (chave) => esperado[chave] != null && COMPARAVEL[chave](esperado[chave]) !== COMPARAVEL[chave](tiny?.[chave])
   );
 }
 
@@ -87,33 +99,39 @@ function camposDiferentes(shopify, tiny) {
  * @param {Record<string, { produto: object|null, duplicados?: number }>} doTiny produtosDoTinyPorCodigo
  */
 export function compararProdutos(produtos, doTiny) {
-  return produtos.map((produto) => ({
-    id: produto.id,
-    titulo: produto.title,
-    tipo: produto.productType,
-    linhas: produto.variants.map((variante) => {
-      const sku = String(variante.sku ?? '').trim();
-      const shopify = ladoShopify(produto, variante);
-      if (!sku) return { sku, shopify, tiny: null, situacao: 'sem_sku', diferencas: [] };
+  return produtos.map((produto) => {
+    const ncm = ncmDoProduto({ titulo: produto.title, tipo: produto.productType });
+    return {
+      id: produto.id,
+      titulo: produto.title,
+      tipo: produto.productType,
+      status: produto.status,
+      linhas: produto.variants.map((variante) => {
+        const sku = String(variante.sku ?? '').trim();
+        const shopify = ladoShopify(produto, variante);
+        const base = { sku, shopify, ncm, tiny: null, diferencas: [] };
+        if (!sku) return { ...base, situacao: 'sem_sku' };
 
-      const achado = doTiny[normalizarCodigo(sku)] ?? { produto: null };
-      if (achado.duplicados) return { sku, shopify, tiny: null, situacao: 'duplicado', duplicados: achado.duplicados, diferencas: [] };
-      if (!achado.produto) return { sku, shopify, tiny: null, situacao: 'nao_encontrado', diferencas: [] };
+        const achado = doTiny[normalizarCodigo(sku)] ?? { produto: null };
+        if (achado.duplicados) return { ...base, situacao: 'duplicado', duplicados: achado.duplicados };
+        if (!achado.produto) return { ...base, situacao: 'nao_encontrado' };
 
-      const tiny = ladoTiny(achado.produto);
-      const diferencas = camposDiferentes(shopify, tiny);
-      return { sku, shopify, tiny, situacao: diferencas.length ? 'diferente' : 'igual', diferencas };
-    }),
-  }));
+        const tiny = ladoTiny(achado.produto);
+        const diferencas = camposDiferentes({ ...shopify, ncm }, tiny);
+        return { ...base, tiny, situacao: diferencas.length ? 'diferente' : 'igual', diferencas };
+      }),
+    };
+  });
 }
 
-/** Campos do Shopify que vão para o Tiny (os vazios ficam de fora). */
-function camposDoShopify(shopify) {
+/** Campos que vão para o Tiny: os do Shopify mais o NCM da regra (os
+ *  vazios ficam de fora). */
+function camposDaLinha({ shopify, ncm }) {
   return {
     nome: shopify.nome,
     ...(shopify.preco != null ? { preco: valorMonetario(shopify.preco) } : {}),
-    ...(shopify.gtin ? { gtin: shopify.gtin } : {}),
-    ...(shopify.ncm ? { ncm: shopify.ncm } : {}),
+    gtin: '',
+    ...(ncm ? { ncm } : {}),
     ...(shopify.peso != null ? { peso_liquido: shopify.peso, peso_bruto: shopify.peso } : {}),
   };
 }
@@ -127,7 +145,7 @@ export function produtoParaIncluir(linha) {
     situacao: 'A',
     tipo: 'P',
     classe_produto: 'S',
-    ...camposDoShopify(linha.shopify),
+    ...camposDaLinha(linha),
   };
 }
 
@@ -145,7 +163,6 @@ export function produtoParaAlterar(linha, cadastroTiny) {
     situacao: cadastroTiny.situacao || 'A',
     tipo: cadastroTiny.tipo || 'P',
     ...(cadastroTiny.ncm ? { ncm: cadastroTiny.ncm } : {}),
-    ...(cadastroTiny.gtin ? { gtin: cadastroTiny.gtin } : {}),
-    ...camposDoShopify(linha.shopify),
+    ...camposDaLinha(linha),
   };
 }

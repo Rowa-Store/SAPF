@@ -13,7 +13,7 @@ async function lerJson(resposta, padrao) {
 
 /**
  * /olist — busca um produto, compara Shopify x Olist SKU a SKU e traz do
- * Shopify o que estiver diferente ou faltando.
+ * Shopify os SKUs marcados (diferentes ou faltando na Olist).
  */
 export function useProdutosOlist() {
   // Última busca feita: { busca, familia } — é ela que o "trazer" repete.
@@ -26,6 +26,8 @@ export function useProdutosOlist() {
   // sku -> { ok, acao, erro } do último "trazer do Shopify"
   const [resultados, setResultados] = useState({});
   const [aviso, setAviso] = useState(null);
+  // SKUs marcados para o "trazer do Shopify" — começa vazio a cada busca.
+  const [selecionados, setSelecionados] = useState(() => new Set());
 
   async function comparar(busca, familia) {
     const nova = { busca: busca.trim(), familia };
@@ -35,6 +37,7 @@ export function useProdutosOlist() {
     setErro(null);
     setAviso(null);
     setResultados({});
+    setSelecionados(new Set());
     setConfirmado(false);
     try {
       const parametros = new URLSearchParams({ busca: nova.busca, ...(familia ? { familia: '1' } : {}) });
@@ -48,9 +51,19 @@ export function useProdutosOlist() {
     }
   }
 
-  const aEnviar = (produtos ?? [])
-    .flatMap((p) => p.linhas)
-    .filter((l) => SITUACOES_A_ENVIAR.includes(l.situacao) && !resultados[l.sku]?.ok);
+  /** true quando o SKU pode ir para a Olist (e ainda não foi). */
+  const enviavel = (linha) => SITUACOES_A_ENVIAR.includes(linha.situacao) && !resultados[linha.sku]?.ok;
+  const enviaveis = (produtos ?? []).flatMap((p) => p.linhas).filter(enviavel);
+  const aEnviar = enviaveis.filter((l) => selecionados.has(l.sku));
+
+  /** Marca ou desmarca os SKUs (um só, ou todos os de um produto). */
+  function marcar(skus, marcado) {
+    setSelecionados((atual) => {
+      const novo = new Set(atual);
+      for (const sku of skus) (marcado ? novo.add(sku) : novo.delete(sku));
+      return novo;
+    });
+  }
 
   async function trazerDoShopify() {
     setEnviando(true);
@@ -65,6 +78,8 @@ export function useProdutosOlist() {
         'Falha ao trazer do Shopify'
       );
       setResultados((atual) => ({ ...atual, ...Object.fromEntries(corpo.resultados.map((r) => [r.sku, r])) }));
+      // O que foi enviado sai da seleção; o que deu erro fica marcado para tentar de novo.
+      marcar(corpo.resultados.filter((r) => r.ok).map((r) => r.sku), false);
       const falhas = corpo.resultados.filter((r) => !r.ok).length;
       const enviados = corpo.resultados.filter((r) => r.ok && r.acao !== 'igual').length;
       setAviso(
@@ -87,7 +102,11 @@ export function useProdutosOlist() {
     aviso,
     setAviso,
     comparar,
+    enviavel,
+    enviaveis,
     aEnviar,
+    selecionados,
+    marcar,
     confirmado,
     setConfirmado,
     enviando,

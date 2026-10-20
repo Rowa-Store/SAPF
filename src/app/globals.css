@@ -354,9 +354,80 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
 .linha-busca { display: flex; gap: 0.6rem; margin-bottom: 0.75rem; }
 .linha-busca button { flex-shrink: 0; }
 .linha-busca input { flex: 1; }
-.cabecalho-produto { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; align-items: baseline; margin-bottom: 0.6rem; }
-.tabela-paralela td { vertical-align: middle; }
-.tabela-paralela th.lado { text-align: center; border-left: 2px solid var(--linha); }
-.tabela-paralela th.lado:first-of-type { border-left: none; }
-.tabela-paralela .inicio-lado { border-left: 2px solid var(--linha); }
-.tabela-paralela td.celula-diferente { background: var(--amarelo-fundo); color: var(--amarelo); }
+.caixa-selecao { width: auto; margin: 0; flex-shrink: 0; }
+/* Fica grudada no pé da tela ao rolar uma família grande: o envio está sempre à mão. */
+.barra-envio { position: sticky; bottom: 0.75rem; z-index: 2; background: color-mix(in srgb, var(--papel) 70%, var(--alerta) 12%); }
+
+/* Comparação: cada SKU numa linha, a Olist à esquerda e o Shopify à direita,
+   cada lado imitando a tela do próprio sistema — a Olist escura, com rótulo
+   pequeno em cima do valor; o admin do Shopify claro, com cartão branco e
+   campos com cara de input. */
+.par-produto {
+  --olist-fundo: #232323;
+  --olist-linha: #3b3b3b;
+  --olist-rotulo: #a3a3a3;
+  --olist-texto: #f2f2f2;
+  --olist-azul: #1f5cff;
+  --shopify-fundo: #f1f1f1;
+  --shopify-cartao: #ffffff;
+  --shopify-borda: #e3e3e3;
+  --shopify-input: #cfcfcf;
+  --shopify-texto: #303030;
+  --shopify-fraco: #616161;
+  border: 1px solid var(--linha);
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 0 0 1.5rem;
+}
+.par-linha { display: grid; grid-template-columns: 1fr 1fr; }
+.par-linha + .par-linha .lado-olist { border-top: 1px solid var(--olist-linha); }
+
+.lado-olist { background: var(--olist-fundo); color: var(--olist-texto); padding: 1rem 1.25rem; }
+.olist-cabecalho { padding-top: 1.1rem; border-bottom: 1px solid var(--olist-linha); }
+.olist-marca, .shopify-marca { display: block; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 0.4rem; }
+.olist-marca { color: var(--olist-azul); }
+.olist-titulo { display: flex; gap: 0.6rem; align-items: center; font-size: 1.05rem; }
+.olist-topo { display: flex; gap: 0.75rem; align-items: flex-start; justify-content: space-between; margin-bottom: 0.75rem; }
+.olist-sku { display: flex; gap: 0.6rem; align-items: center; margin: 0; cursor: pointer; }
+.olist-rotulo { display: block; font-size: 0.8rem; color: var(--olist-rotulo); }
+.olist-valor { display: block; font-size: 0.95rem; color: var(--olist-texto); }
+.olist-campos { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 0.75rem 1rem; }
+.olist-campos > div { min-width: 0; }
+.olist-vazio { margin: 0; color: var(--olist-rotulo); font-size: 0.9rem; }
+.lado-olist .campo-diferente .olist-valor { color: var(--amarelo); }
+.lado-olist .valor-novo { display: block; font-size: 0.8rem; color: var(--amarelo); white-space: nowrap; }
+.lado-olist input[type="checkbox"] { accent-color: var(--olist-azul); }
+
+.lado-shopify { background: var(--shopify-fundo); color: var(--shopify-texto); padding: 0.75rem 1rem; font-size: 0.82rem; }
+.shopify-cabecalho { padding: 1.1rem 1.25rem; border-bottom: 1px solid var(--shopify-borda); }
+.shopify-marca { color: #008060; }
+.shopify-titulo { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; font-size: 1.15rem; font-weight: 650; letter-spacing: -0.01em; }
+.shopify-tipo { margin-top: 0.25rem; color: var(--shopify-fraco); }
+.shopify-status { font-size: 0.72rem; font-weight: 550; padding: 0.1rem 0.45rem; border-radius: 8px; background: #e3e3e3; color: var(--shopify-texto); }
+.shopify-status.status-active { background: #affebf; color: #014b40; }
+.shopify-status.status-draft { background: #d5ebff; color: #003a5a; }
+.shopify-cartao {
+  background: var(--shopify-cartao);
+  border: 1px solid var(--shopify-borda);
+  border-radius: 12px;
+  box-shadow: 0 1px 0 rgba(26, 26, 26, 0.07);
+  padding: 0.75rem 0.9rem;
+}
+.shopify-campos { display: grid; grid-template-columns: 2fr 1fr 1.3fr 0.8fr; gap: 0.6rem 0.75rem; }
+.shopify-campos > div { min-width: 0; }
+.shopify-rotulo { display: block; font-weight: 550; margin-bottom: 0.25rem; }
+.shopify-campo {
+  display: block;
+  min-height: 2rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--shopify-input);
+  border-radius: 8px;
+  background: #fdfdfd;
+  overflow-wrap: anywhere;
+}
+.lado-shopify .campo-diferente .shopify-campo { border-color: #e2a300; background: #fff5d6; }
+
+@media (max-width: 56rem) {
+  .par-linha { grid-template-columns: 1fr; }
+  .olist-campos, .shopify-campos { grid-template-columns: 1fr 1fr; }
+}
