@@ -13,8 +13,8 @@ function esc(texto) {
 function htmlDoConflito(conflito, n) {
   const cabecalho = conflito.produtos
     .map(
-      (p, i) =>
-        `<li><b>Produto ${i + 1}:</b> ${esc(p.titulo)} <span class="fraco">· ${esc(STATUS[p.status] ?? p.status)}` +
+      (p) =>
+        `<li><b>${esc(p.titulo)}</b> <span class="fraco">· ${esc(STATUS[p.status] ?? p.status)}` +
         ` · criado em ${esc(formatarDataCurta(p.criado))}</span></li>`
     )
     .join('');
@@ -25,7 +25,7 @@ function htmlDoConflito(conflito, n) {
         ({ i, v }, k) =>
           '<tr>' +
           (k === 0 ? `<td rowspan="${ocorrencias.length}" class="gtin">${esc(g.gtin)}</td>` : '') +
-          `<td>Produto ${i + 1}</td><td>${esc(v.opcao)}</td><td>${esc(v.sku || '—')}</td>` +
+          `<td>${esc(conflito.produtos[i].titulo)}</td><td>${esc(v.opcao)}</td><td>${esc(v.sku || '—')}</td>` +
           `<td class="num">${esc(formatarMoedaOuTraco(v.preco))}</td></tr>`
       );
     })
