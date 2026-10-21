@@ -792,7 +792,7 @@ function ComparacaoTotais({ nota, shopify }) {
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(22rem, 1fr))', gap: '1rem' }}>
-        <QuadroTiny titulo="Sistema (nota no Tiny)" campos={camposNota} />
+        <QuadroTiny titulo="Olist" campos={camposNota} />
         <QuadroTotais {...ladoShopify(shopify)} />
       </div>
       <p style={{ marginBottom: 0, color: 'var(--amarelo)', fontSize: '0.9rem' }}>
