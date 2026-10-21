@@ -72,7 +72,7 @@ export function abrirRelatorioPdf({ conflitos, trabalho, soAtivos, gtinsDuplicad
     · ${soAtivos ? 'só produtos ativos' : 'todos os status'}<br>
     <b>${gtinsDuplicados}</b> GTIN(s) repetido(s) em <b>${conflitos.length}</b> conflito(s).
   </p>
-  ${conflitos.length ? conflitos.map(htmlDoConflito).join('') : '<p>Nenhum GTIN duplicado.</p>'}
+  ${conflitos.length ? conflitos.map((c, i) => htmlDoConflito(c, i + 1)).join('') : '<p>Nenhum GTIN duplicado.</p>'}
 </body></html>`);
   janela.document.close();
   janela.focus();
