@@ -149,3 +149,44 @@ export async function paginaDeProdutos({ cursor = null, tamanho = 50, desde = nu
     proximo: pageInfo?.hasNextPage ? pageInfo.endCursor : null,
   };
 }
+
+const QUERY_BARCODES = `
+query BarcodesDosProdutos($primeiros: Int!, $depois: String) {
+  products(first: $primeiros, after: $depois, sortKey: CREATED_AT, reverse: true) {
+    nodes {
+      id legacyResourceId title status productType createdAt
+      variants(first: 100) { nodes { sku title price barcode } }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}`;
+
+/**
+ * Uma página de produtos do Shopify para o scan de GTIN (/olist/scan-gtin),
+ * de qualquer status, os mais recentes primeiro. Só os campos escalares das
+ * variantes, para a página sair barata no limite de custo do GraphQL.
+ *
+ * @returns {Promise<{ produtos: { id, titulo, status, tipo, criado, admin, variantes: { sku, opcao, preco, gtin }[] }[], proximo: string|null }>}
+ */
+export async function paginaDeBarcodes({ cursor = null, tamanho = 100 } = {}) {
+  const dados = await shopifyGraphQL(QUERY_BARCODES, { primeiros: tamanho, depois: cursor });
+  const { nodes = [], pageInfo } = dados.products ?? {};
+  const dominio = process.env.SHOPIFY_STORE_DOMAIN;
+  return {
+    produtos: nodes.map((p) => ({
+      id: p.id,
+      titulo: p.title,
+      status: p.status,
+      tipo: p.productType || null,
+      criado: p.createdAt,
+      admin: `https://${dominio}/admin/products/${p.legacyResourceId}`,
+      variantes: (p.variants?.nodes ?? []).map((v) => ({
+        sku: String(v.sku ?? '').trim(),
+        opcao: v.title,
+        preco: v.price == null ? null : Number(v.price),
+        gtin: String(v.barcode ?? '').trim(),
+      })),
+    })),
+    proximo: pageInfo?.hasNextPage ? pageInfo.endCursor : null,
+  };
+}

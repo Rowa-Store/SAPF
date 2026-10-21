@@ -479,7 +479,20 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
 }
 .lado-shopify .campo-diferente .shopify-campo { border-color: #e2a300; background: #fff5d6; }
 
+/* Scan de GTIN: os dois lados no visual do Shopify — Produto 1, Produto 2… —,
+   uma coluna por produto do conflito e uma linha por GTIN repetido. */
+.par-gtin .par-linha { grid-template-columns: repeat(var(--colunas, 2), minmax(0, 1fr)); }
+.par-gtin .lado-shopify + .lado-shopify { border-left: 1px solid var(--shopify-borda); }
+.par-gtin .par-linha + .par-linha .lado-shopify { border-top: 1px solid var(--shopify-borda); }
+.par-gtin .lado-shopify { display: grid; gap: 0.5rem; align-content: start; }
+.par-gtin .shopify-cabecalho { display: block; }
+.par-gtin .shopify-campos { grid-template-columns: 0.8fr 1.3fr 1fr 1.4fr; }
+.par-gtin .shopify-tipo a { color: #005bd3; }
+
 @media (max-width: 56rem) {
   .par-linha { grid-template-columns: 1fr; }
   .olist-campos, .shopify-campos, .olist-variacao { grid-template-columns: 1fr 1fr; }
+  .par-gtin .par-linha { grid-template-columns: 1fr; }
+  .par-gtin .shopify-campos { grid-template-columns: 1fr 1fr; }
+  .par-gtin .lado-shopify + .lado-shopify { border-left: 0; border-top: 1px solid var(--shopify-borda); }
 }
