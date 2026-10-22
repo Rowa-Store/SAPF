@@ -139,8 +139,71 @@ function camposDoPai(esperado) {
   };
 }
 
-function variacaoNova(linha) {
-  return { variacao: { codigo: linha.sku, preco: valorMonetario(linha.shopify.preco), gtin: '', grade: linha.grade } };
+function variacaoNova(linha, grade = linha.grade) {
+  return { variacao: { codigo: linha.sku, preco: valorMonetario(linha.shopify.preco), gtin: '', grade } };
+}
+
+// Nome de opção do Shopify em inglês -> atributo da grade na Olist.
+const SINONIMOS_GRADE = { size: 'tamanho', color: 'cor', colour: 'cor' };
+
+function chaveDaGrade(nome) {
+  const n = String(nome ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+  return SINONIMOS_GRADE[n] ?? n;
+}
+
+/** Atributos da grade do pai: o conjunto mais comum entre as variações atuais (null sem variações). */
+function atributosDoPai(variacoesAtuais) {
+  const contagem = new Map();
+  for (const v of variacoesAtuais) {
+    const chaves = Object.keys(v.grade ?? {});
+    if (!chaves.length) continue;
+    const id = JSON.stringify(chaves);
+    contagem.set(id, (contagem.get(id) ?? 0) + 1);
+  }
+  const [maisComum] = [...contagem].sort((a, b) => b[1] - a[1])[0] ?? [];
+  return maisComum ? JSON.parse(maisComum) : null;
+}
+
+/**
+ * Grade da variação com os mesmos atributos do pai — o Tiny recusa a
+ * alteração inteira com "Grade da variação com quantidade de níveis
+ * diferente do pai" quando uma variação tem atributos a mais ou a menos
+ * (ex.: Shopify com Cor + Tamanho e a Olist só com Tamanho).
+ *
+ * Cada atributo do pai vem da opção do Shopify de mesmo nome (Size =
+ * Tamanho); se não há, de um atributo que tem o mesmo valor em todas as
+ * variações do pai (a cor, num pai por cor); se ainda sobra um atributo e
+ * uma opção sem par, um vai no outro. Opção do Shopify que o pai não tem
+ * fica de fora.
+ */
+function gradeNoPadraoDoPai(sku, grade, atributos, variacoesAtuais) {
+  if (!atributos) return grade;
+  const doShopify = new Map(Object.entries(grade ?? {}).map(([k, v]) => [chaveDaGrade(k), v]));
+  const usadas = new Set();
+  const resultado = {};
+  for (const atributo of atributos) {
+    const chave = chaveDaGrade(atributo);
+    if (doShopify.has(chave)) {
+      resultado[atributo] = doShopify.get(chave);
+      usadas.add(chave);
+      continue;
+    }
+    const valores = new Set(variacoesAtuais.map((v) => v.grade?.[atributo]).filter(Boolean));
+    if (valores.size === 1) resultado[atributo] = [...valores][0];
+  }
+
+  const semValor = atributos.filter((a) => !resultado[a]);
+  const sobras = [...doShopify].filter(([k]) => !usadas.has(k));
+  if (semValor.length === 1 && sobras.length === 1) resultado[semValor[0]] = sobras[0][1];
+
+  const faltando = atributos.filter((a) => !resultado[a]);
+  if (faltando.length) {
+    throw new Error(
+      `Grade de ${sku} não bate com a do pai na Olist (atributos do pai: ${atributos.join(', ')}; ` +
+        `no Shopify: ${Object.keys(grade ?? {}).join(', ') || 'nenhum'}). Faltou: ${faltando.join(', ')}.`
+    );
+  }
+  return resultado;
 }
 
 /** Menor preço entre as variantes do Shopify — o preço que a Olist mostra no pai. */
@@ -176,8 +239,19 @@ export function paiParaIncluir(comparado, linhas) {
  */
 export function paiParaAlterar(comparado, cadastro, variacoesAtuais, linhas) {
   const escolhidas = new Map(linhas.map((l) => [normalizarCodigo(l.sku), l]));
+  const doShopify = new Map(comparado.linhas.map((l) => [normalizarCodigo(l.sku), l]));
+  const atributos = atributosDoPai(variacoesAtuais);
+  const mesmosAtributos = (grade) => JSON.stringify(Object.keys(grade ?? {})) === JSON.stringify(atributos);
+
   const existentes = variacoesAtuais.map((v) => {
     const linha = escolhidas.get(normalizarCodigo(v.codigo));
+    // Variação atual fora do padrão do pai (grade vazia ou com outro
+    // número de níveis) é refeita pela variante do Shopify, se houver.
+    const variante = doShopify.get(normalizarCodigo(v.codigo));
+    const grade =
+      !atributos || mesmosAtributos(v.grade) || !variante
+        ? v.grade
+        : gradeNoPadraoDoPai(v.codigo, variante.grade, atributos, variacoesAtuais);
     return {
       variacao: {
         id: v.id,
@@ -185,11 +259,13 @@ export function paiParaAlterar(comparado, cadastro, variacoesAtuais, linhas) {
         preco: linha ? valorMonetario(linha.shopify.preco) : v.preco,
         // Variação não escolhida fica como está.
         ...(linha ? { gtin: '' } : {}),
-        grade: v.grade,
+        grade,
       },
     };
   });
-  const novas = linhas.filter((l) => l.situacao === 'nova').map(variacaoNova);
+  const novas = linhas
+    .filter((l) => l.situacao === 'nova')
+    .map((l) => variacaoNova(l, gradeNoPadraoDoPai(l.sku, l.grade, atributos, variacoesAtuais)));
 
   return {
     codigo: cadastro.codigo ?? '',
