@@ -798,7 +798,8 @@ export function variacoesDoPai(cadastro) {
  *
  * Na Olist, cada cor é um pai SEM código, com os tamanhos como variações (o
  * SKU fica na variação). O pai é achado pelo nome igual ao título do Shopify
- * entre os ativos; se não há, pelo pai de uma variação com algum dos SKUs.
+ * entre os ativos (sem ativo, entre os inativos); se não há, pelo pai de uma
+ * variação com algum dos SKUs.
  * Os SKUs que não estão nas variações do pai são procurados no resto da
  * conta: código usado em outro produto não pode virar variação nova.
  *
@@ -809,9 +810,14 @@ export function variacoesDoPai(cadastro) {
 export async function produtoPaiNoTiny({ nome, codigos = [] }, conta = null) {
   const alvo = normalizarOpcao(nome);
   // Uma chamada por vez: a API do Tiny limita chamadas por minuto.
-  const pais = (await pesquisarProdutos(nome, conta, { situacao: 'A' })).filter(
-    (p) => p.tipoVariacao === 'P' && normalizarOpcao(p.nome) === alvo
-  );
+  const paisCom = async (situacao) =>
+    (await pesquisarProdutos(nome, conta, { situacao })).filter(
+      (p) => p.tipoVariacao === 'P' && normalizarOpcao(p.nome) === alvo
+    );
+  // Sem pai ativo, vale o inativo: o Tiny não deixa incluir outro com o
+  // mesmo nome, então o caminho é atualizar (e reativar) o que existe.
+  let pais = await paisCom('A');
+  if (!pais.length) pais = await paisCom('I');
   if (pais.length > 1) return { pai: null, duplicados: pais.length, foraDoPai: {} };
 
   let idPai = pais[0]?.id ?? null;

@@ -289,7 +289,8 @@ export function paiParaAlterar(comparado, cadastro, variacoesAtuais, linhas) {
     unidade: cadastro.unidade || 'UN',
     preco: precoDoPai(comparado) ?? cadastro.preco,
     origem: cadastro.origem ?? ORIGEM_PADRAO,
-    situacao: cadastro.situacao || 'A',
+    // Trazer do Shopify deixa o pai ativo (reativa o que estava inativo).
+    situacao: 'A',
     tipo: cadastro.tipo || 'P',
     classe_produto: 'V',
     gtin: '',
@@ -299,8 +300,17 @@ export function paiParaAlterar(comparado, cadastro, variacoesAtuais, linhas) {
   };
 }
 
-/** Payload de produto.alterar que só inativa o pai (sem mexer em variações). */
-export function paiParaInativar(comparado, cadastro) {
-  const { variacoes, ...pai } = paiParaAlterar(comparado, cadastro, [], []);
-  return { ...pai, situacao: 'I' };
+/**
+ * O mesmo payload com a Cor (do título) na grade das variações que ainda não
+ * têm. Para o pai sem variações que recusou a grade só com o Tamanho: a
+ * quantidade de níveis dele vem das variações que já teve.
+ */
+export function comCorNaGrade(payload, titulo) {
+  const cor = String(titulo ?? '').split(' - ').slice(1).join(' - ').trim();
+  if (!cor) return null;
+  const variacoes = payload.variacoes.map(({ variacao }) => {
+    const temCor = Object.keys(variacao.grade ?? {}).some((k) => chaveDaGrade(k) === 'cor');
+    return { variacao: temCor ? variacao : { ...variacao, grade: { Cor: cor, ...variacao.grade } } };
+  });
+  return { ...payload, variacoes };
 }
