@@ -171,6 +171,13 @@ export function useLimpezaGtin() {
             erro: `A Olist respondeu OK, mas ao ler de novo ainda há GTIN em: ${r.corpo.restantes.join(', ')}.`,
           },
         };
+      } else if (!r.corpo.conferido) {
+        // Gravou, mas a releitura falhou: fica na fila — limpar de novo só relê e dá "já limpo".
+        comErro += 1;
+        d.feitos = {
+          ...d.feitos,
+          [item.id]: { estado: 'erro', erro: 'A Olist respondeu OK, mas não deu para ler de novo e conferir. Limpe de novo para conferir.' },
+        };
       } else {
         // O produto e todas as variações do mesmo pai saem da fila.
         const estadoFeito = r.corpo.acao === 'limpo' ? 'limpo' : 'ja_limpo';
