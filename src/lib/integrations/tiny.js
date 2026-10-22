@@ -763,11 +763,27 @@ export async function obterProduto(id, conta = null) {
 /** Grade da variação como objeto ({ Tamanho: 'P' }) — o Tiny devolve como
  *  objeto ou como lista, e o produto.alterar recebe objeto. */
 function gradeComoObjeto(grade) {
-  if (!grade) return {};
-  if (!Array.isArray(grade)) return { ...grade };
+  if (!grade || typeof grade !== 'object') return {};
+  if (!Array.isArray(grade)) return grade.grade ? gradeComoObjeto(grade.grade) : { ...grade };
   return Object.fromEntries(
-    grade.map((g) => [g?.chave ?? g?.nome ?? g?.tipo ?? '', g?.valor ?? g?.value ?? '']).filter(([k, v]) => k && v)
+    grade
+      .flatMap((g) => {
+        const item = g?.grade ?? g;
+        if (!item || typeof item !== 'object') return [];
+        const chave = item.chave ?? item.nome ?? item.tipo ?? item.atributo;
+        // Lista de pares ({ chave, valor }) ou de objetos de uma chave ({ Tamanho: 'P' }).
+        return chave ? [[chave, item.valor ?? item.value ?? '']] : Object.entries(item);
+      })
+      .filter(([k, v]) => k && v)
   );
+}
+
+/** Para a mensagem de erro: como o pai está no Tiny (variações e grade crua). */
+export function resumoDaGrade(cadastro) {
+  const variacoes = paraArray(cadastro?.variacoes).map((v) => v.variacao ?? v);
+  const exemplo = variacoes[0] ? JSON.stringify(variacoes[0].grade ?? null) : '-';
+  const doPai = cadastro?.grade != null ? ` Grade no pai: ${JSON.stringify(cadastro.grade)}.` : '';
+  return `Pai ${cadastro?.id} na Olist com ${variacoes.length} variação(ões); grade da 1ª: ${exemplo}.${doPai}`;
 }
 
 /** Variações de um produto pai do Tiny, já desembrulhadas. */

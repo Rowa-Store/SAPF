@@ -151,8 +151,19 @@ function chaveDaGrade(nome) {
   return SINONIMOS_GRADE[n] ?? n;
 }
 
-/** Atributos da grade do pai: o conjunto mais comum entre as variações atuais (null sem variações). */
-function atributosDoPai(variacoesAtuais) {
+/** Atributos que o próprio pai declara (`grade` no cadastro), se o Tiny mandar. */
+function atributosDeclarados(cadastro) {
+  const grade = cadastro?.grade;
+  if (!grade || typeof grade !== 'object') return null;
+  const nomes = (Array.isArray(grade) ? grade : Object.keys(grade))
+    .map((g) => (typeof g === 'string' ? g : g?.chave ?? g?.nome ?? g?.tipo ?? g?.atributo))
+    .filter(Boolean);
+  return nomes.length ? nomes : null;
+}
+
+/** Atributos da grade do pai: o conjunto mais comum entre as variações
+ *  atuais; sem variações, o que o pai declara (null se nada). */
+function atributosDoPai(variacoesAtuais, cadastro) {
   const contagem = new Map();
   for (const v of variacoesAtuais) {
     const chaves = Object.keys(v.grade ?? {});
@@ -161,7 +172,7 @@ function atributosDoPai(variacoesAtuais) {
     contagem.set(id, (contagem.get(id) ?? 0) + 1);
   }
   const [maisComum] = [...contagem].sort((a, b) => b[1] - a[1])[0] ?? [];
-  return maisComum ? JSON.parse(maisComum) : null;
+  return maisComum ? JSON.parse(maisComum) : atributosDeclarados(cadastro);
 }
 
 /**
@@ -173,10 +184,10 @@ function atributosDoPai(variacoesAtuais) {
  * Cada atributo do pai vem da opção do Shopify de mesmo nome (Size =
  * Tamanho); se não há, de um atributo que tem o mesmo valor em todas as
  * variações do pai (a cor, num pai por cor); se ainda sobra um atributo e
- * uma opção sem par, um vai no outro. Opção do Shopify que o pai não tem
- * fica de fora.
+ * uma opção sem par, um vai no outro; a Cor que ainda faltar sai do título.
+ * Opção do Shopify que o pai não tem fica de fora.
  */
-function gradeNoPadraoDoPai(sku, grade, atributos, variacoesAtuais) {
+function gradeNoPadraoDoPai(sku, grade, atributos, variacoesAtuais, titulo) {
   if (!atributos) return grade;
   const doShopify = new Map(Object.entries(grade ?? {}).map(([k, v]) => [chaveDaGrade(k), v]));
   const usadas = new Set();
@@ -196,6 +207,12 @@ function gradeNoPadraoDoPai(sku, grade, atributos, variacoesAtuais) {
   const sobras = [...doShopify].filter(([k]) => !usadas.has(k));
   if (semValor.length === 1 && sobras.length === 1) resultado[semValor[0]] = sobras[0][1];
 
+  // Cor que ainda falta sai do título ("Macacão Heart - Verde"): um pai por cor.
+  const corDoTitulo = String(titulo ?? '').split(' - ').slice(1).join(' - ').trim();
+  for (const atributo of atributos) {
+    if (!resultado[atributo] && chaveDaGrade(atributo) === 'cor' && corDoTitulo) resultado[atributo] = corDoTitulo;
+  }
+
   const faltando = atributos.filter((a) => !resultado[a]);
   if (faltando.length) {
     throw new Error(
@@ -203,7 +220,7 @@ function gradeNoPadraoDoPai(sku, grade, atributos, variacoesAtuais) {
         `no Shopify: ${Object.keys(grade ?? {}).join(', ') || 'nenhum'}). Faltou: ${faltando.join(', ')}.`
     );
   }
-  return resultado;
+  return Object.fromEntries(atributos.map((a) => [a, resultado[a]]));
 }
 
 /** Menor preço entre as variantes do Shopify — o preço que a Olist mostra no pai. */
@@ -240,7 +257,7 @@ export function paiParaIncluir(comparado, linhas) {
 export function paiParaAlterar(comparado, cadastro, variacoesAtuais, linhas) {
   const escolhidas = new Map(linhas.map((l) => [normalizarCodigo(l.sku), l]));
   const doShopify = new Map(comparado.linhas.map((l) => [normalizarCodigo(l.sku), l]));
-  const atributos = atributosDoPai(variacoesAtuais);
+  const atributos = atributosDoPai(variacoesAtuais, cadastro);
   const mesmosAtributos = (grade) => JSON.stringify(Object.keys(grade ?? {})) === JSON.stringify(atributos);
 
   const existentes = variacoesAtuais.map((v) => {
@@ -251,7 +268,7 @@ export function paiParaAlterar(comparado, cadastro, variacoesAtuais, linhas) {
     const grade =
       !atributos || mesmosAtributos(v.grade) || !variante
         ? v.grade
-        : gradeNoPadraoDoPai(v.codigo, variante.grade, atributos, variacoesAtuais);
+        : gradeNoPadraoDoPai(v.codigo, variante.grade, atributos, variacoesAtuais, comparado.esperado.nome);
     return {
       variacao: {
         id: v.id,
@@ -265,7 +282,7 @@ export function paiParaAlterar(comparado, cadastro, variacoesAtuais, linhas) {
   });
   const novas = linhas
     .filter((l) => l.situacao === 'nova')
-    .map((l) => variacaoNova(l, gradeNoPadraoDoPai(l.sku, l.grade, atributos, variacoesAtuais)));
+    .map((l) => variacaoNova(l, gradeNoPadraoDoPai(l.sku, l.grade, atributos, variacoesAtuais, comparado.esperado.nome)));
 
   return {
     codigo: cadastro.codigo ?? '',

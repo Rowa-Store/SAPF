@@ -12,7 +12,7 @@
 //     preço das variações marcadas; SKU marcado que falta vira variação nova;
 //   - pai não existe: produto.incluir do pai com as variações marcadas.
 
-import { alterarProduto, erroDeLimite, incluirProduto, variacoesDoPai } from '@/lib/integrations/tiny';
+import { alterarProduto, erroDeLimite, incluirProduto, resumoDaGrade, variacoesDoPai } from '@/lib/integrations/tiny';
 import { compararProdutoPorId } from '@/lib/olist/comparacao';
 import { normalizarCodigo, paiParaAlterar, paiParaIncluir } from '@/lib/olist/produtoTiny';
 import { erroJson } from '@/lib/utils';
@@ -69,7 +69,9 @@ export async function POST(request) {
     for (const l of linhas) resultados.push({ sku: l.sku, ok: true, acao: l.situacao === 'nova' ? 'incluido' : acao });
   } catch (e) {
     if (erroDeLimite(e.message)) return respostaDeErro(e);
-    for (const l of linhas) resultados.push({ sku: l.sku, ok: false, erro: e.message });
+    // Grade recusada: junta como o pai está no Tiny, para dar para corrigir.
+    const erro = cadastro && /grade/i.test(e.message) ? `${e.message} — ${resumoDaGrade(cadastro)}` : e.message;
+    for (const l of linhas) resultados.push({ sku: l.sku, ok: false, erro });
   }
 
   return Response.json({ resultados });
