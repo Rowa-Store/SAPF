@@ -611,6 +611,33 @@ function rotuloTipoVariacao(tipo) {
 }
 
 /**
+ * Por que o Tiny acusou pai num código que não é de pai. O caso comum é o
+ * código estar em dois cadastros: o produto simples (modelo atual, sem pai)
+ * e uma variação de um pai antigo. O Tiny casa o item com o cadastro antigo e
+ * recusa — não há variação para trocar, a saída é tirar o código do antigo.
+ */
+async function motivoCodigoSemPai(produtos, conta) {
+  const tipos = produtos.map((p) => rotuloTipoVariacao(p.tipoVariacao)).join(' e ');
+  const variacao = produtos.find((p) => p.tipoVariacao === 'V');
+  if (!variacao) return `o Tiny cadastra este código como ${tipos}, não como pai`;
+
+  let pai = '';
+  try {
+    const idPai = (await obterProduto(variacao.id, conta))?.idProdutoPai;
+    if (idPai && String(idPai) !== '0') {
+      const cadastroPai = await obterProduto(idPai, conta);
+      pai = ` "${cadastroPai?.nome ?? ''}" (id ${idPai})`;
+    }
+  } catch {
+    // Sem o nome do pai a orientação continua valendo.
+  }
+  return (
+    `o código está em mais de um cadastro no Tiny (${tipos}) e o Tiny usa a variação do pai antigo${pai}. ` +
+    'No Tiny, apague o código dessa variação (ou exclua o pai antigo) e deixe só o produto simples'
+  );
+}
+
+/**
  * Troca, nos itens, o código de produto pai pelo da variação certa.
  *
  * @param {object[]} itens `nota_fiscal.itens` do payload ({ item: {...} })
@@ -652,7 +679,7 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
           motivo:
             produtos.length === 0
               ? 'o código não existe no Tiny, nem há um pai com o nome da descrição — confira no Tiny se o nome do pai é igual ao do item'
-              : `o Tiny cadastra este código como ${produtos.map((p) => rotuloTipoVariacao(p.tipoVariacao)).join(' e ')}, não como pai`,
+              : await motivoCodigoSemPai(produtos, conta),
         });
       }
       continue;
@@ -718,7 +745,7 @@ export async function incluirNotaTrocandoProdutosPai(payload, { lerOpcoes = asyn
         : '• nenhum código da nota foi encontrado como produto pai no Tiny';
       throw new Error(
         `${erro.message}.\nNão deu para trocar pela variação automaticamente:\n${detalhe}\n` +
-          'Ajuste o cadastro do produto no Tiny (nome do pai ou grade das variações) e tente de novo.'
+          'Ajuste o cadastro do produto no Tiny e tente de novo.'
       );
     }
 
