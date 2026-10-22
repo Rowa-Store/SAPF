@@ -464,7 +464,7 @@ export default function ControleAtacado() {
                           <div className="aviso aviso-fechavel">
                             <div>
                               <strong>A operação no pedido {p.name} não foi concluída.</strong>
-                              <p style={{ marginBottom: 0 }}>{acao.erro}</p>
+                              <p className="texto-erro" style={{ marginBottom: 0 }}>{acao.erro}</p>
                               {acao.erroEm && <p className="fraco" style={{ marginBottom: 0 }}>Em {formatarDataHoraCurta(acao.erroEm)}</p>}
                             </div>
                             <button className="secundario pequeno" onClick={() => definirAcao(p.id, null)}>

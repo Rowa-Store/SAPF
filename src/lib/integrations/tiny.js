@@ -711,11 +711,13 @@ export async function incluirNotaTrocandoProdutosPai(payload, { lerOpcoes = asyn
       conta,
     });
     if (pendentes.length > 0 || trocas.length === 0) {
+      // Um produto por linha, com o motivo ao lado — as telas mostram as
+      // quebras de linha (classe .texto-erro).
       const detalhe = pendentes.length
-        ? pendentes.map((p) => `${p.codigo}${p.descricao ? ` (${p.descricao})` : ''}: ${p.motivo}`).join('; ')
-        : 'nenhum código da nota foi encontrado como produto pai no Tiny';
+        ? pendentes.map((p) => `• ${p.codigo}${p.descricao ? ` (${p.descricao})` : ''}: ${p.motivo}`).join('\n')
+        : '• nenhum código da nota foi encontrado como produto pai no Tiny';
       throw new Error(
-        `${erro.message}. Não deu para trocar pela variação automaticamente — ${detalhe}. ` +
+        `${erro.message}.\nNão deu para trocar pela variação automaticamente:\n${detalhe}\n` +
           'Ajuste o cadastro do produto no Tiny (nome do pai ou grade das variações) e tente de novo.'
       );
     }
@@ -760,89 +762,28 @@ export async function obterProduto(id, conta = null) {
   return retorno.produto ?? null;
 }
 
-/** Grade da variação como objeto ({ Tamanho: 'P' }) — o Tiny devolve como
- *  objeto ou como lista, e o produto.alterar recebe objeto. */
-function gradeComoObjeto(grade) {
-  if (!grade || typeof grade !== 'object') return {};
-  if (!Array.isArray(grade)) return grade.grade ? gradeComoObjeto(grade.grade) : { ...grade };
-  return Object.fromEntries(
-    grade
-      .flatMap((g) => {
-        const item = g?.grade ?? g;
-        if (!item || typeof item !== 'object') return [];
-        const chave = item.chave ?? item.nome ?? item.tipo ?? item.atributo;
-        // Lista de pares ({ chave, valor }) ou de objetos de uma chave ({ Tamanho: 'P' }).
-        return chave ? [[chave, item.valor ?? item.value ?? '']] : Object.entries(item);
-      })
-      .filter(([k, v]) => k && v)
-  );
-}
-
-/** Para a mensagem de erro: como o pai está no Tiny (variações e grade crua). */
-export function resumoDaGrade(cadastro) {
-  const variacoes = paraArray(cadastro?.variacoes).map((v) => v.variacao ?? v);
-  const exemplo = variacoes[0] ? JSON.stringify(variacoes[0].grade ?? null) : '-';
-  const doPai = cadastro?.grade != null ? ` Grade no pai: ${JSON.stringify(cadastro.grade)}.` : '';
-  return `Pai ${cadastro?.id} na Olist com ${variacoes.length} variação(ões); grade da 1ª: ${exemplo}.${doPai}`;
-}
-
-/** Variações de um produto pai do Tiny, já desembrulhadas. */
-export function variacoesDoPai(cadastro) {
-  return paraArray(cadastro?.variacoes)
-    .map((v) => v.variacao ?? v)
-    .map((v) => ({ id: String(v.id), codigo: String(v.codigo ?? '').trim(), preco: v.preco, grade: gradeComoObjeto(v.grade) }));
-}
-
 /**
- * Produto pai da Olist que corresponde a um produto do Shopify (uma cor).
- *
- * Na Olist, cada cor é um pai SEM código, com os tamanhos como variações (o
- * SKU fica na variação). O pai é achado pelo nome igual ao título do Shopify
- * entre os ativos (sem ativo, entre os inativos); se não há, pelo pai de uma
- * variação com algum dos SKUs.
- * Os SKUs que não estão nas variações do pai são procurados no resto da
- * conta: código usado em outro produto não pode virar variação nova.
- *
- * @returns {Promise<{ pai: object|null, duplicados?: number,
- *   foraDoPai: Record<string, { id: string, tipoVariacao: string }> }>}
- *   foraDoPai: por código normalizado.
+ * Cadastro de cada código na Olist, no modelo sem pai (um produto simples
+ * por SKU). Por código normalizado:
+ *   - null: não existe;
+ *   - { simples }: o cadastro completo do produto simples;
+ *   - { variacao: { id } }: o código é variação de um produto pai (modelo antigo);
+ *   - { duplicados }: mais de um produto simples com o código.
  */
-export async function produtoPaiNoTiny({ nome, codigos = [] }, conta = null) {
-  const alvo = normalizarOpcao(nome);
+export async function produtosNoTinyPorCodigo(codigos, conta = null) {
+  const resultado = {};
   // Uma chamada por vez: a API do Tiny limita chamadas por minuto.
-  const paisCom = async (situacao) =>
-    (await pesquisarProdutos(nome, conta, { situacao })).filter(
-      (p) => p.tipoVariacao === 'P' && normalizarOpcao(p.nome) === alvo
-    );
-  // Sem pai ativo, vale o inativo: o Tiny não deixa incluir outro com o
-  // mesmo nome, então o caminho é atualizar (e reativar) o que existe.
-  let pais = await paisCom('A');
-  if (!pais.length) pais = await paisCom('I');
-  if (pais.length > 1) return { pai: null, duplicados: pais.length, foraDoPai: {} };
-
-  let idPai = pais[0]?.id ?? null;
-  const achadosPorCodigo = {};
-  if (!idPai) {
-    for (const codigo of codigos) {
-      const produtos = await produtosPorCodigo(codigo, conta);
-      achadosPorCodigo[normalizarCodigo(codigo)] = produtos;
-      const variacao = produtos.find((p) => p.tipoVariacao === 'V');
-      if (!variacao) continue;
-      idPai = (await obterProduto(variacao.id, conta))?.idProdutoPai ?? null;
-      if (idPai) break;
-    }
-  }
-
-  const pai = idPai ? await obterProduto(idPai, conta) : null;
-  const doPai = new Set(variacoesDoPai(pai).map((v) => normalizarCodigo(v.codigo)));
-  const foraDoPai = {};
   for (const codigo of codigos) {
-    const chave = normalizarCodigo(codigo);
-    if (doPai.has(chave)) continue;
-    const produtos = achadosPorCodigo[chave] ?? (await produtosPorCodigo(codigo, conta));
-    if (produtos.length) foraDoPai[chave] = { id: String(produtos[0].id), tipoVariacao: produtos[0].tipoVariacao };
+    const produtos = await produtosPorCodigo(codigo, conta);
+    const simples = produtos.filter((p) => p.tipoVariacao !== 'V' && p.tipoVariacao !== 'P');
+    const variacao = produtos.find((p) => p.tipoVariacao === 'V');
+    let achado = null;
+    if (simples.length > 1) achado = { duplicados: simples.length };
+    else if (simples.length === 1) achado = { simples: await obterProduto(simples[0].id, conta) };
+    else if (variacao) achado = { variacao: { id: String(variacao.id) } };
+    resultado[normalizarCodigo(codigo)] = achado;
   }
-  return { pai, foraDoPai };
+  return resultado;
 }
 
 /**

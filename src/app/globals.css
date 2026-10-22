@@ -278,6 +278,8 @@ a.botao-link:hover { background: var(--realce); border-color: var(--tinta-fraca)
 
 .aviso-fechavel { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; }
 .aviso-fechavel button { flex-shrink: 0; }
+/* Mensagens de erro com um item por linha (ex.: produtos pai que o Tiny recusou). */
+.texto-erro { white-space: pre-line; }
 
 
 /* Fica grudada no topo ao rolar a tabela: a emissão em lote está sempre à mão. */

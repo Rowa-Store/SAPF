@@ -246,7 +246,7 @@ export default function IncluirRascunho({ params }) {
       {erroEnvio && (
         <div className="aviso">
           <strong>A inclusão não foi concluída.</strong>
-          <p>{erroEnvio}</p>
+          <p className="texto-erro">{erroEnvio}</p>
         </div>
       )}
 
@@ -734,7 +734,7 @@ export default function IncluirRascunho({ params }) {
           {erroEmissao && (
             <div className="aviso" style={{ marginTop: '1rem' }}>
               <strong>A nota não foi emitida.</strong>
-              <p>{erroEmissao}</p>
+              <p className="texto-erro">{erroEmissao}</p>
             </div>
           )}
         </>

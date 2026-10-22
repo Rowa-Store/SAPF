@@ -140,7 +140,7 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
       {erroEnvio && (
         <div className="aviso">
           <strong>A correção não foi concluída.</strong>
-          <p>{erroEnvio}</p>
+          <p className="texto-erro">{erroEnvio}</p>
         </div>
       )}
 
