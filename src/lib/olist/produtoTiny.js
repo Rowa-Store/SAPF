@@ -298,3 +298,9 @@ export function paiParaAlterar(comparado, cadastro, variacoesAtuais, linhas) {
     variacoes: [...existentes, ...novas],
   };
 }
+
+/** Payload de produto.alterar que só inativa o pai (sem mexer em variações). */
+export function paiParaInativar(comparado, cadastro) {
+  const { variacoes, ...pai } = paiParaAlterar(comparado, cadastro, [], []);
+  return { ...pai, situacao: 'I' };
+}

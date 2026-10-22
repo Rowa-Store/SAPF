@@ -10,11 +10,13 @@
 // cor é um pai sem código com os tamanhos como variações:
 //   - pai existe: produto.alterar no pai — nome, NCM e peso do pai, e o
 //     preço das variações marcadas; SKU marcado que falta vira variação nova;
-//   - pai não existe: produto.incluir do pai com as variações marcadas.
+//   - pai não existe: produto.incluir do pai com as variações marcadas;
+//   - pai vazio (sem variações) que recusa a grade: inativado e trocado por
+//     um pai novo, como no "não existe".
 
 import { alterarProduto, erroDeLimite, incluirProduto, resumoDaGrade, variacoesDoPai } from '@/lib/integrations/tiny';
 import { compararProdutoPorId } from '@/lib/olist/comparacao';
-import { normalizarCodigo, paiParaAlterar, paiParaIncluir } from '@/lib/olist/produtoTiny';
+import { normalizarCodigo, paiParaAlterar, paiParaInativar, paiParaIncluir } from '@/lib/olist/produtoTiny';
 import { erroJson } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -33,6 +35,24 @@ function respostaDeErro(e) {
   return erroDeLimite(e.message)
     ? erroJson('Limite de chamadas por minuto da Olist atingido.', 429, { limite: true })
     : erroJson(e.message, 502);
+}
+
+/**
+ * produto.alterar do pai. Pai SEM variações que recusa a grade (cadastrado
+ * sem os níveis de grade — o Tiny não deixa pendurar variação nele) é
+ * inativado e trocado por um pai novo com as variações. Inativa antes de
+ * incluir: se a inclusão falhar, a próxima tentativa já cai no "pai não
+ * existe" em vez de achar dois pais com o mesmo nome.
+ */
+async function alterarPai(produto, cadastro, linhas) {
+  const atuais = variacoesDoPai(cadastro);
+  try {
+    await alterarProduto(cadastro.id, paiParaAlterar(produto, cadastro, atuais, linhas));
+  } catch (e) {
+    if (atuais.length || !/grade/i.test(e.message)) throw e;
+    await alterarProduto(cadastro.id, paiParaInativar(produto, cadastro));
+    await incluirProduto(paiParaIncluir(produto, linhas));
+  }
 }
 
 export async function POST(request) {
@@ -60,7 +80,7 @@ export async function POST(request) {
   try {
     let acao;
     if (cadastro) {
-      await alterarProduto(cadastro.id, paiParaAlterar(produto, cadastro, variacoesDoPai(cadastro), linhas));
+      await alterarPai(produto, cadastro, linhas);
       acao = 'atualizado';
     } else {
       await incluirProduto(paiParaIncluir(produto, linhas));
