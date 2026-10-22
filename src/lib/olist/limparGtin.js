@@ -2,13 +2,14 @@
 // deixa vazios o GTIN e o GTIN da embalagem do produto e de todas as
 // variações dele. ESCREVE NA CONTA DE PRODUÇÃO.
 //
-// No Tiny o GTIN da variação só muda pelo produto.alterar do PAI, com todas
-// as variações (com o id, senão viram variações novas) — por isso uma
-// variação leva à limpeza do pai inteiro. O payload repete do cadastro atual
+// O produto.obter do pai NÃO devolve o GTIN das variações (conferido: pai
+// "já limpo" com as variações ainda com GTIN). Cada variação é lida e
+// conferida pelo próprio id. Pelo pai, o produto.alterar vai com todas as
+// variações (com o id, senão viram variações novas). O payload repete do cadastro atual
 // o que o produto.alterar exige (código, nome, unidade, preço, origem,
 // situação, tipo, NCM, peso), como paiParaAlterar em produtoTiny.js.
 
-import { alterarProduto, obterProduto } from '../integrations/tiny.js';
+import { alterarProduto, erroDeLimite, obterProduto } from '../integrations/tiny.js';
 
 const temValor = (v) => String(v ?? '').trim() !== '';
 
@@ -54,26 +55,78 @@ function semGtin(cadastro) {
   };
 }
 
+/** GTIN da variação no cadastro dela mesma — o do pai não traz o das variações. */
+function gtinsDaVariacao(cadastro) {
+  return temValor(cadastro?.gtin) || temValor(cadastro?.gtin_embalagem) ? [cadastro.codigo || `variação ${cadastro.id}`] : [];
+}
+
 /**
- * Limpa o GTIN do produto `id` — se for uma variação, do pai dela, com todas
- * as variações. Relê depois de gravar para conferir.
+ * Variação: o produto.obter do PAI não devolve o GTIN das variações, então a
+ * conferência é pelo cadastro da própria variação. Tenta primeiro alterar a
+ * variação pelo id dela; se o GTIN continuar, altera pelo pai (com todas as
+ * variações). `via` diz o que resolveu.
+ */
+async function limparGtinDaVariacao(variacao) {
+  const id = String(variacao.id);
+  const nome = variacao.nome ?? '';
+  const base = { alvo: id, ids: [id], nome };
+  if (!gtinsDaVariacao(variacao).length) return { ...base, acao: 'ja_limpo', restantes: [], conferido: true };
+
+  const tentativas = [
+    ['variação', async () => {
+      const { variacoes: _v, classe_produto: _c, ...proprio } = semGtin({ ...variacao, variacoes: [] });
+      await alterarProduto(id, proprio);
+    }],
+    ['pai', async () => {
+      const pai = await obterProduto(variacao.idProdutoPai);
+      if (!pai) throw new Error(`Pai da variação ${id} não encontrado na Olist.`);
+      await alterarProduto(String(pai.id), semGtin(pai));
+    }],
+  ];
+
+  const erros = [];
+  let restantes = gtinsDaVariacao(variacao);
+  for (const [via, alterar] of tentativas) {
+    try {
+      await alterar();
+    } catch (e) {
+      // Limite: sobe para a tela esperar e repetir — repetir é seguro.
+      if (erroDeLimite(e.message)) throw e;
+      erros.push(`pela ${via}: ${e.message}`);
+      continue;
+    }
+    let depois;
+    try {
+      depois = await obterProduto(id);
+    } catch {
+      return { ...base, acao: 'limpo', via, restantes: [], conferido: false };
+    }
+    restantes = gtinsDaVariacao(depois);
+    if (!restantes.length) return { ...base, acao: 'limpo', via, restantes, conferido: true };
+  }
+  if (erros.length === tentativas.length) throw new Error(`Olist recusou a limpeza — ${erros.join(' | ')}`);
+  return { ...base, acao: 'limpo', restantes, conferido: true, erros };
+}
+
+/**
+ * Limpa o GTIN do produto `id`. Produto simples ou pai: pelo próprio
+ * cadastro (o pai leva as variações junto). Variação: ver
+ * limparGtinDaVariacao. Relê depois de gravar para conferir.
  *
  * @returns {Promise<{ alvo: string, ids: string[], nome: string,
- *   acao: 'limpo'|'ja_limpo', restantes: string[], conferido: boolean }>}
- *   alvo: o id que foi alterado (o pai, quando `id` é variação); ids: ele e
- *   as variações dele — a tela pula as outras da fila. restantes: o que
- *   continuou com GTIN depois.
+ *   acao: 'limpo'|'ja_limpo', restantes: string[], conferido: boolean, via?: string }>}
+ *   alvo: o id que foi alterado; ids: os que a tela pode tirar da fila.
+ *   restantes: o que continuou com GTIN depois.
  */
 export async function limparGtinDoProduto(id) {
-  let cadastro = await obterProduto(id);
+  const cadastro = await obterProduto(id);
   if (!cadastro) throw new Error(`Produto ${id} não encontrado na Olist.`);
-  if (temValor(cadastro.idProdutoPai) && String(cadastro.idProdutoPai) !== '0') {
-    cadastro = await obterProduto(cadastro.idProdutoPai);
-    if (!cadastro) throw new Error(`Pai da variação ${id} não encontrado na Olist.`);
-  }
+  if (temValor(cadastro.idProdutoPai) && String(cadastro.idProdutoPai) !== '0') return limparGtinDaVariacao(cadastro);
+
   const alvo = String(cadastro.id);
   const nome = cadastro.nome ?? '';
-  const ids = [alvo, ...variacoesCruas(cadastro).map((v) => String(v.id))];
+  // Só o pai sai da fila: o GTIN das variações é conferido uma a uma.
+  const ids = [alvo];
   if (!gtinsRestantes(cadastro).length) return { alvo, ids, nome, acao: 'ja_limpo', restantes: [], conferido: true };
 
   await alterarProduto(alvo, semGtin(cadastro));

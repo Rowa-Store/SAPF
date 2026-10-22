@@ -168,7 +168,9 @@ export function useLimpezaGtin() {
           ...d.feitos,
           [item.id]: {
             estado: 'erro',
-            erro: `A Olist respondeu OK, mas ao ler de novo ainda há GTIN em: ${r.corpo.restantes.join(', ')}.`,
+            erro:
+              `A Olist respondeu OK, mas ao ler de novo ainda há GTIN em: ${r.corpo.restantes.join(', ')}.` +
+              (r.corpo.erros?.length ? ` Recusas: ${r.corpo.erros.join(' | ')}` : ''),
           },
         };
       } else if (!r.corpo.conferido) {
