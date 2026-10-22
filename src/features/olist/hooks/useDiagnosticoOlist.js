@@ -23,7 +23,7 @@ const SALVAR_A_CADA_MS = 2000;
 const CHAVE_GUARDADA = 'sapf:diagnostico-olist';
 // Guardado por uma versão anterior, que lia o catálogo inteiro da Olist.
 const CHAVE_CATALOGO_ANTIGA = 'sapf:diagnostico-olist:catalogo';
-const VERSAO = 2;
+const VERSAO = 3;
 
 // Situações de SKU que o "trazer do Shopify" corrige.
 const SITUACOES_A_ENVIAR = ['diferente', 'nova'];
@@ -36,7 +36,12 @@ const esperar = (ms) => new Promise((resolver) => setTimeout(resolver, ms));
 // "listar todos os problemas" marcado.
 export const PROBLEMAS = [
   { chave: 'nao_cadastrado', rotulo: 'Não está na Olist', classe: 'marca-erro', principal: true, tem: (p) => p.situacao === 'nao_encontrado' },
-  { chave: 'duplicado', rotulo: 'Duplicado na Olist', classe: 'marca-erro', tem: (p) => p.situacao === 'duplicado' },
+  {
+    chave: 'duplicado',
+    rotulo: 'Código duplicado na Olist',
+    classe: 'marca-erro',
+    tem: (p) => p.linhas.some((l) => l.situacao === 'bloqueado'),
+  },
   {
     chave: 'sku_faltando',
     rotulo: 'SKU faltando',
@@ -49,13 +54,13 @@ export const PROBLEMAS = [
     rotulo: 'Desatualizado',
     classe: 'marca-acessorio',
     principal: true,
-    tem: (p) => p.diferencasPai.length > 0 || p.linhas.some((l) => l.diferencas.length > 0),
+    tem: (p) => p.linhas.some((l) => l.situacao === 'diferente'),
   },
   {
-    chave: 'sku_em_outro',
-    rotulo: 'SKU em outro produto',
+    chave: 'sku_em_pai',
+    rotulo: 'SKU em produto pai',
     classe: 'marca-erro',
-    tem: (p) => p.linhas.some((l) => l.situacao === 'fora_do_pai'),
+    tem: (p) => p.linhas.some((l) => l.situacao === 'em_pai'),
   },
   { chave: 'sem_sku', rotulo: 'Sem SKU no Shopify', classe: 'marca-erro', tem: (p) => p.linhas.some((l) => l.situacao === 'sem_sku') },
 ];
@@ -67,22 +72,23 @@ const NOME_CAMPO = { nome: 'nome', ncm: 'NCM', peso: 'peso', preco: 'preço' };
 function resumir(produto) {
   const problemas = PROBLEMAS.filter((p) => p.tem(produto)).map((p) => p.chave);
   const comPreco = produto.linhas.filter((l) => l.diferencas.includes('preco')).length;
+  // Diferente em algo além do preço (ou só inativo na Olist).
+  const comOutros = produto.linhas.filter(
+    (l) => l.situacao === 'diferente' && (!l.diferencas.length || l.diferencas.some((c) => c !== 'preco'))
+  ).length;
   const quantos = (situacao) => produto.linhas.filter((l) => l.situacao === situacao).length;
   // Cada detalhe é ligado ao problema dele: a tela esconde os dos problemas não listados.
   const detalhes = [
-    produto.diferencasPai.length > 0 && {
-      problema: 'desatualizado',
-      texto: `${produto.diferencasPai.map((c) => NOME_CAMPO[c]).join(', ')} do pai`,
-    },
+    comOutros > 0 && { problema: 'desatualizado', texto: `nome, NCM, peso ou situação em ${comOutros} SKU(s)` },
     comPreco > 0 && { problema: 'desatualizado', texto: `preço em ${comPreco} SKU(s)` },
     produto.situacao === 'encontrado' && quantos('nova') > 0 && { problema: 'sku_faltando', texto: `${quantos('nova')} SKU(s) faltando` },
-    quantos('fora_do_pai') > 0 && { problema: 'sku_em_outro', texto: `${quantos('fora_do_pai')} SKU(s) em outro produto` },
+    quantos('em_pai') > 0 && { problema: 'sku_em_pai', texto: `${quantos('em_pai')} SKU(s) como variação de produto pai` },
     quantos('sem_sku') > 0 && { problema: 'sem_sku', texto: `${quantos('sem_sku')} variante(s) sem SKU` },
     produto.situacao === 'nao_encontrado' && {
       problema: 'nao_cadastrado',
       texto: `${produto.linhas.filter((l) => l.sku).length} SKU(s) para cadastrar`,
     },
-    produto.situacao === 'duplicado' && { problema: 'duplicado', texto: `${produto.duplicados} produtos ativos com este nome` },
+    quantos('bloqueado') > 0 && { problema: 'duplicado', texto: `${quantos('bloqueado')} SKU(s) com código duplicado` },
   ].filter(Boolean);
   return {
     status: produto.status,

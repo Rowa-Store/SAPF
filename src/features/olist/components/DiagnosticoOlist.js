@@ -8,7 +8,7 @@
 // mostra só o que tem divergência ou não está cadastrado; os iguais entram
 // só na contagem. Por padrão a lista traz só os desatualizados e os sem
 // cadastro; "listar todos os problemas" mostra também os que só se corrigem
-// na Olist (duplicado, SKU em outro produto, sem SKU). O último diagnóstico fica lembrado neste navegador.
+// na Olist (código duplicado, SKU em produto pai, sem SKU). O último diagnóstico fica lembrado neste navegador.
 // "Corrigir todos" traz do Shopify o que a lista mostra (ESCREVE NA CONTA DE
 // PRODUÇÃO); "Abrir" leva o produto ao cadastro, para ver lado a lado.
 
@@ -156,7 +156,7 @@ export default function DiagnosticoOlist() {
         </div>
         <label className="campo-check" style={{ marginTop: '0.75rem' }}>
           <input type="checkbox" checked={todosProblemas} onChange={(e) => trocarTodosProblemas(e.target.checked)} />
-          Listar todos os problemas — também duplicados, SKU em outro produto e variantes sem SKU
+          Listar todos os problemas — também códigos duplicados, SKUs em produto pai e variantes sem SKU
         </label>
       </div>
 

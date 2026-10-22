@@ -2,10 +2,10 @@
 //
 // Busca um SKU (ou nome): o Shopify devolve o produto com todos os tamanhos
 // (e, com "família", as outras cores do mesmo modelo). Cada produto aparece
-// lado a lado com o pai dele na Olist — a Olist à esquerda e o Shopify à
-// direita, cada lado no visual do próprio sistema: primeiro os dados do pai
-// (nome, NCM, peso), depois uma linha por tamanho (variação). "Trazer do
-// Shopify" grava os SKUs marcados.
+// lado a lado com a Olist — a Olist à esquerda e o Shopify à direita, cada
+// lado no visual do próprio sistema: primeiro o produto (NCM e peso que vão
+// para a Olist), depois uma linha por tamanho. Na Olist cada tamanho é um
+// produto simples, sem pai. "Trazer do Shopify" grava os SKUs marcados.
 
 'use client';
 
@@ -13,7 +13,6 @@ import { useEffect, useState } from 'react';
 import AbasOlist from '@/components/ui/AbasOlist';
 import Modal from '@/components/ui/Modal';
 import { formatarMoedaOuTraco } from '@/lib/format';
-import { CAMPOS_PAI } from '@/lib/olist/produtoTiny';
 import { FILTROS, useProdutosOlist } from '../hooks/useProdutosOlist';
 
 const FORMATO = {
@@ -30,8 +29,8 @@ const SITUACAO = {
   igual: ['marca-ok', 'igual'],
   diferente: ['marca-acessorio', 'diferente'],
   nova: ['marca-erro', 'não está na Olist'],
-  fora_do_pai: ['marca-erro', 'SKU em outro produto'],
-  bloqueado: ['marca-erro', 'produto duplicado'],
+  em_pai: ['marca-erro', 'variação de produto pai'],
+  bloqueado: ['marca-erro', 'código duplicado'],
   sem_sku: ['marca-erro', 'sem SKU no Shopify'],
 };
 
@@ -52,50 +51,31 @@ function MarcaSituacao({ linha, resultado, verErro }) {
 
 // Rótulos como cada sistema mostra na tela dele: a Olist em português, o
 // admin do Shopify em inglês.
-const ROTULO_OLIST = { nome: 'Nome do produto', ncm: 'NCM', peso: 'Peso Líquido' };
+const ROTULO_OLIST = { nome: 'Nome do produto', preco: 'Preço de venda', ncm: 'NCM', peso: 'Peso Líquido' };
 const ROTULO_SHOPIFY = { nome: 'Title', peso: 'Weight' };
 
 const STATUS_SHOPIFY = { ACTIVE: 'Active', DRAFT: 'Draft', ARCHIVED: 'Archived' };
 
-/** "Tamanho P" — os valores da grade, ou a opção da variante. */
-function textoDaGrade(grade, opcao) {
-  const valores = Object.values(grade ?? {}).filter(Boolean);
-  return valores.length ? valores.join(' / ') : opcao || '—';
-}
-
-/** Cabeçalho do lado da Olist: o pai, ou por que ele não está lá. */
-function PaiOlist({ produto, caixaProduto, naFila }) {
+/** Cabeçalho do lado da Olist: o produto e o NCM e o peso que vão para cada SKU. */
+function ProdutoOlist({ produto, caixaProduto, naFila }) {
   return (
     <div className="lado-olist olist-cabecalho">
       <span className="olist-marca">olist</span>
       <div className="olist-titulo">
         {caixaProduto}
-        <span>{produto.olist?.nome ?? produto.titulo}</span>
+        <span>{produto.titulo}</span>
         {naFila?.estado === 'ok' && <span className="marca marca-ok">OK</span>}
         {naFila?.estado === 'erro' && <span className="marca marca-erro">com erro</span>}
       </div>
-      {produto.situacao === 'encontrado' ? (
-        <div className="olist-campos olist-campos-pai">
-          {CAMPOS_PAI.map((c) => {
-            const diferente = produto.diferencasPai.includes(c.chave);
-            return (
-              <div key={c.chave} className={diferente ? 'campo-diferente' : undefined}>
-                <span className="olist-rotulo">{ROTULO_OLIST[c.chave]}</span>
-                <span className="olist-valor">{valor(c.chave, produto.olist[c.chave])}</span>
-                {/* O que vai para a Olist: o NCM não tem lado Shopify para mostrar. */}
-                {diferente && <span className="valor-novo">→ {valor(c.chave, produto.esperado[c.chave])}</span>}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <p className="olist-vazio">
-          {produto.situacao === 'duplicado'
-            ? `Há ${produto.duplicados} produtos ativos com este nome na Olist — corrija lá antes.`
-            : 'Produto não encontrado na Olist. Os SKUs marcados serão cadastrados como um produto com variações' +
-              (produto.esperado.ncm ? `, NCM ${produto.esperado.ncm}.` : '.')}
-        </p>
-      )}
+      <div className="olist-campos olist-campos-pai">
+        {['ncm', 'peso'].map((chave) => (
+          <div key={chave}>
+            <span className="olist-rotulo">{ROTULO_OLIST[chave]}</span>
+            <span className="olist-valor">{valor(chave, produto.esperado[chave])}</span>
+          </div>
+        ))}
+      </div>
+      <p className="olist-vazio">Cada tamanho é um produto simples na Olist, com o SKU como código — sem produto pai.</p>
     </div>
   );
 }
@@ -115,7 +95,7 @@ function PaiShopify({ produto }) {
       {produto.tipo && <div className="shopify-tipo">Type · {produto.tipo}</div>}
       <div className="shopify-campos shopify-campos-pai">
         {['nome', 'peso'].map((chave) => (
-          <div key={chave} className={produto.diferencasPai.includes(chave) ? 'campo-diferente' : undefined}>
+          <div key={chave}>
             <span className="shopify-rotulo">{ROTULO_SHOPIFY[chave]}</span>
             <span className="shopify-campo">{valor(chave, produto.esperado[chave])}</span>
           </div>
@@ -125,8 +105,10 @@ function PaiShopify({ produto }) {
   );
 }
 
-/** Uma variação (tamanho) do lado da Olist. */
-function VariacaoOlist({ linha, resultado, enviavel, selecionado, marcar, verErro }) {
+/** Um SKU (produto simples) do lado da Olist. */
+function SkuOlist({ linha, resultado, enviavel, selecionado, marcar, verErro }) {
+  // Campos para mostrar: os da Olist, ou os que vão ser cadastrados.
+  const mostrar = linha.olist ? ['nome', 'preco', ...linha.diferencas.filter((c) => c === 'ncm' || c === 'peso')] : [];
   return (
     <div className="lado-olist">
       <div className="olist-variacao">
@@ -144,25 +126,25 @@ function VariacaoOlist({ linha, resultado, enviavel, selecionado, marcar, verErr
             <span className="olist-valor">{linha.sku || '—'}</span>
           </span>
         </label>
-        {linha.olist && (
-          <>
-            <div>
-              <span className="olist-rotulo">Variação</span>
-              <span className="olist-valor">{textoDaGrade(linha.olist.grade)}</span>
+        {mostrar.map((chave) => {
+          const diferente = linha.diferencas.includes(chave);
+          return (
+            <div key={chave} className={diferente ? 'campo-diferente' : undefined}>
+              <span className="olist-rotulo">{ROTULO_OLIST[chave]}</span>
+              <span className="olist-valor">{valor(chave, linha.olist[chave])}</span>
+              {diferente && <span className="valor-novo">→ {valor(chave, linha.esperado[chave])}</span>}
             </div>
-            <div className={linha.diferencas.includes('preco') ? 'campo-diferente' : undefined}>
-              <span className="olist-rotulo">Preço de venda</span>
-              <span className="olist-valor">{valor('preco', linha.olist.preco)}</span>
-            </div>
-          </>
-        )}
+          );
+        })}
         <div className="olist-situacao">
           <MarcaSituacao linha={linha} resultado={resultado} verErro={verErro} />
         </div>
       </div>
-      {linha.situacao === 'fora_do_pai' && (
+      {linha.situacao === 'nova' && <p className="olist-vazio">Vai ser cadastrado como “{linha.esperado.nome}”.</p>}
+      {linha.olist && !linha.olist.ativo && <p className="olist-vazio">Inativo na Olist — a gravação reativa.</p>}
+      {linha.situacao === 'em_pai' && (
         <p className="olist-vazio">
-          O SKU já está na Olist em outro produto (id {linha.foraDoPai.id}) — corrija lá antes.
+          O SKU é variação de um produto pai na Olist (id {linha.emPai.id}) — exclua a variação lá antes.
         </p>
       )}
     </div>
@@ -177,7 +159,7 @@ function VarianteShopify({ linha }) {
         <div className="shopify-campos">
           <div>
             <span className="shopify-rotulo">Variant</span>
-            <span className="shopify-campo">{textoDaGrade(linha.grade, linha.shopify.opcao)}</span>
+            <span className="shopify-campo">{linha.shopify.opcao || '—'}</span>
           </div>
           <div className={linha.diferencas.includes('preco') ? 'campo-diferente' : undefined}>
             <span className="shopify-rotulo">Price</span>
@@ -230,12 +212,12 @@ function ParProduto({ produto, resultados, enviavel, selecionados, marcar, verEr
     <section className="par-produto">
       <ProgressoNaFila naFila={naFila} />
       <div className="par-linha">
-        <PaiOlist produto={produto} caixaProduto={caixaProduto} naFila={naFila} />
+        <ProdutoOlist produto={produto} caixaProduto={caixaProduto} naFila={naFila} />
         <PaiShopify produto={produto} />
       </div>
       {produto.linhas.map((l, i) => (
         <div className="par-linha" key={l.sku || i}>
-          <VariacaoOlist
+          <SkuOlist
             linha={l}
             resultado={resultados[l.sku]}
             enviavel={enviavel(l)}

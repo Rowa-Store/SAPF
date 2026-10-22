@@ -156,7 +156,7 @@ export function useProdutosOlist() {
     return resultadosDoProduto.map((r) => {
       const linha = atualizado.linhas.find((l) => l.sku === r.sku);
       if (!r.ok || !linha || linha.situacao === 'igual') return r;
-      const campos = [...atualizado.diferencasPai, ...linha.diferencas].join(', ') || linha.situacao;
+      const campos = linha.diferencas.join(', ') || linha.situacao;
       return {
         sku: r.sku,
         ok: false,
