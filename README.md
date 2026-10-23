@@ -167,6 +167,9 @@ um produto por cor, uma variante por tamanho.
 O NCM não vem do Shopify: sai das palavras do nome e do tipo de produto,
 pelas regras em `src/lib/fiscal/ncm.js` (com a tabela de NCMs da Rowa).
 Produto que nenhuma regra reconhece vai sem NCM e não mexe no da Olist.
+A aba **Corrigir NCM** (`/olist/ncm`) aplica as mesmas regras, pelo nome na
+Olist, em todos os produtos já cadastrados (simples, pais e variações),
+gravando só onde o NCM estiver diferente.
 O GTIN aparece do lado do Shopify só para consulta e vai sempre vazio para a
 Olist. Produto incluído entra com origem 0 (nacional).
 

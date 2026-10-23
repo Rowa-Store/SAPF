@@ -9,6 +9,7 @@ const ABAS = [
   { href: '/olist', rotulo: 'Cadastro de produtos' },
   { href: '/olist/diagnostico', rotulo: 'Diagnóstico' },
   { href: '/olist/gtin', rotulo: 'Limpar GTIN' },
+  { href: '/olist/ncm', rotulo: 'Corrigir NCM' },
   { href: '/olist/scan-gtin', rotulo: 'Scan GTIN' },
 ];
 

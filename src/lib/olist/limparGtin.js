@@ -4,20 +4,12 @@
 //
 // O produto.obter do pai NÃO devolve o GTIN das variações (conferido: pai
 // "já limpo" com as variações ainda com GTIN). Cada variação é lida e
-// conferida pelo próprio id. Pelo pai, o produto.alterar vai com todas as
-// variações (com o id, senão viram variações novas). O payload repete do cadastro atual
-// o que o produto.alterar exige (código, nome, unidade, preço, origem,
-// situação, tipo, NCM, peso), como paiParaAlterar em produtoTiny.js.
+// conferida pelo próprio id. O payload sai de cadastroParaAlterar.js.
 
 import { alterarProduto, erroDeLimite, obterProduto } from '../integrations/tiny.js';
+import { cadastroParaAlterar, temValor, variacaoParaAlterar, variacoesCruas } from './cadastroParaAlterar.js';
 
-const temValor = (v) => String(v ?? '').trim() !== '';
-
-function variacoesCruas(cadastro) {
-  const v = cadastro?.variacoes;
-  const lista = Array.isArray(v) ? v : v && typeof v === 'object' ? [v] : [];
-  return lista.map((item) => item.variacao ?? item);
-}
+const SEM_GTIN = { gtin: '', gtin_embalagem: '' };
 
 /** Campos de GTIN que ainda têm valor no cadastro (pai e variações). */
 export function gtinsRestantes(cadastro) {
@@ -27,32 +19,6 @@ export function gtinsRestantes(cadastro) {
     if (temValor(v.gtin) || temValor(v.gtin_embalagem)) restantes.push(v.codigo || `variação ${v.id}`);
   }
   return restantes;
-}
-
-function semGtin(cadastro) {
-  const variacoes = variacoesCruas(cadastro);
-  return {
-    codigo: cadastro.codigo ?? '',
-    nome: cadastro.nome,
-    unidade: cadastro.unidade || 'UN',
-    preco: cadastro.preco,
-    origem: cadastro.origem ?? '0',
-    situacao: cadastro.situacao || 'A',
-    tipo: cadastro.tipo || 'P',
-    classe_produto: cadastro.classe_produto || (variacoes.length ? 'V' : 'S'),
-    ...(cadastro.ncm ? { ncm: cadastro.ncm } : {}),
-    ...(temValor(cadastro.peso_liquido) ? { peso_liquido: cadastro.peso_liquido } : {}),
-    ...(temValor(cadastro.peso_bruto) ? { peso_bruto: cadastro.peso_bruto } : {}),
-    gtin: '',
-    gtin_embalagem: '',
-    ...(variacoes.length
-      ? {
-          variacoes: variacoes.map((v) => ({
-            variacao: { id: String(v.id), codigo: v.codigo, preco: v.preco, grade: v.grade, gtin: '', gtin_embalagem: '' },
-          })),
-        }
-      : {}),
-  };
 }
 
 /** GTIN da variação no cadastro dela mesma — o do pai não traz o das variações. */
@@ -74,13 +40,12 @@ async function limparGtinDaVariacao(variacao) {
 
   const tentativas = [
     ['variação', async () => {
-      const { variacoes: _v, classe_produto: _c, ...proprio } = semGtin({ ...variacao, variacoes: [] });
-      await alterarProduto(id, proprio);
+      await alterarProduto(id, variacaoParaAlterar(variacao, SEM_GTIN));
     }],
     ['pai', async () => {
       const pai = await obterProduto(variacao.idProdutoPai);
       if (!pai) throw new Error(`Pai da variação ${id} não encontrado na Olist.`);
-      await alterarProduto(String(pai.id), semGtin(pai));
+      await alterarProduto(String(pai.id), cadastroParaAlterar(pai, SEM_GTIN, SEM_GTIN));
     }],
   ];
 
@@ -129,7 +94,7 @@ export async function limparGtinDoProduto(id) {
   const ids = [alvo];
   if (!gtinsRestantes(cadastro).length) return { alvo, ids, nome, acao: 'ja_limpo', restantes: [], conferido: true };
 
-  await alterarProduto(alvo, semGtin(cadastro));
+  await alterarProduto(alvo, cadastroParaAlterar(cadastro, SEM_GTIN, SEM_GTIN));
 
   // Gravou; a conferência é bônus — se o Tiny recusar por limite agora, não desfaz nada.
   try {
