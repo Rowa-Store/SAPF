@@ -9,6 +9,8 @@
 // só na contagem. Por padrão a lista traz só os desatualizados e os sem
 // cadastro; "listar todos os problemas" mostra também os que só se corrigem
 // na Olist (código duplicado, SKU em produto pai, sem SKU). O último diagnóstico fica lembrado neste navegador.
+// Com o filtro "Não está na Olist" ou "Preço desatualizado" escolhido antes,
+// dá para varrer só aquele problema, mais rápido (ver FOCOS).
 // "Corrigir todos" traz do Shopify o que a lista mostra (ESCREVE NA CONTA DE
 // PRODUÇÃO); "Abrir" leva o produto ao cadastro, para ver lado a lado.
 
@@ -18,7 +20,7 @@ import { useEffect, useState } from 'react';
 import AbasOlist from '@/components/ui/AbasOlist';
 import Modal from '@/components/ui/Modal';
 import { formatarDataHoraCurta } from '@/lib/format';
-import { PROBLEMAS, useDiagnosticoOlist } from '../hooks/useDiagnosticoOlist';
+import { FOCOS, PROBLEMAS, useDiagnosticoOlist } from '../hooks/useDiagnosticoOlist';
 
 const STATUS_SHOPIFY = { ACTIVE: 'Active', DRAFT: 'Draft', ARCHIVED: 'Archived' };
 const POR_CHAVE = Object.fromEntries(PROBLEMAS.map((p) => [p.chave, p]));
@@ -29,7 +31,6 @@ const CHAVE_TODOS = 'sapf:diagnostico-olist:todos-problemas';
 const TEXTO_CORRECAO = {
   fila: () => 'na fila',
   enviando: () => 'enviando…',
-  relendo: () => 'conferindo…',
   aguardando: ({ segundos }) => `limite — ${segundos}s`,
   gravado: () => 'gravado',
 };
@@ -56,6 +57,7 @@ export default function DiagnosticoOlist() {
   const {
     estado,
     trabalho,
+    foco,
     concluido,
     conhecidos,
     iguais,
@@ -95,7 +97,10 @@ export default function DiagnosticoOlist() {
     }
   }
 
-  const listados = PROBLEMAS.filter((p) => todosProblemas || p.principal);
+  // Diagnóstico com foco: só os problemas dele.
+  const listados = PROBLEMAS.filter((p) =>
+    foco ? FOCOS[foco].problemas.includes(p.chave) : todosProblemas || p.principal
+  );
   const chavesListadas = new Set(listados.map((p) => p.chave));
   // Problemas e detalhes do produto que a lista mostra.
   const comListados = divergentes
@@ -113,6 +118,8 @@ export default function DiagnosticoOlist() {
   const visiveis = filtro === 'todos' ? comListados : comListados.filter((p) => p.problemas.includes(filtro));
   const corrigiveis = visiveis.filter((p) => p.enviaveis?.length);
   const skusACorrigir = corrigiveis.reduce((n, p) => n + p.enviaveis.length, 0);
+  // Filtro escolhido que dá para varrer sozinho.
+  const focoEscolhido = FOCOS[filtro] ? filtro : null;
   const contagens = Object.fromEntries(
     listados.map((p) => [p.chave, comListados.filter((d) => d.problemas.includes(p.chave)).length])
   );
@@ -145,11 +152,16 @@ export default function DiagnosticoOlist() {
                 </button>
               )}
               <button
-                className={estado === 'pausado' || concluido ? 'secundario' : undefined}
+                className={estado === 'pausado' || concluido || focoEscolhido ? 'secundario' : undefined}
                 onClick={() => iniciar('completo')}
               >
                 {estado === 'parado' ? 'Iniciar varredura' : 'Varredura completa'}
               </button>
+              {focoEscolhido && (
+                <button onClick={() => iniciar('completo', focoEscolhido)}>
+                  Varrer só “{FOCOS[focoEscolhido].rotulo}”
+                </button>
+              )}
             </>
           )}
           {concluido && <span className="fraco">Último diagnóstico concluído: {formatarDataHoraCurta(concluido)}</span>}
@@ -178,8 +190,9 @@ export default function DiagnosticoOlist() {
       {trabalho && !corrigindo && (
         <p className="fraco" role="status">
           {atualizando ? `Atualização desde ${formatarDataHoraCurta(trabalho.base)}` : 'Varredura completa'}
+          {foco && ` só de “${FOCOS[foco].rotulo}”`}
           {` · lote ${trabalho.lotes} · ${trabalho.verificados} verificados agora`}
-          {' '}· {conhecidos} no diagnóstico · {iguais} iguais · {comListados.length} {todosProblemas ? 'com problema' : 'desatualizados ou sem cadastro'}
+          {' '}· {conhecidos} no diagnóstico · {iguais} iguais · {comListados.length} {foco ? 'com o problema' : todosProblemas ? 'com problema' : 'desatualizados ou sem cadastro'}
           {escondidos > 0 && ` · ${escondidos} com outros problemas (marque “listar todos” para ver)`}
           {falhas.length > 0 && ` · ${falhas.length} com erro`}
           {estado === 'fim' && ' — concluída.'}
@@ -195,24 +208,27 @@ export default function DiagnosticoOlist() {
         </p>
       )}
 
-      {comListados.length > 0 && (
-        <div className="filtros-olist" role="group" aria-label="Filtrar produtos">
-          {[{ chave: 'todos', rotulo: 'Todos' }, ...listados].map((f) =>
-            f.chave !== 'todos' && !contagens[f.chave] ? null : (
-              <button
-                key={f.chave}
-                type="button"
-                className={`filtro-chip${filtro === f.chave ? ' ativo' : ''}`}
-                aria-pressed={filtro === f.chave}
-                onClick={() => setFiltro(f.chave)}
-              >
-                {f.rotulo}{' '}
-                <span className="filtro-contagem">{f.chave === 'todos' ? comListados.length : contagens[f.chave]}</span>
-              </button>
-            )
-          )}
-        </div>
-      )}
+      {/* Sempre à mostra, com os de FOCOS: escolhido antes, o filtro pode restringir a varredura. */}
+      <div className="filtros-olist" role="group" aria-label="Filtrar produtos">
+        {[
+          { chave: 'todos', rotulo: 'Todos' },
+          ...listados,
+          ...PROBLEMAS.filter((p) => FOCOS[p.chave] && !chavesListadas.has(p.chave)),
+        ].map((f) =>
+          f.chave !== 'todos' && !contagens[f.chave] && !FOCOS[f.chave] ? null : (
+            <button
+              key={f.chave}
+              type="button"
+              className={`filtro-chip${filtro === f.chave ? ' ativo' : ''}`}
+              aria-pressed={filtro === f.chave}
+              onClick={() => setFiltro(f.chave)}
+            >
+              {f.rotulo}{' '}
+              <span className="filtro-contagem">{f.chave === 'todos' ? comListados.length : (contagens[f.chave] ?? 0)}</span>
+            </button>
+          )
+        )}
+      </div>
 
       {estado === 'fim' && comListados.length === 0 && falhas.length === 0 && (
         <div className="vazio">

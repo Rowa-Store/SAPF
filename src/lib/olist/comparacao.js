@@ -6,6 +6,9 @@ import { buscarProdutosParaOlist, obterProdutoParaOlist } from '../integrations/
 import { produtosNoTinyPorCodigo } from '../integrations/tiny.js';
 import { compararProduto, normalizarCodigo } from './produtoTiny.js';
 
+// O que o registro da pesquisa do Tiny traz para comparar (sem NCM nem peso).
+const CAMPOS_DA_PESQUISA = ['nome', 'preco'];
+
 const codigosDe = (produto) => produto.variants.map((v) => String(v.sku ?? '').trim()).filter(Boolean);
 
 /**
@@ -28,7 +31,7 @@ export async function compararBusca({ busca, familia = false, skus = null }) {
   const cadastros = {};
   // Um produto por vez: a API do Tiny limita chamadas por minuto.
   for (const produto of produtos) {
-    const noTiny = await produtosNoTinyPorCodigo(codigosDe(produto));
+    const noTiny = await produtosNoTinyPorCodigo(codigosDe(produto), null, { nome: produto.title });
     Object.assign(cadastros, noTiny);
     comparados.push(compararProduto(produto, noTiny));
   }
@@ -36,9 +39,12 @@ export async function compararBusca({ busca, familia = false, skus = null }) {
 }
 
 /** Um produto do Shopify (pelo id) comparado com a Olist — o que a
- *  gravação usa, um produto por requisição. */
-export async function compararProdutoPorId(produtoId) {
+ *  gravação usa, um produto por requisição. `leve`: só nome, preço e
+ *  situação, sem o produto.obter de cada SKU (o diagnóstico que procura só
+ *  os não cadastrados ou os de preço desatualizado). */
+export async function compararProdutoPorId(produtoId, { leve = false } = {}) {
   const produto = await obterProdutoParaOlist(produtoId);
-  const cadastros = await produtosNoTinyPorCodigo(codigosDe(produto));
-  return { produto: compararProduto(produto, cadastros), cadastros };
+  const cadastros = await produtosNoTinyPorCodigo(codigosDe(produto), null, { nome: produto.title, completo: !leve });
+  const campos = leve ? CAMPOS_DA_PESQUISA : undefined;
+  return { produto: compararProduto(produto, cadastros, { campos }), cadastros };
 }

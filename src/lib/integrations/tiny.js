@@ -90,8 +90,10 @@ export function variavelTokenDaLoja(nomeLoja) {
 /**
  * POST no formato que a API 2.0 espera, já desembrulhando `retorno`.
  * `conta` ({ token, variavel }) escolhe a conta do Tiny; sem ela, a da matriz.
+ * `comRegistros`: o erro que vem por registro (envio em lote) volta no
+ * `retorno` em vez de virar exceção — quem chama confere cada registro.
  */
-async function chamarTiny(endpoint, params = {}, conta = null) {
+async function chamarTiny(endpoint, params = {}, conta = null, { comRegistros = false } = {}) {
   const variavel = conta?.variavel ?? 'TINY_API_TOKEN';
   const token = conta ? conta.token : process.env.TINY_API_TOKEN;
   if (!token) {
@@ -132,7 +134,7 @@ async function chamarTiny(endpoint, params = {}, conta = null) {
 
   const retorno = dados.retorno ?? {};
 
-  if (retorno.status === 'Erro') {
+  if (retorno.status === 'Erro' && !(comRegistros && paraArray(retorno.registros).length)) {
     // O Tiny bota o detalhe do erro em lugares diferentes conforme o endpoint,
     // e vira objeto único (em vez de array) quando só há um item — por isso
     // tudo passa por paraArray antes de percorrer.
@@ -788,8 +790,9 @@ export function avisoDeTrocas(trocas) {
 //
 // produto.incluir e produto.alterar recebem o mesmo envelope:
 // { produtos: [{ produto: {...} }] }, com `sequencia` para casar cada
-// produto com o registro da resposta. Um produto por chamada — a tela
-// cadastra um de cada vez e o erro do Tiny fica ligado ao produto certo.
+// produto com o registro da resposta. incluirProduto/alterarProduto mandam
+// um por chamada; gravarProdutosEmLote manda vários (os tamanhos de uma cor)
+// numa chamada só, e o erro de cada um volta ligado à sua sequência.
 //
 // Escrevem na conta de PRODUÇÃO: a rota exige confirmação na tela.
 // ---------------------------------------------------------------------------
@@ -815,20 +818,32 @@ export async function obterProduto(id, conta = null) {
  * Cadastro de cada código na Olist, no modelo sem pai (um produto simples
  * por SKU). Por código normalizado:
  *   - null: não existe;
- *   - { simples }: o cadastro completo do produto simples;
+ *   - { simples }: o cadastro do produto simples;
  *   - { variacao: { id } }: o código é variação de um produto pai (modelo antigo);
  *   - { duplicados }: mais de um produto simples com o código.
+ *
+ * `nome`: o título do produto no Shopify. Na Olist cada SKU se chama
+ * "Título - Tamanho", e a pesquisa casa o nome por "contém": uma pesquisa
+ * pelo título traz todos os tamanhos. Só o código que não veio nela é
+ * pesquisado sozinho — pode existir com outro nome, e incluir de novo
+ * duplicaria o código.
+ *
+ * `completo: false`: `simples` fica com o registro da pesquisa (id, nome,
+ * preço, situação), sem o produto.obter de cada SKU — sem NCM nem peso.
  */
-export async function produtosNoTinyPorCodigo(codigos, conta = null) {
+export async function produtosNoTinyPorCodigo(codigos, conta = null, { nome = null, completo = true } = {}) {
   const resultado = {};
+  const porNome = nome ? await pesquisarProdutos(nome, conta) : [];
   // Uma chamada por vez: a API do Tiny limita chamadas por minuto.
   for (const codigo of codigos) {
-    const produtos = await produtosPorCodigo(codigo, conta);
+    const alvo = normalizarCodigo(codigo);
+    const doNome = porNome.filter((p) => normalizarCodigo(p.codigo) === alvo);
+    const produtos = doNome.length ? doNome : await produtosPorCodigo(codigo, conta);
     const simples = produtos.filter((p) => p.tipoVariacao !== 'V' && p.tipoVariacao !== 'P');
     const variacao = produtos.find((p) => p.tipoVariacao === 'V');
     let achado = null;
     if (simples.length > 1) achado = { duplicados: simples.length };
-    else if (simples.length === 1) achado = { simples: await obterProduto(simples[0].id, conta) };
+    else if (simples.length === 1) achado = { simples: completo ? await obterProduto(simples[0].id, conta) : simples[0] };
     else if (variacao) achado = { variacao: { id: String(variacao.id) } };
     resultado[normalizarCodigo(codigo)] = achado;
   }
@@ -863,6 +878,37 @@ export async function incluirProduto(produto, conta = null) {
   const retorno = await chamarTiny(endpoint, { produto: JSON.stringify(corpo) }, conta);
   const registro = registroDoProduto(retorno, endpoint);
   return { id: registro?.id ? String(registro.id) : null, retorno };
+}
+
+// Produtos por chamada no envio em lote. O Tiny aceitou dois num teste; o
+// máximo dele não está documentado, e uma cor raramente passa disto.
+const PRODUTOS_POR_LOTE = 20;
+
+/**
+ * Inclui (`produto.incluir.php`) ou altera (`produto.alterar.php`, cada
+ * produto com o seu `id`) vários produtos, em chamadas de até
+ * PRODUTOS_POR_LOTE. Devolve, na ordem de `produtos`, { ok, id } ou
+ * { ok: false, erro }. O limite de chamadas sobe como exceção: o que já foi
+ * gravado nas chamadas anteriores fica.
+ */
+export async function gravarProdutosEmLote(endpoint, produtos, conta = null) {
+  const resultados = [];
+  for (let inicio = 0; inicio < produtos.length; inicio += PRODUTOS_POR_LOTE) {
+    const lote = produtos.slice(inicio, inicio + PRODUTOS_POR_LOTE);
+    const corpo = { produtos: lote.map((produto, i) => ({ produto: { ...produto, sequencia: String(i + 1) } })) };
+    const retorno = await chamarTiny(endpoint, { produto: JSON.stringify(corpo) }, conta, { comRegistros: true });
+    const porSequencia = new Map(paraArray(retorno.registros).map((r) => [String(r.registro?.sequencia), r.registro]));
+    lote.forEach((_, i) => {
+      const registro = porSequencia.get(String(i + 1));
+      if (registro?.status === 'OK') {
+        resultados.push({ ok: true, id: registro.id ? String(registro.id) : null });
+      } else {
+        const mensagens = paraArray(registro?.erros).map((e) => e.erro ?? JSON.stringify(e)).join('; ');
+        resultados.push({ ok: false, erro: `Tiny recusou: ${mensagens || 'sem registro na resposta'}` });
+      }
+    });
+  }
+  return resultados;
 }
 
 /** Altera o produto `id` do Tiny. Variações sem `id` são incluídas — por

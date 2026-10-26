@@ -1,8 +1,9 @@
 // GET /api/olist/comparar?busca=...&familia=1 — o produto do Shopify (pelo
 // SKU de uma variação ou pelo nome), com todos os tamanhos, lado a lado com o
 // cadastro de cada SKU na Olist. `familia=1` traz também as outras cores do
-// mesmo modelo. `produtoId=...` compara um produto só (a tela usa para reler
-// o produto depois de gravar). Só lê.
+// mesmo modelo. `produtoId=...` compara um produto só (o diagnóstico), e
+// com `leve=1` só nome, preço e situação — sem ler o cadastro completo de
+// cada SKU no Tiny. Só lê.
 
 import { erroDeLimite } from '@/lib/integrations/tiny';
 import { compararBusca, compararProdutoPorId } from '@/lib/olist/comparacao';
@@ -18,7 +19,10 @@ export async function GET(request) {
   if (!busca && !produtoId) return erroJson('Informe um SKU ou nome de produto.', 400);
 
   try {
-    if (produtoId) return Response.json({ produtos: [(await compararProdutoPorId(produtoId)).produto] });
+    if (produtoId) {
+      const { produto } = await compararProdutoPorId(produtoId, { leve: parametros.get('leve') === '1' });
+      return Response.json({ produtos: [produto] });
+    }
     const { produtos } = await compararBusca({ busca, familia: parametros.get('familia') === '1' });
     return Response.json({ produtos });
   } catch (e) {

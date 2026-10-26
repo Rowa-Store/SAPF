@@ -10,11 +10,15 @@
 // SKU é um produto simples, sem pai (ver produtoTiny.js):
 //   - existe: produto.alterar — nome, preço, NCM e peso (e reativa);
 //   - não existe: produto.incluir.
-// Um SKU por chamada: o erro do Tiny fica ligado ao SKU certo.
+// Os SKUs vão em lote — uma chamada para os que existem e uma para os novos;
+// o Tiny responde cada um na sua sequência, e o erro fica ligado ao SKU certo.
+//
+// Responde { resultados, produto }: `produto` é a comparação depois de
+// gravar, montada com o que foi enviado — a tela não precisa reler o Tiny.
 
-import { alterarProduto, erroDeLimite, incluirProduto } from '@/lib/integrations/tiny';
+import { erroDeLimite, gravarProdutosEmLote } from '@/lib/integrations/tiny';
 import { compararProdutoPorId } from '@/lib/olist/comparacao';
-import { normalizarCodigo, simplesParaAlterar, simplesParaIncluir } from '@/lib/olist/produtoTiny';
+import { comoFicou, normalizarCodigo, simplesParaAlterar, simplesParaIncluir } from '@/lib/olist/produtoTiny';
 import { erroJson } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -55,28 +59,43 @@ export async function POST(request) {
   const resultados = marcadas
     .filter((l) => !GRAVAVEIS.includes(l.situacao))
     .map((l) => ({ sku: l.sku, ok: false, erro: MOTIVO[l.situacao] ?? 'Não dá para gravar este SKU.' }));
-  if (!linhas.length) return Response.json({ resultados });
+  if (!linhas.length) return Response.json({ resultados, produto });
 
-  for (const l of linhas) {
-    if (l.situacao === 'igual') {
-      resultados.push({ sku: l.sku, ok: true, acao: 'igual' });
-      continue;
-    }
+  for (const l of linhas.filter((l) => l.situacao === 'igual')) {
+    resultados.push({ sku: l.sku, ok: true, acao: 'igual' });
+  }
+  const gravados = new Map();
+  const envios = [
+    {
+      endpoint: 'produto.alterar.php',
+      acao: 'atualizado',
+      linhas: linhas.filter((l) => l.situacao !== 'igual' && l.olist),
+      payload: (l) => ({ ...simplesParaAlterar(l, cadastros[normalizarCodigo(l.sku)].simples), id: l.olist.id }),
+    },
+    {
+      endpoint: 'produto.incluir.php',
+      acao: 'incluido',
+      linhas: linhas.filter((l) => l.situacao !== 'igual' && !l.olist),
+      payload: simplesParaIncluir,
+    },
+  ];
+  for (const envio of envios.filter((e) => e.linhas.length)) {
+    let gravacao;
     try {
-      if (l.olist) {
-        await alterarProduto(l.olist.id, simplesParaAlterar(l, cadastros[normalizarCodigo(l.sku)].simples));
-        resultados.push({ sku: l.sku, ok: true, acao: 'atualizado' });
-      } else {
-        await incluirProduto(simplesParaIncluir(l));
-        resultados.push({ sku: l.sku, ok: true, acao: 'incluido' });
-      }
+      gravacao = await gravarProdutosEmLote(envio.endpoint, envio.linhas.map(envio.payload));
     } catch (e) {
       // Limite: o que já foi gravado fica; a tela tenta o produto de novo
       // e os SKUs gravados voltam como iguais.
       if (erroDeLimite(e.message)) return respostaDeErro(e);
-      resultados.push({ sku: l.sku, ok: false, erro: e.message });
+      for (const l of envio.linhas) resultados.push({ sku: l.sku, ok: false, erro: e.message });
+      continue;
     }
+    envio.linhas.forEach((l, i) => {
+      const r = gravacao[i];
+      if (r.ok) gravados.set(normalizarCodigo(l.sku), r.id);
+      resultados.push(r.ok ? { sku: l.sku, ok: true, acao: envio.acao } : { sku: l.sku, ok: false, erro: r.erro });
+    });
   }
 
-  return Response.json({ resultados });
+  return Response.json({ resultados, produto: comoFicou(produto, gravados) });
 }

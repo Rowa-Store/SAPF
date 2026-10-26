@@ -57,8 +57,8 @@ const COMPARAVEL = {
 };
 
 /** Campos com valor do lado de cá que estão diferentes na Olist. */
-function diferentes(esperado, olist) {
-  return CAMPOS.map((c) => c.chave).filter(
+function diferentes(esperado, olist, campos) {
+  return campos.filter(
     (chave) => esperado[chave] != null && COMPARAVEL[chave](esperado[chave]) !== COMPARAVEL[chave](olist?.[chave])
   );
 }
@@ -80,8 +80,10 @@ function doCadastro(cadastro) {
  *
  * @param {object} produto buscarProdutosParaOlist
  * @param {Record<string, object|null>} noTiny produtosNoTinyPorCodigo — por código normalizado
+ * @param {{ campos?: string[] }} opcoes campos comparados (padrão: todos de
+ *   CAMPOS) — sem o cadastro completo, só os que a pesquisa do Tiny traz.
  */
-export function compararProduto(produto, noTiny) {
+export function compararProduto(produto, noTiny, { campos = CAMPOS.map((c) => c.chave) } = {}) {
   const ncm = ncmDoProduto({ titulo: produto.title, tipo: produto.productType });
   const peso = produto.variants.map(pesoEmKg).find((p) => p != null) ?? null;
 
@@ -103,7 +105,7 @@ export function compararProduto(produto, noTiny) {
     if (achado.variacao) return { ...base, situacao: 'em_pai', emPai: achado.variacao };
 
     const olist = doCadastro(achado.simples);
-    const diferencas = diferentes(esperado, olist);
+    const diferencas = diferentes(esperado, olist, campos);
     // Inativo na Olist: a gravação reativa.
     const situacao = diferencas.length || !olist.ativo ? 'diferente' : 'igual';
     return { ...base, olist, diferencas, situacao };
@@ -155,4 +157,18 @@ export function simplesParaAlterar(linha, cadastro) {
       ? { peso_liquido: cadastro.peso_liquido, peso_bruto: cadastro.peso_bruto }
       : {}),
   };
+}
+
+/**
+ * A comparação depois de gravar, sem reler o Tiny: cada SKU gravado (por
+ * código normalizado -> id na Olist) passa a igual, com o que foi enviado.
+ */
+export function comoFicou(produto, gravados) {
+  const linhas = produto.linhas.map((l) => {
+    const id = gravados.get(normalizarCodigo(l.sku));
+    if (id === undefined) return l;
+    const olist = { ...(l.olist ?? {}), ...l.esperado, id: id ?? l.olist?.id ?? null, ativo: true };
+    return { ...l, olist, diferencas: [], situacao: 'igual' };
+  });
+  return { ...produto, linhas, situacao: linhas.some((l) => l.olist) ? 'encontrado' : 'nao_encontrado' };
 }

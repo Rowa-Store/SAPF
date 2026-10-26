@@ -12,8 +12,11 @@ import { useEffect, useRef, useState } from 'react';
 // limite de chamadas (429), espera e tenta de novo. Dá para pausar e
 // continuar de onde parou — o diagnóstico fica guardado neste navegador.
 //
+// Varredura com FOCO (ver FOCOS): procura só um problema, com a comparação
+// leve — sem ler o cadastro completo de cada SKU no Tiny, metade das chamadas.
+//
 // "Corrigir todos" faz o "trazer do Shopify" de cada produto listado, na
-// mesma fila, e relê o produto depois: o que ficou igual sai da lista.
+// mesma fila; a rota devolve como o produto ficou: o que ficou igual sai da lista.
 const PAUSA_ENTRE_PRODUTOS_MS = 1500;
 const ESPERA_LIMITE_S = 60;
 const TAMANHO_DO_LOTE = 50;
@@ -54,7 +57,16 @@ export const PROBLEMAS = [
     rotulo: 'Desatualizado',
     classe: 'marca-acessorio',
     principal: true,
-    tem: (p) => p.linhas.some((l) => l.situacao === 'diferente'),
+    // Nome, NCM, peso ou situação; o preço tem o filtro dele.
+    tem: (p) =>
+      p.linhas.some((l) => l.situacao === 'diferente' && (!l.diferencas.length || l.diferencas.some((c) => c !== 'preco'))),
+  },
+  {
+    chave: 'preco',
+    rotulo: 'Preço desatualizado',
+    classe: 'marca-acessorio',
+    principal: true,
+    tem: (p) => p.linhas.some((l) => l.diferencas.includes('preco')),
   },
   {
     chave: 'sku_em_pai',
@@ -65,12 +77,30 @@ export const PROBLEMAS = [
   { chave: 'sem_sku', rotulo: 'Sem SKU no Shopify', classe: 'marca-erro', tem: (p) => p.linhas.some((l) => l.situacao === 'sem_sku') },
 ];
 
-const NOME_CAMPO = { nome: 'nome', ncm: 'NCM', peso: 'peso', preco: 'preço' };
+// Varreduras que procuram só um problema: a comparação leve basta (o Tiny
+// traz nome, preço e situação na pesquisa). `problemas`: o que a varredura
+// aponta; `enviavel`: os SKUs que o "corrigir" manda.
+export const FOCOS = {
+  nao_cadastrado: {
+    rotulo: 'Não está na Olist',
+    problemas: ['nao_cadastrado', 'sku_faltando'],
+    enviavel: (l) => l.situacao === 'nova',
+  },
+  preco: {
+    rotulo: 'Preço desatualizado',
+    problemas: ['preco'],
+    enviavel: (l) => l.situacao === 'diferente' && l.diferencas.includes('preco'),
+  },
+};
 
 /** Resumo enxuto de um produto comparado — a tela guarda só isto, não a
- *  comparação inteira, para a lista não pesar numa varredura longa. */
-function resumir(produto) {
-  const problemas = PROBLEMAS.filter((p) => p.tem(produto)).map((p) => p.chave);
+ *  comparação inteira, para a lista não pesar numa varredura longa. Com
+ *  `foco` (chave de FOCOS), só os problemas dele. */
+function resumir(produto, foco = null) {
+  const doFoco = FOCOS[foco] ?? null;
+  const problemas = PROBLEMAS.filter((p) => (!doFoco || doFoco.problemas.includes(p.chave)) && p.tem(produto)).map(
+    (p) => p.chave
+  );
   const comPreco = produto.linhas.filter((l) => l.diferencas.includes('preco')).length;
   // Diferente em algo além do preço (ou só inativo na Olist).
   const comOutros = produto.linhas.filter(
@@ -80,7 +110,7 @@ function resumir(produto) {
   // Cada detalhe é ligado ao problema dele: a tela esconde os dos problemas não listados.
   const detalhes = [
     comOutros > 0 && { problema: 'desatualizado', texto: `nome, NCM, peso ou situação em ${comOutros} SKU(s)` },
-    comPreco > 0 && { problema: 'desatualizado', texto: `preço em ${comPreco} SKU(s)` },
+    comPreco > 0 && { problema: 'preco', texto: `preço em ${comPreco} SKU(s)` },
     produto.situacao === 'encontrado' && quantos('nova') > 0 && { problema: 'sku_faltando', texto: `${quantos('nova')} SKU(s) faltando` },
     quantos('em_pai') > 0 && { problema: 'sku_em_pai', texto: `${quantos('em_pai')} SKU(s) como variação de produto pai` },
     quantos('sem_sku') > 0 && { problema: 'sem_sku', texto: `${quantos('sem_sku')} variante(s) sem SKU` },
@@ -89,13 +119,15 @@ function resumir(produto) {
       texto: `${produto.linhas.filter((l) => l.sku).length} SKU(s) para cadastrar`,
     },
     quantos('bloqueado') > 0 && { problema: 'duplicado', texto: `${quantos('bloqueado')} SKU(s) com código duplicado` },
-  ].filter(Boolean);
+  ].filter((d) => d && problemas.includes(d.problema));
   return {
     status: produto.status,
     // SKU para abrir o produto no cadastro de produtos.
     sku: produto.linhas.find((l) => l.sku)?.sku ?? null,
     // O que o "corrigir" manda para a Olist.
-    enviaveis: produto.linhas.filter((l) => SITUACOES_A_ENVIAR.includes(l.situacao)).map((l) => l.sku),
+    enviaveis: produto.linhas
+      .filter(doFoco ? doFoco.enviavel : (l) => SITUACOES_A_ENVIAR.includes(l.situacao))
+      .map((l) => l.sku),
     problemas,
     detalhes,
   };
@@ -129,7 +161,7 @@ export function useDiagnosticoOlist() {
   const [atual, setAtual] = useState(null);
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
-  // id do produto -> { estado: fila|enviando|aguardando|relendo|gravado|erro, segundos?, erro? } do "corrigir"
+  // id do produto -> { estado: fila|enviando|aguardando|gravado|erro, segundos?, erro? } do "corrigir"
   const [correcao, setCorrecao] = useState({});
   // A tela redesenha quando isto muda; os dados ficam nas refs abaixo.
   const [, setVersaoDaTela] = useState(0);
@@ -182,12 +214,13 @@ export function useDiagnosticoOlist() {
   }
 
   /** Compara um produto, esperando enquanto o Tiny recusar por limite.
+   *  `leve`: só nome, preço e situação (varredura com foco).
    *  Devolve null se pausaram durante a espera (o produto fica pendente). */
-  async function comparar(id, aoEsperar) {
+  async function comparar(id, aoEsperar, { leve = false } = {}) {
     for (;;) {
       let resposta;
       try {
-        resposta = await fetch(`/api/olist/comparar?${new URLSearchParams({ produtoId: id })}`);
+        resposta = await fetch(`/api/olist/comparar?${new URLSearchParams({ produtoId: id, ...(leve ? { leve: '1' } : {}) })}`);
       } catch (e) {
         return { erro: `Falha de rede: ${e.message}` };
       }
@@ -205,7 +238,7 @@ export function useDiagnosticoOlist() {
   async function verificar(item) {
     const t = dados.current.trabalho;
     setAtual({ titulo: item.titulo });
-    const r = await comparar(item.id, (segundos) => setAtual({ titulo: item.titulo, segundos }));
+    const r = await comparar(item.id, (segundos) => setAtual({ titulo: item.titulo, segundos }), { leve: !!t.foco });
     if (!r) return false;
     const { id, titulo, criado, skus } = item;
     dados.current.produtos = {
@@ -215,7 +248,7 @@ export function useDiagnosticoOlist() {
         criado,
         skus: r.produto ? r.produto.linhas.map((l) => l.sku).filter(Boolean) : skus,
         verificadoEm: t.inicio,
-        resumo: r.produto ? resumir(r.produto) : null,
+        resumo: r.produto ? resumir(r.produto, t.foco) : null,
         erro: r.erro ?? null,
       },
     };
@@ -305,8 +338,9 @@ export function useDiagnosticoOlist() {
   }
 
   /** Começa uma varredura: `completo` (todos os ativos) ou `atualizacao`
-   *  (só o que mudou desde o último diagnóstico concluído). */
-  function iniciar(modo = 'completo') {
+   *  (só o que mudou desde o último diagnóstico concluído, com o mesmo foco).
+   *  `foco` (chave de FOCOS, só no completo): procura só aquele problema. */
+  function iniciar(modo = 'completo', foco = null) {
     const atualizacao = modo === 'atualizacao' && !!dados.current.concluido;
     dados.current = {
       ...dados.current,
@@ -315,6 +349,7 @@ export function useDiagnosticoOlist() {
         modo: atualizacao ? 'atualizacao' : 'completo',
         inicio: new Date().toISOString(),
         base: atualizacao ? dados.current.concluido : null,
+        foco: atualizacao ? (dados.current.trabalho?.foco ?? null) : FOCOS[foco] ? foco : null,
         fase: 'shopify',
         cursor: null,
         temMais: true,
@@ -352,7 +387,8 @@ export function useDiagnosticoOlist() {
   }
 
   /** "Trazer do Shopify" de um produto, esperando enquanto o Tiny recusar por
-   *  limite. Devolve null se pararam, ou { erro } / { ok: true }. */
+   *  limite. Devolve null se pararam, ou { erro } / { ok: true }, com o
+   *  `produto` como ficou quando a rota respondeu. */
   async function enviar(item) {
     for (;;) {
       estadoDaCorrecao(item.id, { estado: 'enviando' });
@@ -374,19 +410,23 @@ export function useDiagnosticoOlist() {
       const corpo = await resposta.json().catch(() => ({}));
       if (!resposta.ok) return { erro: corpo.erro ?? 'Falha ao trazer do Shopify' };
       const comErro = (corpo.resultados ?? []).filter((r) => !r.ok);
-      return comErro.length ? { erro: comErro.map((r) => `${r.sku}: ${r.erro}`).join('\n') } : { ok: true };
+      // `produto`: a comparação depois de gravar, montada pela rota.
+      return {
+        produto: corpo.produto ?? null,
+        ...(comErro.length ? { erro: comErro.map((r) => `${r.sku}: ${r.erro}`).join('\n') } : { ok: true }),
+      };
     }
   }
 
   /**
    * Corrige, um por vez, os produtos dados (os que o filtro mostra) que têm
-   * algo para trazer do Shopify. Depois de gravar, relê: o que ficou igual
-   * sai da lista; o que continua
-   * diferente fica com o resumo novo.
+   * algo para trazer do Shopify. O resumo passa a ser o do produto como a
+   * rota diz que ficou — sem reler o Tiny: o que ficou igual sai da lista.
    */
   async function corrigir(produtos) {
     const itens = produtos.filter((p) => p.enviaveis?.length);
     if (!itens.length) return;
+    const foco = dados.current.trabalho?.foco ?? null;
 
     antesDeCorrigir.current = estado === 'parado' ? 'fim' : estado;
     pausar.current = false;
@@ -402,40 +442,20 @@ export function useDiagnosticoOlist() {
       if (i > 0) await esperar(PAUSA_ENTRE_PRODUTOS_MS);
       const r = await enviar(item);
       if (!r) break;
+      if (r.produto) trocarResumo(item.id, resumir(r.produto, foco));
       if (r.erro) {
         comErro += 1;
         estadoDaCorrecao(item.id, { estado: 'erro', erro: r.erro });
         continue;
       }
-
-      await esperar(PAUSA_ENTRE_PRODUTOS_MS);
-      estadoDaCorrecao(item.id, { estado: 'relendo' });
-      const relido = await comparar(item.id, (segundos) => estadoDaCorrecao(item.id, { estado: 'aguardando', segundos }));
-      if (!relido || relido.erro) {
-        // Gravou, mas não deu para conferir: sai da fila sem mexer no resumo.
-        corrigidos += 1;
-        estadoDaCorrecao(item.id, { estado: 'gravado' });
-        if (!relido) break;
-        continue;
-      }
-      const resumo = resumir(relido.produto);
-      trocarResumo(item.id, resumo);
-      if (resumo.enviaveis.length) {
-        comErro += 1;
-        estadoDaCorrecao(item.id, {
-          estado: 'erro',
-          erro: `A Olist respondeu OK, mas ao ler o produto de novo continua diferente (${resumo.detalhes.map((d) => d.texto).join(', ')}).`,
-        });
-      } else {
-        // Igual agora (sai da lista), ou sobrou só o que se corrige na Olist.
-        corrigidos += 1;
-        estadoDaCorrecao(item.id, undefined);
-      }
+      // Igual agora (sai da lista), ou sobrou só o que se corrige na Olist.
+      corrigidos += 1;
+      estadoDaCorrecao(item.id, r.produto ? undefined : { estado: 'gravado' });
     }
 
     // O que ficou na fila (parou no meio) volta a não ter estado.
     setCorrecao((atual) =>
-      Object.fromEntries(Object.entries(atual).filter(([, v]) => v && !['fila', 'enviando', 'aguardando', 'relendo'].includes(v.estado)))
+      Object.fromEntries(Object.entries(atual).filter(([, v]) => v && !['fila', 'enviando', 'aguardando'].includes(v.estado)))
     );
     setAviso(
       `${corrigidos} produto(s) corrigidos na Olist.` + (comErro ? ` ${comErro} com erro — clique no erro para ver.` : '')
@@ -456,6 +476,7 @@ export function useDiagnosticoOlist() {
   return {
     estado,
     trabalho: dados.current.trabalho,
+    foco: dados.current.trabalho?.foco ?? null,
     concluido: dados.current.concluido,
     conhecidos: lista.length,
     iguais,
