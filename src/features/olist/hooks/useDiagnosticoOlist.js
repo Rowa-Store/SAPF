@@ -17,6 +17,9 @@ import { useEffect, useRef, useState } from 'react';
 //
 // "Corrigir todos" faz o "trazer do Shopify" de cada produto listado, na
 // mesma fila; a rota devolve como o produto ficou: o que ficou igual sai da lista.
+//
+// "Baixar planilha" monta a planilha de importação do Tiny com os SKUs sem
+// cadastro dos produtos listados (/api/olist/planilha) — cadastro sem a API.
 const PAUSA_ENTRE_PRODUTOS_MS = 1500;
 const ESPERA_LIMITE_S = 60;
 const TAMANHO_DO_LOTE = 50;
@@ -124,6 +127,8 @@ function resumir(produto, foco = null) {
     status: produto.status,
     // SKU para abrir o produto no cadastro de produtos.
     sku: produto.linhas.find((l) => l.sku)?.sku ?? null,
+    // SKUs que não existem na Olist — os da planilha de importação.
+    novos: produto.linhas.filter((l) => l.situacao === 'nova').map((l) => l.sku),
     // O que o "corrigir" manda para a Olist.
     enviaveis: produto.linhas
       .filter(doFoco ? doFoco.enviavel : (l) => SITUACOES_A_ENVIAR.includes(l.situacao))
@@ -161,6 +166,7 @@ export function useDiagnosticoOlist() {
   const [atual, setAtual] = useState(null);
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
+  const [gerandoPlanilha, setGerandoPlanilha] = useState(false);
   // id do produto -> { estado: fila|enviando|aguardando|gravado|erro, segundos?, erro? } do "corrigir"
   const [correcao, setCorrecao] = useState({});
   // A tela redesenha quando isto muda; os dados ficam nas refs abaixo.
@@ -463,13 +469,54 @@ export function useDiagnosticoOlist() {
     setEstado(antesDeCorrigir.current);
   }
 
+  /** Baixa a planilha de importação do Tiny com os SKUs sem cadastro dos
+   *  produtos dados (os que o filtro mostra). Só lê o Shopify. */
+  async function baixarPlanilha(produtos) {
+    const itens = produtos.filter((p) => p.novos?.length).map((p) => ({ produtoId: p.id, skus: p.novos }));
+    if (!itens.length) return;
+    setGerandoPlanilha(true);
+    setErro(null);
+    setAviso(null);
+    try {
+      const resposta = await fetch('/api/olist/planilha', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itens }),
+      });
+      if (!resposta.ok) {
+        const corpo = await resposta.json().catch(() => ({}));
+        throw new Error(corpo.erro ?? 'Falha ao gerar a planilha');
+      }
+      const nome = /filename="([^"]+)"/.exec(resposta.headers.get('Content-Disposition') ?? '')?.[1] ?? 'produtos-tiny.xls';
+      const url = URL.createObjectURL(await resposta.blob());
+      const link = Object.assign(document.createElement('a'), { href: url, download: nome });
+      link.click();
+      URL.revokeObjectURL(url);
+      const skus = itens.reduce((n, i) => n + i.skus.length, 0);
+      setAviso(
+        `Planilha com ${skus} SKU(s) de ${itens.length} produto(s). Depois de importar no Tiny, ` +
+          'varra de novo “Não está na Olist” para tirá-los da lista.'
+      );
+    } catch (e) {
+      setErro(e.message);
+    } finally {
+      setGerandoPlanilha(false);
+    }
+  }
+
   // Visões para a tela, os mais recentes primeiro.
   const lista = Object.entries(dados.current.produtos)
     .map(([id, p]) => ({ id, ...p }))
     .sort(maisRecentesPrimeiro);
   const divergentes = lista
     .filter((p) => p.resumo?.problemas.length)
-    .map((p) => ({ id: p.id, titulo: p.titulo, ...p.resumo }));
+    .map((p) => ({
+      id: p.id,
+      titulo: p.titulo,
+      ...p.resumo,
+      // Resumo de antes de `novos` existir: produto sem cadastro tem todos os SKUs novos.
+      novos: p.resumo.novos ?? (p.resumo.problemas.includes('nao_cadastrado') ? p.skus : []),
+    }));
   const falhas = lista.filter((p) => p.erro).map((p) => ({ id: p.id, titulo: p.titulo, erro: p.erro }));
   const iguais = lista.filter((p) => p.resumo && !p.resumo.problemas.length).length;
 
@@ -491,5 +538,7 @@ export function useDiagnosticoOlist() {
     continuar: rodar,
     pausar: pausarVarredura,
     corrigir,
+    gerandoPlanilha,
+    baixarPlanilha,
   };
 }

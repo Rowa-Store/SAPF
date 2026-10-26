@@ -12,7 +12,9 @@
 // Com o filtro "Não está na Olist" ou "Preço desatualizado" escolhido antes,
 // dá para varrer só aquele problema, mais rápido (ver FOCOS).
 // "Corrigir todos" traz do Shopify o que a lista mostra (ESCREVE NA CONTA DE
-// PRODUÇÃO); "Abrir" leva o produto ao cadastro, para ver lado a lado.
+// PRODUÇÃO); "Baixar planilha" monta a planilha de importação do Tiny com os
+// SKUs sem cadastro, para cadastrar sem a API. "Abrir" leva o produto ao
+// cadastro, para ver lado a lado.
 
 'use client';
 
@@ -72,6 +74,8 @@ export default function DiagnosticoOlist() {
     continuar,
     pausar,
     corrigir,
+    gerandoPlanilha,
+    baixarPlanilha,
   } = useDiagnosticoOlist();
   const [filtro, setFiltro] = useState('todos');
   const [todosProblemas, setTodosProblemas] = useState(false);
@@ -118,6 +122,9 @@ export default function DiagnosticoOlist() {
   const visiveis = filtro === 'todos' ? comListados : comListados.filter((p) => p.problemas.includes(filtro));
   const corrigiveis = visiveis.filter((p) => p.enviaveis?.length);
   const skusACorrigir = corrigiveis.reduce((n, p) => n + p.enviaveis.length, 0);
+  // Os da planilha de importação: SKUs sem cadastro.
+  const comNovos = visiveis.filter((p) => p.novos?.length);
+  const skusNovos = comNovos.reduce((n, p) => n + p.novos.length, 0);
   // Filtro escolhido que dá para varrer sozinho.
   const focoEscolhido = FOCOS[filtro] ? filtro : null;
   const contagens = Object.fromEntries(
@@ -136,7 +143,8 @@ export default function DiagnosticoOlist() {
           Compara os produtos ativos do Shopify com a Olist, de 50 em 50 e dos mais recentes para os mais antigos, e lista
           os que estão diferentes ou não cadastrados. “Atualizar” refaz só o que mudou no Shopify desde o último
           diagnóstico e o que deu erro — mudança feita só na Olist aparece na varredura completa. A varredura só lê; o
-          “Corrigir todos” é que grava na Olist.
+          “Corrigir todos” é que grava na Olist. “Baixar planilha do Tiny” monta a planilha de importação com os SKUs sem
+          cadastro, para cadastrar pela importação do Tiny em vez da API.
         </p>
         <div className="grupo-botoes">
           {rodando || corrigindo ? (
@@ -236,15 +244,29 @@ export default function DiagnosticoOlist() {
         </div>
       )}
 
-      {visiveis.length > 0 && corrigiveis.length > 0 && (
+      {visiveis.length > 0 && (corrigiveis.length > 0 || comNovos.length > 0) && (
         <div className="barra-lote">
           <span className="barra-lote-contagem">
             {corrigiveis.length} produto(s) dá para corrigir trazendo do Shopify ({skusACorrigir} SKU(s))
             {corrigiveis.length < visiveis.length && ` · ${visiveis.length - corrigiveis.length} só se corrigem na Olist`}
+            {comNovos.length > 0 && ` · ${skusNovos} SKU(s) sem cadastro`}
           </span>
-          <button onClick={() => setConfirmando(true)} disabled={rodando || corrigindo}>
-            {corrigindo ? 'Corrigindo…' : `Corrigir todos (${corrigiveis.length})`}
-          </button>
+          <div className="grupo-botoes">
+            {comNovos.length > 0 && (
+              <button
+                className="secundario"
+                onClick={() => baixarPlanilha(comNovos)}
+                disabled={rodando || corrigindo || gerandoPlanilha}
+              >
+                {gerandoPlanilha ? 'Gerando planilha…' : `Baixar planilha do Tiny (${skusNovos} SKUs)`}
+              </button>
+            )}
+            {corrigiveis.length > 0 && (
+              <button onClick={() => setConfirmando(true)} disabled={rodando || corrigindo}>
+                {corrigindo ? 'Corrigindo…' : `Corrigir todos (${corrigiveis.length})`}
+              </button>
+            )}
+          </div>
         </div>
       )}
 

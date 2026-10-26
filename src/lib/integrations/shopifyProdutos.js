@@ -112,6 +112,27 @@ export async function obterProdutoParaOlist(id) {
   return semRepetidos([dados.product])[0];
 }
 
+const QUERY_POR_IDS = `
+query ProdutosPorIds($ids: [ID!]!) {
+  nodes(ids: $ids) { ... on Product { ${CAMPOS_PRODUTO} } }
+}`;
+
+// Produtos por consulta em obterProdutosParaOlist: cada um traz até 100
+// variantes, e o custo da consulta cresce com elas.
+const PRODUTOS_POR_CONSULTA = 10;
+
+/** Vários produtos do Shopify pelos ids, no formato da busca. Os que não
+ *  existem mais ficam de fora. */
+export async function obterProdutosParaOlist(ids) {
+  const gids = ids.map((id) => (String(id).startsWith('gid://') ? String(id) : `gid://shopify/Product/${id}`));
+  const produtos = [];
+  for (let i = 0; i < gids.length; i += PRODUTOS_POR_CONSULTA) {
+    const dados = await shopifyGraphQL(QUERY_POR_IDS, { ids: gids.slice(i, i + PRODUTOS_POR_CONSULTA) });
+    produtos.push(...(dados.nodes ?? []).filter((n) => n?.id));
+  }
+  return semRepetidos(produtos);
+}
+
 const QUERY_PAGINA = `
 query PaginaDeProdutos($primeiros: Int!, $depois: String, $busca: String!, $ordem: ProductSortKeys!) {
   products(first: $primeiros, after: $depois, query: $busca, sortKey: $ordem, reverse: true) {
