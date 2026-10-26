@@ -16,9 +16,44 @@ import { listarPedidosDoDia, listarPedidosRecentes, metodosDePagamento } from '@
 import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
 import { classificarComListaFranquia, extrairCnpj } from '@/lib/fiscal/classificacao';
 import { FORMA_BOLETO, formaDePagamentoTiny } from '@/lib/fiscal/pagamento';
-import { boletosPorPedido, listarCnpjsFranquia, pedidosPorNfOuCnpj, statusPorPedido } from '@/lib/db';
+import { obterSituacaoNota } from '@/lib/integrations/tiny';
+import {
+  atualizarNotaEmitida,
+  boletosPorPedido,
+  listarCnpjsFranquia,
+  pedidosPorNfOuCnpj,
+  registrarNumeroNf,
+  statusPorPedido,
+} from '@/lib/db';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
 import { erroJson, idNumerico, somenteDigitos } from '@/lib/utils';
+
+/**
+ * Nota com rascunho no Tiny e sem nº gravado: confere no Tiny e, se ela já
+ * estiver emitida, grava a emissão e o nº (como /api/pedidos/[id]/situacao).
+ * Uma por vez, pelo limite de chamadas do Tiny; falha numa não para a lista.
+ * Muda `situacoes` no lugar.
+ */
+async function completarNumerosNf(situacoes) {
+  const semNumero = Object.entries(situacoes).filter(
+    ([, s]) => s.status === 'rascunho_criado' && s.tiny_nota_id && !s.numero_nf
+  );
+  for (const [gid, s] of semNumero) {
+    try {
+      const tiny = await obterSituacaoNota(s.tiny_nota_id);
+      if (!tiny.emitida) continue;
+      if (!s.nota_emitida) await atualizarNotaEmitida(gid, true);
+      s.nota_emitida = true;
+      if (tiny.numero) {
+        const registro = await registrarNumeroNf({ orderId: gid, numeroNf: tiny.numero });
+        if (!registro.ok) console.error(`[boletos] Falha ao gravar o nº da NF de ${gid}:`, registro.erro);
+        s.numero_nf = tiny.numero;
+      }
+    } catch (erro) {
+      console.error(`[boletos] Falha ao conferir a nota ${s.tiny_nota_id} no Tiny:`, erro.message);
+    }
+  }
+}
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -78,6 +113,7 @@ export async function GET(request) {
       boletosPorPedido(ids),
       cnpjsFranquiaPromessa,
     ]);
+    await completarNumerosNf(situacoes);
     if (!cnpjsFranquiaResp.ok) {
       console.error('[boletos] Falha ao buscar os CNPJs de franquia no Supabase:', cnpjsFranquiaResp.erro);
     }

@@ -189,15 +189,22 @@ export function conferirNatureza(notaTiny, esperada) {
   return { ok, naNota, esperada };
 }
 
+// Códigos de `situacao` da nota na API 2.0 que valem como nota emitida:
+// 2 Emitida, 6 Autorizada, 7 Emitida DANFE, 8 Registrada. Os demais são
+// pendente (1), cancelada (3), aguardando recibo/protocolo (4, 9),
+// rejeitada (5) e denegada (10).
+const SITUACOES_EMITIDA = new Set(['2', '6', '7', '8']);
+
 /**
- * Interpreta o campo `situacao` que o Tiny devolve para a nota.
- * TODO: confirmar com o time fiscal a lista exata de situações desta conta —
- * o valor abaixo é a leitura textual mais comum da API 2.0, não documentação
- * oficial conferida.
+ * Interpreta a situação que o Tiny devolve para a nota. O `nota.fiscal.obter`
+ * manda `situacao` como CÓDIGO ("7") e o texto em `descricao_situacao` — só
+ * o texto nunca casava, e nota emitida voltava como não emitida, sem nº.
  */
 function notaEstaEmitida(notaTiny) {
-  const situacao = String(notaTiny?.situacao ?? '').toLowerCase();
-  return /emitid|autorizad/.test(situacao) && !/cancelad/.test(situacao);
+  const codigo = String(notaTiny?.situacao ?? '').trim();
+  if (/^\d+$/.test(codigo)) return SITUACOES_EMITIDA.has(codigo);
+  const texto = `${codigo} ${notaTiny?.descricao_situacao ?? ''}`.toLowerCase();
+  return /emitid|autorizad/.test(texto) && !/cancelad/.test(texto);
 }
 
 /**

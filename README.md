@@ -215,8 +215,9 @@ a da tela de atacado: um dia por vez (abre em hoje) e, com busca (nº do
 pedido, cliente, nº da NF ou CNPJ), páginas de 50 pedidos do Shopify — o
 filtro de boleto é aplicado depois, então uma página pode vir com menos linhas.
 
-- **Nº da NF:** o da nota emitida (`notas_processadas.numero_nf`). Clicando,
-  vira um campo editável. O nº salvo fica em `boletos.numero_nf` e vale sobre
+- **Nº da NF:** o da nota emitida (`notas_processadas.numero_nf`). Nota com
+  rascunho e ainda sem nº é conferida no Tiny ao carregar a lista, e o nº é
+  gravado se ela já foi emitida. Clicando, vira um campo editável. O nº salvo fica em `boletos.numero_nf` e vale sobre
   o do Tiny; salvar vazio (ou igual ao do Tiny) volta a seguir o Tiny. Com
   rascunho no Tiny, a linha tem o botão do DANFE (prévia antes de emitir).
 - **Status:** "Pendente" (padrão) ou "Emitido", marcado à mão — passar o mouse
