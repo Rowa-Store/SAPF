@@ -4,6 +4,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import IconePdf from '@/components/ui/IconePdf';
 import NavegacaoDia from '@/components/ui/NavegacaoDia';
 import { formatarDataCurta, formatarMoedaOuTraco } from '@/lib/format';
 import { useBoletos } from '../hooks/useBoletos';
@@ -360,7 +361,24 @@ export default function ControleBoletos() {
                       <span className={`marca marca-${b.classificacao}`}>{b.classificacao}</span>
                     </td>
                     <td>
-                      <CampoNumeroNf b={b} salvarNumeroNf={salvarNumeroNf} buscarNumeroNoTiny={buscarNumeroNoTiny} />
+                      <div className="pilha">
+                        <CampoNumeroNf b={b} salvarNumeroNf={salvarNumeroNf} buscarNumeroNoTiny={buscarNumeroNoTiny} />
+                        {b.tinyNotaId && (
+                          <a
+                            className={`botao-pdf ${b.notaEmitida ? 'botao-pdf-destaque' : ''}`}
+                            href={`/api/pedidos/${b.id}/danfe?tinyNotaId=${b.tinyNotaId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={
+                              b.notaEmitida
+                                ? 'Abrir DANFE (salve como PDF pelo diálogo de impressão do navegador)'
+                                : 'Prévia do DANFE — sem valor fiscal até emitir'
+                            }
+                          >
+                            <IconePdf /> {b.notaEmitida ? 'DANFE' : 'Prévia DANFE'}
+                          </a>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <StatusBoleto b={b} alterarStatus={alterarStatus} />
