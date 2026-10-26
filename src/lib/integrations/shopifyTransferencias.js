@@ -44,7 +44,7 @@ query Transferencia($id: ID!, $cursor: String) {
         inventoryItem {
           sku
           unitCost { amount }
-          variants(first: 1) { nodes { price displayName selectedOptions { value } } }
+          variants(first: 1) { nodes { price displayName selectedOptions { value } product { productType } } }
         }
       }
     }
@@ -140,6 +140,17 @@ export function opcoesPorSkuDaTransferencia(transferencia) {
     mapa[sku] = (linha.inventoryItem.variants?.nodes?.[0]?.selectedOptions ?? [])
       .map((o) => o.value)
       .filter((v) => v && v !== 'Default Title');
+  }
+  return mapa;
+}
+
+/** Tipo de produto do Shopify de cada SKU — entra na regra de NCM da
+ *  conferência do cadastro (olist/cadastroDosItens.js). */
+export function tiposPorSkuDaTransferencia(transferencia) {
+  const mapa = {};
+  for (const linha of transferencia?.lineItems ?? []) {
+    const sku = linha.inventoryItem?.sku;
+    if (sku) mapa[sku] = linha.inventoryItem.variants?.nodes?.[0]?.product?.productType ?? '';
   }
   return mapa;
 }

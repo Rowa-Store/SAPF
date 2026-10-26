@@ -11,9 +11,10 @@ import { ncmDoProduto } from '../fiscal/ncm.js';
 import { alterarProduto, erroDeLimite, obterProduto } from '../integrations/tiny.js';
 import { cadastroParaAlterar, temValor, variacaoParaAlterar } from './cadastroParaAlterar.js';
 
-/** NCM que o produto da Olist deve ter, pelo nome; null quando nenhuma regra casa. */
-export function ncmEsperado(nome) {
-  return ncmDoProduto({ titulo: nome, tipo: '' });
+/** NCM que o produto da Olist deve ter, pelo nome (e pelo Tipo de produto do
+ *  Shopify, quando se sabe); null quando nenhuma regra casa. */
+export function ncmEsperado(nome, tipo = '') {
+  return ncmDoProduto({ titulo: nome, tipo });
 }
 
 const digitos = (ncm) => String(ncm ?? '').replace(/\D+/g, '');

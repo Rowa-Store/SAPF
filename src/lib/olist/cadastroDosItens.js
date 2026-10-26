@@ -1,7 +1,9 @@
 // cadastroDosItens.js — confere, antes de todo rascunho de nota (atacado,
 // franquia e transferência), o cadastro na Olist do produto de cada item:
 // GTIN vazio e NCM da regra (fiscal/ncm.js). A nota pega GTIN e NCM do
-// cadastro, então o que estiver errado é corrigido ANTES da inclusão.
+// cadastro, então o que estiver errado é corrigido ANTES da inclusão. O Tipo
+// de produto do Shopify entra na regra: os tênis da On ("On Running Cloud
+// 6...") não têm "tênis" no nome.
 // ESCREVE NA CONTA DE PRODUÇÃO — a conta da nota (`conta`).
 //
 // Nunca bloqueia a nota: o que não deu para corrigir volta como "erro gtin" /
@@ -36,11 +38,11 @@ const ehVariacao = (cadastro) => temValor(cadastro.idProdutoPai) && String(cadas
 
 /**
  * O que o cadastro precisa mudar. O NCM vem da regra pelo nome na Olist; sem
- * regra, pela descrição do item. NCM preenchido sem regra que o reconheça
- * fica como está.
+ * regra, pela descrição do item — os dois com o Tipo de produto do Shopify.
+ * NCM preenchido sem regra que o reconheça fica como está.
  */
-function correcoes(cadastro, descricao) {
-  const para = ncmEsperado(cadastro.nome ?? '') ?? ncmEsperado(descricao);
+function correcoes(cadastro, { descricao, tipo }) {
+  const para = ncmEsperado(cadastro.nome ?? '', tipo) ?? ncmEsperado(descricao, tipo);
   const campos = temGtin(cadastro) ? { ...SEM_GTIN } : {};
   if (para && digitos(ncmDe(cadastro)) !== digitos(para)) campos.ncm = para;
   return { campos, ncmSemRegra: !ncmDe(cadastro) && !para };
@@ -51,12 +53,12 @@ function correcoes(cadastro, descricao) {
  * id dela; se continuar errado, pelo pai — como em limparGtin.js. Relê
  * depois de gravar para conferir.
  */
-async function conferirProduto(id, descricao, conta) {
+async function conferirProduto(id, item, conta) {
   const cadastro = await obterProduto(id, conta);
   if (!cadastro) throw new Error(`produto ${id} não encontrado na Olist`);
 
   const resultado = { corrigidos: [], erros: [], motivos: [] };
-  const { campos, ncmSemRegra } = correcoes(cadastro, descricao);
+  const { campos, ncmSemRegra } = correcoes(cadastro, item);
   if (ncmSemRegra) {
     resultado.erros.push(ERRO_NCM);
     resultado.motivos.push('sem NCM no cadastro e nenhuma regra reconhece o nome');
@@ -89,7 +91,7 @@ async function conferirProduto(id, descricao, conta) {
     // Gravou; a releitura é bônus — se falhar, conta como corrigido.
     try {
       const depois = await obterProduto(alvo, conta);
-      restante = depois ? correcoes(depois, descricao).campos : {};
+      restante = depois ? correcoes(depois, item).campos : {};
     } catch {
       restante = {};
     }
@@ -108,14 +110,14 @@ async function conferirProduto(id, descricao, conta) {
 }
 
 /** Todos os produtos com o código (o mesmo SKU pode estar em mais de um cadastro). */
-async function conferirCodigo(codigo, descricao, conta) {
+async function conferirCodigo(codigo, item, conta) {
   const produtos = await produtosPorCodigo(codigo, conta);
   const resultado = { corrigidos: [], erros: [], motivos: [] };
   if (!produtos.length) {
     return { ...resultado, erros: [ERRO_NCM], motivos: ['código não cadastrado na Olist'] };
   }
   for (const produto of produtos.filter((p) => p.tipoVariacao !== 'P')) {
-    const doProduto = await conferirProduto(produto.id, descricao, conta);
+    const doProduto = await conferirProduto(produto.id, item, conta);
     for (const chave of Object.keys(resultado)) {
       resultado[chave] = [...new Set([...resultado[chave], ...doProduto[chave]])];
     }
@@ -139,27 +141,30 @@ async function comEspera(fn, inicio) {
  * Confere e corrige o cadastro dos produtos dos itens da nota. Nunca lança.
  *
  * @param {object[]} itens `nota_fiscal.itens` do payload ({ item: {...} })
+ * @param {Record<string, string>} tiposPorCodigo Tipo de produto do Shopify por código
  * @returns {Promise<{ itens: { codigo: string, corrigidos: string[], erros: string[], motivos: string[] }[],
  *   naoConferidos: { codigo: string, motivo: string }[] }>}
  *   corrigidos: 'gtin' | 'ncm'; erros: ERRO_GTIN | ERRO_NCM.
  */
-export async function conferirCadastroDosItens(itens, conta = null) {
-  const descricoes = new Map();
+export async function conferirCadastroDosItens(itens, conta = null, tiposPorCodigo = {}) {
+  const porCodigo = new Map();
   for (const { item } of itens ?? []) {
     const codigo = String(item?.codigo ?? '').trim();
-    if (codigo && !descricoes.has(codigo)) descricoes.set(codigo, item.descricao ?? '');
+    if (codigo && !porCodigo.has(codigo)) {
+      porCodigo.set(codigo, { descricao: item.descricao ?? '', tipo: tiposPorCodigo[codigo] ?? '' });
+    }
   }
 
   const inicio = Date.now();
   const resultado = { itens: [], naoConferidos: [] };
   let semTempo = false;
-  for (const [codigo, descricao] of descricoes) {
+  for (const [codigo, item] of porCodigo) {
     if (semTempo) {
       resultado.naoConferidos.push({ codigo, motivo: 'limite de chamadas do Tiny' });
       continue;
     }
     try {
-      resultado.itens.push({ codigo, ...(await comEspera(() => conferirCodigo(codigo, descricao, conta), inicio)) });
+      resultado.itens.push({ codigo, ...(await comEspera(() => conferirCodigo(codigo, item, conta), inicio)) });
     } catch (e) {
       semTempo = erroDeLimite(e.message);
       resultado.naoConferidos.push({ codigo, motivo: semTempo ? 'limite de chamadas do Tiny' : e.message });

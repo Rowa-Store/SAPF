@@ -47,29 +47,33 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 /**
- * Tamanho/cor de cada SKU do pedido no Shopify, para achar a variação certa
- * no Tiny. Falhar aqui não impede a troca — só deixa a escolha sem opções.
+ * De cada SKU do pedido no Shopify: tamanho/cor (`opcoes`), para achar a
+ * variação certa no Tiny, e o Tipo de produto (`tipos`), para a regra de NCM
+ * da conferência do cadastro. Falhar aqui não impede a nota — só deixa a
+ * troca sem opções e a regra só com o nome.
  */
-async function opcoesPorSku(gid) {
+async function dadosDosSkus(gid) {
   try {
     const pedido = await obterPedidoCompleto(gid);
-    const mapa = {};
+    const opcoes = {};
+    const tipos = {};
     for (const linha of pedido.lineItems ?? []) {
       if (!linha.sku) continue;
+      tipos[linha.sku] = linha.product?.productType ?? '';
       const selecionadas = (linha.variant?.selectedOptions ?? [])
         .map((o) => o.value)
         .filter((v) => v && v !== 'Default Title');
-      mapa[linha.sku] = selecionadas.length
+      opcoes[linha.sku] = selecionadas.length
         ? selecionadas
         : String(linha.variantTitle ?? '')
             .split(' / ')
             .map((v) => v.trim())
             .filter((v) => v && v !== 'Default Title');
     }
-    return mapa;
+    return { opcoes, tipos };
   } catch (erro) {
-    console.error(`[rascunho] Não foi possível ler as opções dos itens do pedido ${gid} no Shopify:`, erro);
-    return {};
+    console.error(`[rascunho] Não foi possível ler os itens do pedido ${gid} no Shopify:`, erro);
+    return { opcoes: {}, tipos: {} };
   }
 }
 
@@ -155,11 +159,12 @@ export async function POST(request, { params }) {
     console.error(`[rascunho] Pedido ${gid}: ${contribuinte.mensagem}`);
   }
 
-  const cadastroItens = await conferirCadastroDosItens(payload.nota_fiscal.itens);
+  const skus = await dadosDosSkus(gid);
+  const cadastroItens = await conferirCadastroDosItens(payload.nota_fiscal.itens, null, skus.tipos);
 
   try {
     const { idNota, retorno, payload: payloadAceito, trocas } = await incluirNotaTrocandoProdutosPai(payload, {
-      lerOpcoes: () => opcoesPorSku(gid),
+      lerOpcoes: async () => skus.opcoes,
     });
 
     // Confirma no Tiny que a nota existe mesmo (a inclusão pode responder ok

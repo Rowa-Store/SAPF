@@ -46,6 +46,7 @@ import {
   obterTransferenciaCompleta,
   opcoesPorSkuDaTransferencia,
   paraGidTransferencia,
+  tiposPorSkuDaTransferencia,
 } from '@/lib/integrations/shopifyTransferencias';
 import { montarNotaTransferencia } from '@/lib/fiscal/montarNotaTransferencia';
 import {
@@ -227,19 +228,22 @@ export async function PUT(request, { params }) {
   if (!lida.ok) return erroJson(lida.erro, 422);
   const conta = lida.conta;
 
-  const cadastroItens = await conferirCadastroDosItens(payload.nota_fiscal.itens, conta);
+  // O payload veio da tela; o tipo de produto (regra de NCM) e as opções
+  // (tamanho/cor) vêm do Shopify.
+  const transferencia = await obterTransferenciaCompleta(id).catch((erro) => {
+    console.error(`[transferencia] Não foi possível ler os itens de ${gid} no Shopify:`, erro);
+    return null;
+  });
+  const cadastroItens = await conferirCadastroDosItens(
+    payload.nota_fiscal.itens,
+    conta,
+    tiposPorSkuDaTransferencia(transferencia)
+  );
 
   try {
     const { idNota, retorno, payload: payloadAceito, trocas } = await incluirNotaTrocandoProdutosPai(payload, {
       conta,
-      // O payload veio da tela; as opções (tamanho/cor) vêm do Shopify.
-      lerOpcoes: () =>
-        obterTransferenciaCompleta(id)
-          .then(opcoesPorSkuDaTransferencia)
-          .catch((erro) => {
-            console.error(`[transferencia] Não foi possível ler as opções dos itens de ${gid} no Shopify:`, erro);
-            return {};
-          }),
+      lerOpcoes: async () => opcoesPorSkuDaTransferencia(transferencia),
     });
     const confirmacao = idNota ? await obterNota(idNota, conta).catch((erro) => ({ aviso: erro.message })) : null;
 
@@ -358,7 +362,11 @@ async function criarRascunho(id, { substituir = false, reemitir = false, payload
   const erroToken = await conferirTokenDaConta(conta, cnpjOrigem);
   if (erroToken) return erroJson(erroToken, 422);
 
-  const cadastroItens = await conferirCadastroDosItens(payload.nota_fiscal.itens, conta);
+  const cadastroItens = await conferirCadastroDosItens(
+    payload.nota_fiscal.itens,
+    conta,
+    tiposPorSkuDaTransferencia(transferencia)
+  );
 
   try {
     const { idNota, retorno, payload: payloadAceito, trocas } = await incluirNotaTrocandoProdutosPai(payload, {
