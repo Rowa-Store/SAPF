@@ -220,6 +220,43 @@ export async function tiposDosItens(ids) {
   return resultado;
 }
 
+const QUERY_METAFIELDS_DE_PAGAMENTO = `
+query MetafieldsDePagamento($ids: [ID!]!) {
+  nodes(ids: $ids) {
+    ... on Order {
+      id
+      metafields(namespace: "custom", first: 20) { nodes { key value } }
+    }
+  }
+}`;
+
+// 20 metafields por pedido: 25 pedidos ficam dentro do limite de custo.
+const PEDIDOS_POR_CONSULTA_DE_PAGAMENTO = 25;
+
+/**
+ * Texto da forma de pagamento (metafield `custom.metodo_pagamento`) de cada
+ * pedido `ids`, no formato `{ [gid]: string }`. A chave é comparada sem
+ * diferenciar maiúsculas, como no preview: é cadastrada à mão e a grafia
+ * varia. Sem o metafield, vale o atributo do pedido com a mesma chave
+ * (`atributos`: `{ [gid]: customAttributes }`, já lidos na lista).
+ */
+export async function metodosDePagamento(ids, atributos = {}) {
+  const resultado = {};
+  const doAtributo = (id) =>
+    (atributos[id] ?? []).find((a) => a.key?.toLowerCase() === 'metodo_pagamento')?.value ?? '';
+  for (let i = 0; i < ids.length; i += PEDIDOS_POR_CONSULTA_DE_PAGAMENTO) {
+    const dados = await shopifyGraphQL(QUERY_METAFIELDS_DE_PAGAMENTO, {
+      ids: ids.slice(i, i + PEDIDOS_POR_CONSULTA_DE_PAGAMENTO),
+    });
+    for (const pedido of dados.nodes ?? []) {
+      if (!pedido?.id) continue;
+      const metafield = (pedido.metafields?.nodes ?? []).find((m) => m.key?.toLowerCase() === 'metodo_pagamento');
+      resultado[pedido.id] = metafield?.value || doAtributo(pedido.id);
+    }
+  }
+  return resultado;
+}
+
 // Trava contra laço sem fim: 20 páginas de 50 = 1000 pedidos num dia só.
 const MAXIMO_PAGINAS_DO_DIA = 20;
 

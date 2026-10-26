@@ -1,0 +1,112 @@
+// GET /api/boletos — pedidos pagos com boleto (metafield
+// `custom.metodo_pagamento` com "boleto"), com o status do boleto e o nº da
+// NF de cada um.
+//
+// Mesma navegação da tela de atacado (ver api/pedidos/route.js): sem busca, a
+// lista é POR DIA; com busca, não se prende a dia e vem paginada por cursor.
+// Os pedidos vêm do Shopify e o filtro de boleto é aplicado aqui — o Shopify
+// não busca por metafield —, então uma página de busca pode vir com menos
+// boletos que pedidos.
+//
+//   ?dia=     AAAA-MM-DD; sem ele, hoje
+//   ?busca=   termos separados por vírgula: nº do pedido, cliente, nº da NF ou CNPJ
+//   ?cursor=  só com busca: página seguinte
+
+import { listarPedidosDoDia, listarPedidosRecentes, metodosDePagamento } from '@/lib/integrations/shopify';
+import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
+import { classificarComListaFranquia, extrairCnpj } from '@/lib/fiscal/classificacao';
+import { FORMA_BOLETO, formaDePagamentoTiny } from '@/lib/fiscal/pagamento';
+import { boletosPorPedido, listarCnpjsFranquia, pedidosPorNfOuCnpj, statusPorPedido } from '@/lib/db';
+import { ITENS_POR_PAGINA } from '@/lib/constants';
+import { erroJson, idNumerico, somenteDigitos } from '@/lib/utils';
+
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
+export async function GET(request) {
+  try {
+    const busca = new URL(request.url).searchParams;
+    const cursor = busca.get('cursor') || null;
+    const termos = (busca.get('busca') ?? '')
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    const diaDeHoje = hoje();
+    const dia = termos.length === 0 ? busca.get('dia') || diaDeHoje : null;
+    if (dia && (!diaValido(dia) || dia > diaDeHoje)) {
+      return erroJson(`Dia inválido: "${dia}". Use AAAA-MM-DD, até hoje.`, 400);
+    }
+
+    const cnpjsFranquiaPromessa = listarCnpjsFranquia();
+
+    // Nº da NF e CNPJ viram nº do pedido pelo Supabase, como no atacado.
+    const ehCnpj = (t) => somenteDigitos(t).length === 14;
+    const nomes = await pedidosPorNfOuCnpj({
+      numerosNf: termos.filter((t) => /^\d+$/.test(t) && !ehCnpj(t)),
+      cnpjs: termos.filter(ehCnpj).map(somenteDigitos),
+    });
+    const termosShopify = termos.filter((t) => !ehCnpj(t));
+    if (termos.length > 0 && termosShopify.length === 0 && nomes.length === 0) {
+      return Response.json({ boletos: [], proximoCursor: null, dia: null, hoje: diaDeHoje });
+    }
+
+    let pedidos;
+    let proximoCursor = null;
+    let diaCompleto = true;
+    if (dia) {
+      ({ pedidos, completo: diaCompleto } = await listarPedidosDoDia({
+        periodo: intervaloDoDia(dia),
+        limitePorPagina: ITENS_POR_PAGINA,
+      }));
+      if (!diaCompleto) console.error(`[boletos] Dia ${dia} passou do limite de páginas — lista cortada.`);
+    } else {
+      const pagina = await listarPedidosRecentes({ limite: ITENS_POR_PAGINA, cursor, termos: termosShopify, nomes });
+      pedidos = pagina.pedidos;
+      proximoCursor = pagina.pageInfo.hasNextPage ? pagina.pageInfo.endCursor : null;
+    }
+
+    const metodos = await metodosDePagamento(
+      pedidos.map((p) => p.id),
+      Object.fromEntries(pedidos.map((p) => [p.id, p._bruto.customAttributes]))
+    );
+    const comBoleto = pedidos.filter((p) => formaDePagamentoTiny(metodos[p.id]) === FORMA_BOLETO);
+
+    const ids = comBoleto.map((p) => p.id);
+    const [situacoes, boletos, cnpjsFranquiaResp] = await Promise.all([
+      statusPorPedido(ids),
+      boletosPorPedido(ids),
+      cnpjsFranquiaPromessa,
+    ]);
+    if (!cnpjsFranquiaResp.ok) {
+      console.error('[boletos] Falha ao buscar os CNPJs de franquia no Supabase:', cnpjsFranquiaResp.erro);
+    }
+    const cnpjsFranquia = cnpjsFranquiaResp.ok ? cnpjsFranquiaResp.cnpjs : [];
+
+    const lista = comBoleto.map((p) => {
+      const situacao = situacoes[p.id];
+      const boleto = boletos[p.id];
+      return {
+        id: idNumerico(p.id),
+        gid: p.id,
+        name: p.name,
+        createdAt: p.createdAt,
+        cliente: p.cliente,
+        cnpj: extrairCnpj(p._bruto).cnpj,
+        total: p.total,
+        metodoPagamento: metodos[p.id],
+        classificacao: classificarComListaFranquia(p._bruto, cnpjsFranquia),
+        tinyNotaId: situacao?.status === 'rascunho_criado' ? situacao.tiny_nota_id : null,
+        notaEmitida: situacao?.nota_emitida ?? false,
+        // O nº digitado na tela (numeroNfEditado) vale sobre o da nota no Tiny.
+        numeroNfTiny: situacao?.numero_nf ?? null,
+        numeroNfEditado: boleto?.numero_nf ?? null,
+        emitido: boleto?.emitido ?? false,
+      };
+    });
+
+    return Response.json({ boletos: lista, proximoCursor, dia, diaCompleto, hoje: diaDeHoje });
+  } catch (erro) {
+    return erroJson(`Não foi possível listar os boletos: ${erro.message}`);
+  }
+}

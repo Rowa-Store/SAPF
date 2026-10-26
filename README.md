@@ -80,9 +80,10 @@ serviço não está configurado ou fora do ar.
 ### Criando as tabelas no Supabase
 
 No painel do Supabase: **SQL Editor > New query**, cole o conteúdo de
-`supabase/schema.sql` e clique em **Run**. São oito tabelas:
+`supabase/schema.sql` e clique em **Run**. São nove tabelas:
 `notas_processadas`, `itens_pendentes`, `configuracoes`, `cnpjs_franquia`,
-`lojas_fiscais`, `transportadoras`, `clientes_transportadora` e `clientes_ie`.
+`lojas_fiscais`, `transportadoras`, `clientes_transportadora`, `clientes_ie`
+e `boletos`.
 Quem já tinha rodado o schema antes das transportadoras existirem roda só
 `supabase/transportadoras.sql`; antes de `clientes_ie`, roda
 `supabase/clientes-ie.sql`.
@@ -205,6 +206,27 @@ resposta diz qual serviço está com problema e por quê.
 
 ---
 
+## Boletos
+
+A tela `/boletos` lista os pedidos cuja forma de pagamento (metafield
+`custom.metodo_pagamento`, ou o atributo do pedido com essa chave) é boleto —
+o mesmo de-para de `src/lib/fiscal/pagamento.js` usado na nota. A navegação é
+a da tela de atacado: um dia por vez (abre em hoje) e, com busca (nº do
+pedido, cliente, nº da NF ou CNPJ), páginas de 50 pedidos do Shopify — o
+filtro de boleto é aplicado depois, então uma página pode vir com menos linhas.
+
+- **Nº da NF:** o da nota emitida (`notas_processadas.numero_nf`). Clicando,
+  vira um campo editável; o botão de refresh confere a nota no Tiny
+  (`/api/pedidos/[id]/situacao`) e põe o nº no campo. O nº salvo fica em
+  `boletos.numero_nf` e vale sobre o do Tiny; salvar vazio (ou igual ao do
+  Tiny) volta a seguir o Tiny.
+- **Status:** "Pendente" (padrão) ou "Emitido", marcado à mão — passar o mouse
+  na marca abre a lista com o atual marcado. Grava em `boletos.emitido`.
+
+Quem já tinha rodado o schema antes desta tela roda `supabase/boletos.sql`.
+
+---
+
 ## Transferências entre lojas
 
 A tela `/transferencias` lista as transferências de estoque do Shopify
@@ -313,6 +335,8 @@ src/
     api/transportadoras/             Lista/cria transportadoras; [id] edita;
                                       [id]/clientes lista/anexa CNPJs e
                                       [id]/clientes/[cnpj] remove o anexo
+    boletos/page.js                  Status dos boletos e nº da NF -> features/boletos
+    api/boletos/                     Lista os pedidos com boleto; [id] grava status e nº da NF
     transferencias/page.js           Controle de transferências -> features/transferencias
     api/transferencias/              Lista transferências + situação fiscal; subrotas
                                       [id]/preview, [id]/rascunho, [id]/emitir
@@ -334,6 +358,9 @@ src/
       components/IncluirRascunho.js  Confere a nota e grava o rascunho no Tiny
       components/EditarRascunho.js   Corrige um rascunho já criado no Tiny
       hooks/useIncluirRascunho.js, hooks/useEditarRascunho.js
+    boletos/
+      components/ControleBoletos.js  Lista por dia, status do boleto e nº da NF editável
+      hooks/useBoletos.js
     transferencias/
       components/ControleTransferencias.js  Filtros, lista, rascunho e emissão das transferências
       hooks/useTransferencias.js

@@ -194,3 +194,17 @@ create table if not exists clientes_ie (
 );
 
 alter table clientes_ie enable row level security;
+
+-- Controle dos boletos (tela /boletos), por pedido do Shopify. `emitido` é
+-- marcado à mão na tela (padrão: pendente). `numero_nf` só existe quando a
+-- pessoa corrige o nº na tela — vazio, vale o de notas_processadas. Ver
+-- supabase/boletos.sql.
+create table if not exists boletos (
+  shopify_order_id text primary key,
+  shopify_order_name text,
+  emitido boolean not null default false,
+  numero_nf text,                        -- nº da NF digitado; null = o da nota no Tiny
+  atualizado_em timestamptz default now()
+);
+
+alter table boletos enable row level security;

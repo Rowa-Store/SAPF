@@ -7,7 +7,7 @@
 import { Fragment } from 'react';
 import AbasAtacado from '@/components/ui/AbasAtacado';
 import IconePdf from '@/components/ui/IconePdf';
-import { formatarDia } from '@/lib/datas';
+import NavegacaoDia from '@/components/ui/NavegacaoDia';
 import { formatarDataCurta, formatarDataHoraCurta, formatarMoeda, formatarMoedaOuTraco } from '@/lib/format';
 import { resumoDoTransporte } from '@/lib/fiscal/transporte';
 import { useAtacado } from '../hooks/useAtacado';
@@ -150,38 +150,15 @@ export default function ControleAtacado() {
   // Sem busca, a lista é de um dia só (abre em hoje): a navegação por dia
   // fica no cartão, logo abaixo da busca — os botões andam um dia por vez e o
   // campo de data pula direto. Numa busca, páginas de 50 no fim da lista.
-  const navegacaoDia = dia && (
-    <div className="navegacao-dia">
-      <label htmlFor="dia">Dia</label>
-      <div className="navegacao-dia-controles">
-        <button className="secundario pequeno" onClick={diaAnterior} disabled={carregando} aria-label="Dia anterior">
-          ←
-        </button>
-        <input
-          id="dia"
-          type="date"
-          value={dia}
-          max={diaDeHoje ?? undefined}
-          onChange={(e) => irParaDia(e.target.value)}
-          disabled={carregando}
-        />
-        <button
-          className="secundario pequeno"
-          onClick={diaSeguinte}
-          disabled={carregando || dia === diaDeHoje}
-          aria-label="Dia seguinte"
-        >
-          →
-        </button>
-        {dia === diaDeHoje ? (
-          <span className="fraco">Hoje — {formatarDia(dia)}</span>
-        ) : (
-          <button className="secundario pequeno" onClick={() => irParaDia(diaDeHoje)} disabled={carregando}>
-            Voltar para hoje
-          </button>
-        )}
-      </div>
-    </div>
+  const navegacaoDia = (
+    <NavegacaoDia
+      dia={dia}
+      diaDeHoje={diaDeHoje}
+      carregando={carregando}
+      irParaDia={irParaDia}
+      diaAnterior={diaAnterior}
+      diaSeguinte={diaSeguinte}
+    />
   );
 
   const paginacao = !dia && (pagina > 1 || temProxima) && (

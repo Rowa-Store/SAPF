@@ -317,6 +317,82 @@ tr.linha-detalhe table { border: 1px solid var(--linha); border-radius: var(--ra
 
 .vazio { border: 1px dashed var(--linha); border-radius: var(--raio); padding: 2rem; text-align: center; color: var(--tinta-fraca); }
 
+/* Tela de boletos: status com menu ao passar o mouse e nº da NF editável. */
+.status-boleto { display: inline-block; }
+.status-boleto > button.marca { text-decoration: none; }
+/* `fixed` (posição vem do JS): a tabela rola na horizontal e cortaria o menu.
+   O padding de cima é a "ponte" entre a marca e a caixa — sem vão, o mouse
+   não sai do hover no caminho. */
+.status-menu { position: fixed; z-index: 20; padding-top: 0.35rem; }
+.status-menu-caixa {
+  min-width: 9.5rem;
+  padding: 0.3rem;
+  border: 1px solid var(--linha);
+  border-radius: var(--raio);
+  background: var(--papel-alt);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  transform-origin: top left;
+  animation: abrir-menu 0.16s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.status-menu-caixa button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.6rem;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tinta);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: left;
+}
+.status-menu-caixa button:hover { background: var(--realce); }
+.status-menu-caixa button.selecionado { color: var(--azul); }
+.status-menu-check { width: 0.9rem; font-weight: 700; color: var(--azul); }
+.status-menu-ponto { width: 0.5rem; height: 0.5rem; padding: 0; border-radius: 50%; border: none; background: currentColor; }
+.status-menu-ponto.marca-ok { color: var(--ok); }
+.status-menu-ponto.marca-acessorio { color: var(--amarelo); }
+@keyframes abrir-menu {
+  from { opacity: 0; transform: translateY(-4px) scale(0.95); }
+  to { opacity: 1; transform: none; }
+}
+
+button.campo-nf {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px dashed transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tinta);
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+button.campo-nf.fraco { color: var(--tinta-fraca); }
+button.campo-nf:hover { border-color: var(--linha); background: var(--realce); }
+.campo-nf-editado { font-family: var(--fonte-sans, "Inter"), sans-serif; font-size: 0.7rem; color: var(--amarelo); }
+.campo-nf-edicao { display: flex; align-items: center; gap: 0.25rem; }
+.campo-nf-edicao input { width: 7.5rem; padding: 0.3rem 0.5rem; font-size: 0.9rem; }
+button.botao-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border-color: var(--linha);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tinta);
+  font-size: 0.85rem;
+}
+button.botao-icone:hover:not(:disabled) { background: var(--realce); border-color: var(--tinta-fraca); }
+button.botao-icone:disabled { background: transparent; }
+.botao-icone-girando svg { animation: girar 0.8s linear infinite; }
+
 @media (max-width: 40rem) {
   .envelope { padding: 1.25rem 0.85rem 4rem; }
   .topo { margin: -1.25rem -0.85rem 1.5rem; }

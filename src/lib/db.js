@@ -590,3 +590,48 @@ export async function gravarIeDoCliente({ cnpj, ie, uf, origem }) {
   );
   return error ? { ok: false, erro: error.message } : { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// Boletos (tela /boletos): status emitido/pendente marcado à mão e o nº da NF
+// quando corrigido na tela. Sem linha, o boleto está pendente e o nº é o da
+// nota em notas_processadas.
+// ---------------------------------------------------------------------------
+
+/** Mapa orderId -> { emitido, numero_nf }. Lança erro se o Supabase falhar,
+ *  pelo mesmo motivo de statusPorPedido: {} faria todo boleto parecer pendente. */
+export async function boletosPorPedido(orderIds) {
+  const db = obterCliente();
+  if (!db || orderIds.length === 0) return {};
+
+  const lotes = [];
+  for (let i = 0; i < orderIds.length; i += IDS_POR_CONSULTA) lotes.push(orderIds.slice(i, i + IDS_POR_CONSULTA));
+  const respostas = await Promise.all(
+    lotes.map((ids) => db.from('boletos').select('shopify_order_id, emitido, numero_nf').in('shopify_order_id', ids))
+  );
+  const linhas = respostas.flatMap(({ data, error }) => {
+    if (error) throw new Error(`Falha ao ler os boletos no Supabase: ${error.message}`);
+    return data ?? [];
+  });
+  return Object.fromEntries(linhas.map((r) => [r.shopify_order_id, r]));
+}
+
+/** Grava o status e/ou o nº da NF do boleto. Campo ausente fica como está;
+ *  `numeroNf` vazio volta a valer o nº da nota no Tiny. */
+export async function salvarBoleto({ orderId, orderName, emitido, numeroNf }) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const linha = {
+    shopify_order_id: orderId,
+    ...(orderName ? { shopify_order_name: orderName } : {}),
+    ...(emitido !== undefined ? { emitido: !!emitido } : {}),
+    ...(numeroNf !== undefined ? { numero_nf: String(numeroNf ?? '').trim() || null } : {}),
+    atualizado_em: new Date().toISOString(),
+  };
+  const { data, error } = await db
+    .from('boletos')
+    .upsert(linha, { onConflict: 'shopify_order_id' })
+    .select('shopify_order_id, emitido, numero_nf')
+    .single();
+  return error ? { ok: false, erro: error.message } : { ok: true, boleto: data };
+}

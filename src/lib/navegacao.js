@@ -7,6 +7,11 @@ export const AREAS = [
     descricao: 'Pedidos de atacado e franquia do Shopify: criar o rascunho, emitir a nota fiscal e baixar o DANFE.',
   },
   {
+    href: '/boletos',
+    rotulo: 'Boletos',
+    descricao: 'Pedidos pagos com boleto: o nº da NF de cada um e o status do boleto (emitido ou pendente).',
+  },
+  {
     href: '/transferencias',
     rotulo: 'Transferências',
     descricao: 'Transferências de estoque entre lojas e a nota fiscal de cada uma.',
