@@ -14,11 +14,13 @@
 //     em seguida. A NF antiga continua
 //     valendo até ser cancelada à mão no Tiny.
 //   - GET  devolve o rascunho já criado (o payload realmente enviado ao Tiny),
-//     para a tela de edição carregar.
+//     para a tela de edição carregar. Sem rascunho ainda, devolve a nota
+//     montada agora do Shopify (`novo: true`), para conferir e editar antes.
 //   - PUT  "edita" o rascunho: a API 2.0 do Tiny não altera
 //     nem exclui nota, então cria um NOVO rascunho com o payload corrigido
 //     vindo da tela; o antigo precisa ser cancelado/excluído à mão no Tiny e
-//     fica registrado em tiny_notas_substituidas.
+//     fica registrado em tiny_notas_substituidas. Sem rascunho ainda, cria o
+//     primeiro com o payload da tela, com as mesmas travas do POST.
 //
 // A nota é criada na conta do Tiny da loja de ORIGEM (tinyContas.js).
 //
@@ -110,13 +112,72 @@ async function rascunhoDaTransferencia(gid) {
   return atual;
 }
 
+/**
+ * Lê a transferência no Shopify e monta a nota a partir dela e do cadastro de
+ * lojas, com as travas de criação. Devolve { transferencia, payload, conta,
+ * cnpjOrigem } ou { erro, status }.
+ */
+async function montarDaTransferencia(id) {
+  try {
+    const transferencia = await obterTransferenciaCompleta(id);
+    const bloqueio = bloqueioDaTransferencia(transferencia.origin?.name, transferencia.destination?.name);
+    if (bloqueio) return { erro: bloqueio, status: 422 };
+    const origemId = transferencia.origin?.location?.id ?? null;
+    const destinoId = transferencia.destination?.location?.id ?? null;
+    const cadastro = await lojasFiscaisPorLocal([origemId, destinoId]);
+    if (!cadastro.ok) return { erro: `Não foi possível ler o cadastro de lojas: ${cadastro.erro}`, status: 502 };
+
+    // A nota sai da conta do Tiny da loja de origem — nunca cai na da matriz
+    // por falta de token.
+    const resolvida = contaTinyDaLoja(transferencia.origin?.name);
+    if (!resolvida.ok) return { erro: resolvida.erro, status: 422 };
+    const conta = resolvida.conta;
+
+    if (!cadastro.lojas[destinoId]) {
+      return {
+        erro:
+          `A loja de destino "${transferencia.destination?.name}" não está cadastrada em lojas_fiscais — ` +
+          'sem CNPJ do destinatário o Tiny recusa a nota.',
+        status: 422,
+      };
+    }
+    // Sem natureza (nome + id na conta que emite), o Tiny cairia na natureza
+    // padrão da conta e a nota sairia com CFOP de venda.
+    const { payload, natureza } = montarNotaTransferencia(transferencia, {
+      origem: cadastro.lojas[origemId] ?? null,
+      destino: cadastro.lojas[destinoId],
+      contaMatriz: conta.matriz,
+    });
+    if (!natureza.ok) return { erro: `Natureza de operação: ${natureza.erro}`, status: 422 };
+
+    return { transferencia, payload, conta, cnpjOrigem: cadastro.lojas[origemId]?.cnpj };
+  } catch (erro) {
+    return { erro: `Não foi possível montar a nota: ${erro.message}`, status: 502 };
+  }
+}
+
 export async function GET(request, { params }) {
   const { id } = await params;
   const gid = paraGidTransferencia(id);
 
   const { ok, erro, rascunho } = await rascunhoDaTransferencia(gid);
   if (!ok) return erroJson(`Não foi possível carregar o rascunho: ${erro}`, 502);
-  if (!rascunho) return erroJson('Esta transferência ainda não tem rascunho criado no Tiny.', 404);
+  if (!rascunho) {
+    // Ainda sem rascunho: a tela abre com a nota montada agora, para conferir
+    // e editar antes de criar o primeiro (o PUT cria).
+    const montada = await montarDaTransferencia(id);
+    if (montada.erro) return erroJson(montada.erro, montada.status);
+    return Response.json({
+      novo: true,
+      orderName: montada.transferencia.name,
+      classificacao: CLASSIFICACAO,
+      payload: montada.payload,
+      totalNota: totalDaNota(montada.payload),
+      tinyNotaId: null,
+      notaEmitida: false,
+      tinyNotasSubstituidas: [],
+    });
+  }
 
   return Response.json({
     orderName: rascunho.shopify_order_name,
@@ -154,9 +215,7 @@ export async function PUT(request, { params }) {
 
   const atual = await rascunhoDaTransferencia(gid);
   if (!atual.ok) return erroJson(`Não foi possível confirmar o rascunho atual: ${atual.erro}`, 502);
-  if (!atual.rascunho) {
-    return erroJson('Esta transferência ainda não tem rascunho criado no Tiny — crie pela tela de transferências.', 404);
-  }
+  if (!atual.rascunho) return criarRascunho(id, { payloadEditado: payload });
   if (atual.rascunho.nota_emitida) {
     return erroJson('Esta nota já foi emitida no Tiny. Uma nota emitida não pode ser recriada por aqui.', 409);
   }
@@ -230,7 +289,6 @@ export async function PUT(request, { params }) {
 
 export async function POST(request, { params }) {
   const { id } = await params;
-  const gid = paraGidTransferencia(id);
 
   let corpo;
   try {
@@ -247,7 +305,16 @@ export async function POST(request, { params }) {
   }
 
   const reemitir = corpo.reemitir === true;
-  const substituir = reemitir || corpo.substituir === true;
+  return criarRascunho(id, { substituir: reemitir || corpo.substituir === true, reemitir });
+}
+
+/**
+ * Cria o rascunho no Tiny. Sem `payloadEditado`, a nota é a montada agora do
+ * Shopify (POST); com ele, é a conferida e editada na tela (PUT da primeira
+ * vez) — a montagem roda do mesmo jeito, pelas travas e pela conta.
+ */
+async function criarRascunho(id, { substituir = false, reemitir = false, payloadEditado = null } = {}) {
+  const gid = paraGidTransferencia(id);
 
   // Trava contra duplicidade — vale também para nota emitida fora do sistema.
   // Substituir um rascunho ou uma nota emitida só é aceito quando pedido
@@ -279,42 +346,10 @@ export async function POST(request, { params }) {
     anterior = atual.rascunho;
   }
 
-  let transferencia, payload, conta, cnpjOrigem;
-  try {
-    transferencia = await obterTransferenciaCompleta(id);
-    const bloqueio = bloqueioDaTransferencia(transferencia.origin?.name, transferencia.destination?.name);
-    if (bloqueio) return erroJson(bloqueio, 422);
-    const origemId = transferencia.origin?.location?.id ?? null;
-    const destinoId = transferencia.destination?.location?.id ?? null;
-    const cadastro = await lojasFiscaisPorLocal([origemId, destinoId]);
-    if (!cadastro.ok) return erroJson(`Não foi possível ler o cadastro de lojas: ${cadastro.erro}`, 502);
-
-    // A nota sai da conta do Tiny da loja de origem — nunca cai na da matriz
-    // por falta de token.
-    const resolvida = contaTinyDaLoja(transferencia.origin?.name);
-    if (!resolvida.ok) return erroJson(resolvida.erro, 422);
-    conta = resolvida.conta;
-    cnpjOrigem = cadastro.lojas[origemId]?.cnpj;
-
-    if (!cadastro.lojas[destinoId]) {
-      return erroJson(
-        `A loja de destino "${transferencia.destination?.name}" não está cadastrada em lojas_fiscais — ` +
-          'sem CNPJ do destinatário o Tiny recusa a nota.',
-        422
-      );
-    }
-    // Sem natureza (nome + id na conta que emite), o Tiny cairia na natureza
-    // padrão da conta e a nota sairia com CFOP de venda.
-    let natureza;
-    ({ payload, natureza } = montarNotaTransferencia(transferencia, {
-      origem: cadastro.lojas[origemId] ?? null,
-      destino: cadastro.lojas[destinoId],
-      contaMatriz: conta.matriz,
-    }));
-    if (!natureza.ok) return erroJson(`Natureza de operação: ${natureza.erro}`, 422);
-  } catch (erro) {
-    return erroJson(`Não foi possível montar a nota: ${erro.message}`, 502);
-  }
+  const montada = await montarDaTransferencia(id);
+  if (montada.erro) return erroJson(montada.erro, montada.status);
+  const { transferencia, conta, cnpjOrigem } = montada;
+  const payload = payloadEditado ?? montada.payload;
 
   if (!payload.nota_fiscal.itens.length) {
     return erroJson('Transferência sem itens — nada para enviar ao Tiny.', 400);

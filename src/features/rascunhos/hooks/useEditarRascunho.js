@@ -16,6 +16,9 @@ import { recalcularParcelas } from '@/lib/fiscal/pagamento';
  * REALMENTE enviado ao Tiny da última vez (payload_enviado no Supabase), não
  * recalculados a partir do pedido no Shopify.
  *
+ * Transferência ainda sem rascunho (`dados.novo`): os dados de partida são a
+ * nota montada agora do Shopify, e salvar cria o primeiro rascunho.
+ *
  * `urlApi` é o endpoint GET/PUT do rascunho (/api/transferencias/[id]/rascunho).
  * Rascunho de pedido de atacado não é editado depois de enviado ao Tiny.
  */

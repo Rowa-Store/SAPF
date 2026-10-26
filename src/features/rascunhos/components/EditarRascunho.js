@@ -1,5 +1,6 @@
-// /transferencias/[id]/rascunho/editar — corrige um rascunho já criado no
-// Tiny. `tipo` escolhe a API e para onde voltar. Rascunho de pedido de
+// /transferencias/[id]/rascunho/editar — confere e edita os itens da nota:
+// antes do primeiro rascunho (`dados.novo`, itens montados do Shopify), cria
+// o rascunho; depois, corrige o já criado no Tiny. `tipo` escolhe a API e para onde voltar. Rascunho de pedido de
 // atacado não passa por aqui: depois de enviado ao Tiny, não é editado.
 //
 // A tela deixa explícito, antes e depois de salvar, que o rascunho antigo
@@ -87,6 +88,9 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
 
   if (!carregado) return <p className="fraco">Lendo o rascunho…</p>;
 
+  // Ainda sem rascunho no Tiny: a tela inclui o primeiro, não substitui nenhum.
+  const novo = !!dados.novo;
+
   if (dados.notaEmitida) {
     return (
       <div className="aviso">
@@ -105,18 +109,20 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
   return (
     <>
       <h2>
-        Editar rascunho — {config.rotulo} {dados.orderName}{' '}
+        {novo ? 'Editar itens' : 'Editar rascunho'} — {config.rotulo} {dados.orderName}{' '}
         <span className={`marca marca-${dados.classificacao}`}>{dados.classificacao}</span>
       </h2>
 
-      <div className="aviso">
-        <strong>Isto cria um NOVO rascunho no Tiny — não altera o rascunho {dados.tinyNotaId}.</strong>
-        <p>
-          A API do Tiny não tem como alterar ou excluir uma nota já incluída. Ao salvar, este sistema cria
-          outra nota (rascunho) com os dados corrigidos, e o rascunho {dados.tinyNotaId} continua existindo no
-          Tiny até você cancelá-lo ou excluí-lo lá dentro, à mão.
-        </p>
-      </div>
+      {!novo && (
+        <div className="aviso">
+          <strong>Isto cria um NOVO rascunho no Tiny — não altera o rascunho {dados.tinyNotaId}.</strong>
+          <p>
+            A API do Tiny não tem como alterar ou excluir uma nota já incluída. Ao salvar, este sistema cria
+            outra nota (rascunho) com os dados corrigidos, e o rascunho {dados.tinyNotaId} continua existindo no
+            Tiny até você cancelá-lo ou excluí-lo lá dentro, à mão.
+          </p>
+        </div>
+      )}
 
       {dados.tinyNotasSubstituidas?.length > 0 && (
         <div className="aviso">
@@ -131,7 +137,10 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
 
       {resultado && (
         <div className="aviso aviso-ok">
-          <strong>Novo rascunho criado no Tiny — nota {resultado.tinyNotaId ?? 'sem id retornado'}.</strong>
+          <strong>
+            {novo ? 'Rascunho criado' : 'Novo rascunho criado'} no Tiny — nota{' '}
+            {resultado.tinyNotaId ?? 'sem id retornado'}.
+          </strong>
           <p>{resultado.mensagem}</p>
           <p>
             <a href={hrefVoltar}>{rotuloVoltar}</a>
@@ -141,7 +150,7 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
 
       {erroEnvio && (
         <div className="aviso">
-          <strong>A correção não foi concluída.</strong>
+          <strong>{novo ? 'O rascunho não foi criado.' : 'A correção não foi concluída.'}</strong>
           <p className="texto-erro">{erroEnvio}</p>
         </div>
       )}
@@ -170,7 +179,7 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
             onClick={restaurarItens}
             disabled={!!resultado}
           >
-            Restaurar valores do rascunho atual
+            {novo ? 'Restaurar valores do Shopify' : 'Restaurar valores do rascunho atual'}
           </button>
         )}
       </h3>
@@ -243,7 +252,7 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
           {itensDaPagina.length === 0 && (
             <tr>
               <td colSpan={6} className="fraco">
-                Nenhum item na nota. Use &quot;Restaurar valores do rascunho atual&quot; acima para trazer os itens de volta.
+                Nenhum item na nota. Use &quot;Restaurar valores&quot; acima para trazer os itens de volta.
               </td>
             </tr>
           )}
@@ -290,7 +299,9 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
       )}
 
       <p style={{ marginTop: '1rem' }}>
-        <strong>Total do novo rascunho: {formatarMoeda(totalNota)}</strong>
+        <strong>
+          Total do {novo ? 'rascunho' : 'novo rascunho'}: {formatarMoeda(totalNota)}
+        </strong>
       </p>
 
       {!resultado && (
@@ -300,19 +311,26 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
             onClick={() => setPedindoConfirmacao(true)}
             disabled={!podeSalvar || pedindoConfirmacao}
           >
-            Salvar como novo rascunho no Tiny
+            {novo ? 'Incluir rascunho no Tiny' : 'Salvar como novo rascunho no Tiny'}
           </button>
 
           {pedindoConfirmacao && (
             <div className="confirmacao">
-              <p style={{ marginTop: 0 }}>
-                <strong>Confirma a criação de um novo rascunho?</strong> Isto grava uma nota real no Tiny de
-                produção com os dados acima. O rascunho {dados.tinyNotaId} atual não é apagado — cancele ou
-                exclua-o dentro do Tiny depois de confirmar aqui, para não ficar duplicado.
-              </p>
+              {novo ? (
+                <p style={{ marginTop: 0 }}>
+                  <strong>Confirma a criação do rascunho?</strong> Isto grava uma nota real no Tiny de produção
+                  com os dados acima, ainda sem valor fiscal.
+                </p>
+              ) : (
+                <p style={{ marginTop: 0 }}>
+                  <strong>Confirma a criação de um novo rascunho?</strong> Isto grava uma nota real no Tiny de
+                  produção com os dados acima. O rascunho {dados.tinyNotaId} atual não é apagado — cancele ou
+                  exclua-o dentro do Tiny depois de confirmar aqui, para não ficar duplicado.
+                </p>
+              )}
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <button onClick={confirmarRecriacao} disabled={enviando}>
-                  {enviando ? 'Enviando…' : 'Sim, criar o novo rascunho'}
+                  {enviando ? 'Enviando…' : novo ? 'Sim, criar o rascunho' : 'Sim, criar o novo rascunho'}
                 </button>
                 <button
                   className="secundario"

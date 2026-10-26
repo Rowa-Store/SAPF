@@ -256,12 +256,17 @@ export default function ControleTransferencias() {
                   const podeCriar = !t.notaEmitida && !temRascunho && t.status !== 'CANCELED' && !travada;
                   const previewPronto = !!acao?.preview?.dados?.podeCriar;
                   const expandida = acao && !enviando;
+                  // Abre a edição dos itens: antes do rascunho, cria o primeiro; depois, um novo.
+                  const hrefEditar =
+                    !travada && (podeCriar || (temRascunho && !t.notaEmitida))
+                      ? `/transferencias/${t.id}/rascunho/editar`
+                      : null;
 
                   return (
                     <Fragment key={t.id}>
                       <tr className={expandida ? 'linha-expandida' : undefined}>
                         <td>
-                          <div className="mono forte">{t.name}</div>
+                          <div className="mono forte">{hrefEditar ? <a href={hrefEditar}>{t.name}</a> : t.name}</div>
                           <div className="fraco">{formatarDataCurta(t.data)}</div>
                         </td>
                         <td>
@@ -324,6 +329,13 @@ export default function ControleTransferencias() {
                                 >
                                   Só rascunho
                                 </button>
+                                <a
+                                  className="botao-link"
+                                  href={hrefEditar}
+                                  title="Confere item a item e ajusta destinatário e itens antes de criar o rascunho"
+                                >
+                                  Editar itens
+                                </a>
                               </>
                             )}
 
@@ -341,7 +353,7 @@ export default function ControleTransferencias() {
                                 </button>
                                 <a
                                   className="botao-link"
-                                  href={`/transferencias/${t.id}/rascunho/editar`}
+                                  href={hrefEditar}
                                   title="Opcional: ajusta à mão o destinatário e os itens — cria um novo rascunho no Tiny"
                                 >
                                   Editar rascunho
