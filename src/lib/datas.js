@@ -52,22 +52,3 @@ export function formatarDia(dia) {
     year: 'numeric',
   });
 }
-
-/** AAAA-MM deslocado em `n` meses (negativo volta). */
-export function somarMeses(mes, n) {
-  const [ano, m] = mes.split('-').map(Number);
-  const data = new Date(Date.UTC(ano, m - 1 + n, 1));
-  return data.toISOString().slice(0, 7);
-}
-
-/** Primeiro e último dia (inclusivos) de um mês AAAA-MM, como AAAA-MM-DD. */
-export function intervaloDoMes(mes) {
-  return { de: `${mes}-01`, ate: somarDias(`${somarMeses(mes, 1)}-01`, -1) };
-}
-
-/** O mês AAAA-MM quando `de`–`ate` cobrem exatamente um mês; senão ''. */
-export function mesDoIntervalo(de, ate) {
-  if (!de || !de.endsWith('-01')) return '';
-  const mes = de.slice(0, 7);
-  return intervaloDoMes(mes).ate === ate ? mes : '';
-}

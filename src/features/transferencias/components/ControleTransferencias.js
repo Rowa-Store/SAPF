@@ -1,14 +1,14 @@
 // /transferencias — transferências de estoque entre lojas (Shopify) e a nota
-// fiscal de cada uma no Tiny: rascunho (criar, refazer e editar), emissão, nº da NF e
-// DANFE.
+// fiscal de cada uma no Tiny — rascunho, emissão, nº da NF e DANFE. Mesmo
+// formato da tela de atacado: lista por dia, busca única e confirmação com a
+// prévia da nota na própria linha.
 
 'use client';
 
-import { Fragment, useEffect, useState } from 'react';
-import ErrosCadastro from '@/components/ui/ErrosCadastro';
+import { Fragment } from 'react';
 import IconePdf from '@/components/ui/IconePdf';
+import NavegacaoDia from '@/components/ui/NavegacaoDia';
 import Paginacao from '@/components/ui/Paginacao';
-import { hoje, mesDoIntervalo, somarMeses } from '@/lib/datas';
 import { formatarDataCurta, formatarDataHoraCurta, formatarMoeda } from '@/lib/format';
 import { useTransferencias } from '../hooks/useTransferencias';
 
@@ -20,7 +20,7 @@ const STATUS_SHOPIFY = {
   CANCELED: ['Cancelada', 'marca-erro'],
 };
 
-const COLUNAS = 7;
+const COLUNAS = 6;
 
 function StatusShopify({ status }) {
   const [rotulo, classe] = STATUS_SHOPIFY[status] ?? [status, ''];
@@ -33,20 +33,6 @@ function MarcaErro({ rotulo = 'erro no Tiny', aoClicar }) {
   return (
     <button type="button" className="marca marca-erro" onClick={aoClicar} title="Ver o erro">
       {rotulo}
-    </button>
-  );
-}
-
-/** No lugar do botão que começou o lote: vermelho, para a emissão. */
-function BotaoPararLote({ lote, pararLote }) {
-  return (
-    <button
-      className="botao-erro"
-      onClick={pararLote}
-      disabled={lote.parando}
-      title="A nota que está no Tiny agora termina; as seguintes não são enviadas"
-    >
-      {lote.parando ? 'Parando…' : `Parar emissão (${lote.feitas}/${lote.total})`}
     </button>
   );
 }
@@ -74,105 +60,13 @@ function StatusFiscal({ t, verErro }) {
   if (t.situacaoFiscal === 'erro') return <MarcaErro aoClicar={abrirErro} />;
   return (
     <>
-      <span className="marca marca-erro">NF pendente</span>
+      <span className="fraco">sem rascunho</span>
       {abrirErro && <MarcaErro aoClicar={abrirErro} />}
     </>
   );
 }
 
-function SeletorLoja({ id, rotulo, valor, locais, aoMudar, vazio }) {
-  return (
-    <div>
-      <label htmlFor={id}>{rotulo}</label>
-      <select id={id} value={valor} onChange={(e) => aoMudar(e.target.value)}>
-        <option value="">{vazio}</option>
-        {locais.map((l) => (
-          <option key={l.id} value={l.id}>
-            {l.nome}
-            {l.ativo ? '' : ' (inativa)'}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function Produtos({ estado, temRascunho, cadastroItens }) {
-  if (estado.carregando) return <p className="fraco">Lendo os itens no Shopify…</p>;
-  if (estado.erro) {
-    return (
-      <div className="aviso">
-        <strong>Não foi possível ler a transferência.</strong>
-        <p>{estado.erro}</p>
-      </div>
-    );
-  }
-  const { dados } = estado;
-  const nota = dados.payload.nota_fiscal;
-  return (
-    <>
-      {dados.alertas.length > 0 && (
-        <div className="aviso">
-          <strong>Confira antes de criar o rascunho</strong>
-          <ul>
-            {dados.alertas.map((a, i) => (
-              <li key={i}>{a}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {temRascunho && (
-        <p className="fraco">
-          Nota remontada agora a partir do Shopify — se o rascunho foi editado, o que está no Tiny pode ser
-          diferente (abra em &quot;Editar rascunho&quot; para ver o que foi enviado).
-        </p>
-      )}
-      <p className="fraco">
-        Destinatário na nota: {nota.cliente.nome}
-        {nota.cliente.cpf_cnpj && <span className="mono"> · CNPJ {nota.cliente.cpf_cnpj}</span>}
-        {nota.cliente.ie && <span className="mono"> · IE {nota.cliente.ie}</span>} · Natureza:{' '}
-        {nota.natureza_operacao}
-        {dados.regrasDestino && (
-          <>
-            {' '}
-            · Valor: preço de {dados.regrasDestino.baseValor === 'venda' ? 'venda' : 'custo'}
-            {dados.regrasDestino.descontoPercentual > 0 && ` com ${dados.regrasDestino.descontoPercentual}% de desconto`}
-          </>
-        )}
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>SKU</th>
-            <th>Descrição</th>
-            <th className="num">Qtd.</th>
-            <th className="num">Valor unitário</th>
-            <th className="num">Total da linha</th>
-          </tr>
-        </thead>
-        <tbody>
-          {nota.itens.map(({ item }, i) => (
-            <tr key={i}>
-              <td className="mono">
-                {item.codigo || '—'}
-                <ErrosCadastro conferencia={cadastroItens} codigo={item.codigo} />
-              </td>
-              <td>{item.descricao}</td>
-              <td className="num">{item.quantidade}</td>
-              <td className="num">{formatarMoeda(item.valor_unitario)}</td>
-              <td className="num">{formatarMoeda(Number(item.valor_unitario) * Number(item.quantidade))}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p>
-        <strong>Total da nota: {formatarMoeda(dados.totalNota)}</strong>
-      </p>
-    </>
-  );
-}
-
-/** Linha de largura total logo abaixo da transferência (confirmação, erro, produtos). */
+/** Linha de largura total logo abaixo da transferência (confirmação, erro). */
 function LinhaDetalhe({ children }) {
   return (
     <tr className="linha-detalhe">
@@ -181,59 +75,82 @@ function LinhaDetalhe({ children }) {
   );
 }
 
+/** Destinatário, total e alertas da nota montada agora, mostrados antes de confirmar a criação. */
+function ResumoPreview({ preview }) {
+  if (!preview || preview.carregando) return <p className="fraco">Montando a nota a partir do Shopify…</p>;
+  if (preview.erro) {
+    return (
+      <div className="aviso">
+        <strong>Não foi possível montar a nota.</strong>
+        <p style={{ marginBottom: 0 }}>{preview.erro}</p>
+      </div>
+    );
+  }
+  const { dados } = preview;
+  const nota = dados.payload.nota_fiscal;
+  return (
+    <>
+      <p className="fraco">
+        Destinatário na nota: {nota.cliente.nome}
+        {nota.cliente.cpf_cnpj && <span className="mono"> · CNPJ {nota.cliente.cpf_cnpj}</span>}
+        {nota.cliente.ie && <span className="mono"> · IE {nota.cliente.ie}</span>} · Natureza:{' '}
+        {nota.natureza_operacao} · {nota.itens.length} item(ns) ·{' '}
+        <strong>Total da nota: {formatarMoeda(dados.totalNota)}</strong>
+        {dados.regrasDestino && (
+          <>
+            <br />
+            Valor: preço de {dados.regrasDestino.baseValor === 'venda' ? 'venda' : 'custo'}
+            {dados.regrasDestino.descontoPercentual > 0 && ` com ${dados.regrasDestino.descontoPercentual}% de desconto`}
+          </>
+        )}
+      </p>
+      {dados.alertas.length > 0 && (
+        <div className="aviso">
+          <strong>Confira antes de continuar</strong>
+          <ul>
+            {dados.alertas.map((a, i) => (
+              <li key={i}>{a}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function ControleTransferencias() {
   const {
-    pagina,
-    totalPaginas,
-    mudarPagina,
-    transferenciasDaPagina,
-    filtros,
-    atualizarFiltro,
-    aplicarFiltros,
-    aplicarMes,
-    limparFiltros,
-    filtrosAlterados,
     transferencias,
-    locais,
-    carregando,
     erro,
     aviso,
     setAviso,
-    produtos,
-    alternarProdutos,
+    filtros,
+    atualizarFiltro,
+    limparFiltros,
+    filtrosAlterados,
+    buscar,
+    buscaAplicada,
+    carregando,
+    visiveis,
+    visiveisDaPagina,
+    pagina,
+    totalPaginas,
+    mudarPagina,
+    dia,
+    diaDeHoje,
+    listaCompleta,
+    irParaDia,
+    diaAnterior,
+    diaSeguinte,
     acoes,
     definirAcao,
-    conferindo,
-    precisaConferir,
-    conferirNoTiny,
+    pedirCriacao,
     criarRascunho,
     novoRascunho,
+    criarEEmitir,
     emitir,
-    emitirDireto,
-    reemitir,
-    podeEmitir,
-    podeSelecionar,
-    selecionadas,
-    alternarSelecao,
-    selecionarVarias,
-    comRascunho,
-    selecionadasEmitiveis,
-    lote,
-    pararLote,
-    loteAConfirmar,
-    confirmarLote,
-    cancelarLote,
-    emitirTodasComRascunho,
-    emitirSelecionadas,
     verErro,
   } = useTransferencias();
-
-  // Mês corrente de São Paulo — calculado depois de montar, para o HTML
-  // pré-renderizado no build não carregar o mês da data do deploy.
-  const [mesAtual, setMesAtual] = useState(null);
-  useEffect(() => setMesAtual(hoje().slice(0, 7)), []);
-
-  const emitiveisDaPagina = transferenciasDaPagina.filter(podeEmitir).map((t) => t.id);
 
   return (
     <>
@@ -241,111 +158,31 @@ export default function ControleTransferencias() {
         <h2>Controle de transferências do fiscal</h2>
       </div>
 
-      <details className="cartao filtros-cartao" open>
-        <summary>
-          <strong>Filtros</strong>
-          {filtrosAlterados && <span className="marca marca-atacado">ativos</span>}
-        </summary>
-        <div className="campos" style={{ marginTop: '0.75rem' }}>
-          <SeletorLoja
-            id="origem"
-            rotulo="Loja de origem"
-            valor={filtros.origem}
-            locais={locais}
-            aoMudar={(v) => atualizarFiltro('origem', v)}
-            vazio="Todas as lojas"
-          />
-          <SeletorLoja
-            id="destino"
-            rotulo="Loja de destino"
-            valor={filtros.destino}
-            locais={locais}
-            aoMudar={(v) => atualizarFiltro('destino', v)}
-            vazio="Todas as lojas"
-          />
-          <div title="Oculta transferências em que a loja seja origem ou destino">
-            <SeletorLoja
-              id="excluir"
-              rotulo="Excluir loja (origem ou destino)"
-              valor={filtros.excluir}
-              locais={locais}
-              aoMudar={(v) => atualizarFiltro('excluir', v)}
-              vazio="Nenhuma"
-            />
-          </div>
-          {/* Atalho para fechamento mensal: preenche as duas datas com o mês
-              inteiro (do dia 1 ao último dia) e já filtra. */}
+      <div className="cartao">
+        <div className="campos">
           <div>
-            <label htmlFor="mes">Mês</label>
+            <label htmlFor="busca">Buscar</label>
             <input
-              id="mes"
-              type="month"
-              value={mesDoIntervalo(filtros.de, filtros.ate)}
-              max={mesAtual ?? undefined}
-              onChange={(e) => aplicarMes(e.target.value)}
-              disabled={carregando}
-            />
-            <div className="grupo-botoes" style={{ marginTop: '0.35rem' }}>
-              <button
-                type="button"
-                className="pequeno secundario"
-                onClick={() => aplicarMes(mesAtual)}
-                disabled={carregando || !mesAtual}
-              >
-                Este mês
-              </button>
-              <button
-                type="button"
-                className="pequeno secundario"
-                onClick={() => aplicarMes(somarMeses(mesAtual, -1))}
-                disabled={carregando || !mesAtual}
-              >
-                Mês passado
-              </button>
-            </div>
-          </div>
-          <div>
-            <label htmlFor="de">Data inicial</label>
-            <input id="de" type="date" value={filtros.de} onChange={(e) => atualizarFiltro('de', e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="ate">Data final</label>
-            <input id="ate" type="date" value={filtros.ate} onChange={(e) => atualizarFiltro('ate', e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="nome">Buscar por nome</label>
-            <input
-              id="nome"
-              placeholder="Ex.: #T1024, #T1030, #T1041"
-              title="Nome ou referência da transferência — separe vários por vírgula"
-              value={filtros.nome}
-              onChange={(e) => atualizarFiltro('nome', e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && aplicarFiltros()}
-            />
-          </div>
-          <div>
-            <label htmlFor="nf">Buscar por nº da NF</label>
-            <input
-              id="nf"
-              placeholder="Ex.: 1520, 1523"
-              title="Nº da nota fiscal — separe vários por vírgula"
-              value={filtros.nf}
-              onChange={(e) => atualizarFiltro('nf', e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && aplicarFiltros()}
+              id="busca"
+              placeholder="Ex.: #T1024, #T1030 ou nome da loja"
+              title="Nome ou referência da transferência, loja de origem ou destino, ou nº da NF — separe vários por vírgula. Enter para buscar."
+              value={filtros.busca}
+              onChange={(e) => atualizarFiltro('busca', e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && buscar()}
             />
           </div>
         </div>
-
+        {/* Sem busca, a lista é de um dia só (abre em hoje). */}
+        <NavegacaoDia
+          dia={dia}
+          diaDeHoje={diaDeHoje}
+          carregando={carregando}
+          irParaDia={irParaDia}
+          diaAnterior={diaAnterior}
+          diaSeguinte={diaSeguinte}
+        />
         <div className="filtros-rodape">
           <div className="filtros">
-            <label>
-              <input
-                type="checkbox"
-                checked={filtros.rascunhos}
-                onChange={(e) => atualizarFiltro('rascunhos', e.target.checked)}
-              />
-              Mostrar rascunhos do Shopify
-            </label>
             <label>
               <input
                 type="checkbox"
@@ -359,12 +196,12 @@ export default function ControleTransferencias() {
             <button className="secundario" onClick={limparFiltros} disabled={carregando || !filtrosAlterados}>
               Limpar
             </button>
-            <button onClick={aplicarFiltros} disabled={carregando}>
-              {carregando ? 'Carregando…' : 'Aplicar filtros'}
+            <button onClick={() => buscar()} disabled={carregando || filtros.busca === buscaAplicada}>
+              {carregando ? 'Carregando…' : 'Buscar'}
             </button>
           </div>
         </div>
-      </details>
+      </div>
 
       {aviso && (
         <div className="aviso aviso-ok aviso-fechavel">
@@ -379,100 +216,29 @@ export default function ControleTransferencias() {
         <div className="aviso">
           <strong>Não foi possível carregar as transferências.</strong>
           <p>{erro}</p>
+          <p>Confira as integrações em Sys Info e tente de novo.</p>
+        </div>
+      )}
+
+      {transferencias && !listaCompleta && (
+        <div className="aviso">
+          <strong>{dia ? 'Este dia tem' : 'A busca achou'} transferências demais — a lista veio cortada.</strong>
+          <p>{dia ? 'Use a busca para achar uma transferência específica.' : 'Use termos mais específicos.'}</p>
         </div>
       )}
 
       {!transferencias ? (
         !erro && <p className="fraco">Carregando transferências…</p>
-      ) : transferencias.length === 0 ? (
-        <div className="vazio">Nenhuma transferência corresponde aos filtros.</div>
+      ) : visiveis.length === 0 ? (
+        <div className="vazio">
+          {dia ? 'Nenhuma transferência neste dia.' : 'Nenhuma transferência corresponde à busca.'}
+        </div>
       ) : (
         <>
-          <div className="barra-lote">
-            <span className="fraco">
-              {selecionadas.size > 0 ? (
-                <>
-                  <strong className="barra-lote-contagem">{selecionadasEmitiveis.length}</strong> selecionada(s)
-                  {' · '}
-                  <button className="link" onClick={() => selecionarVarias([...selecionadas], false)} disabled={!!lote}>
-                    limpar seleção
-                  </button>
-                </>
-              ) : (
-                'Marque as transferências para emitir em lote'
-              )}
-              {lote &&
-                (lote.parando
-                  ? ` — parando: termina a nota em andamento (${lote.feitas}/${lote.total})…`
-                  : ` — emitindo ${lote.feitas}/${lote.total}… não feche a página.`)}
-            </span>
-            <div className="grupo-botoes">
-              {lote?.origem === 'todas' ? (
-                <BotaoPararLote lote={lote} pararLote={pararLote} />
-              ) : (
-                <button
-                  className="secundario"
-                  onClick={emitirTodasComRascunho}
-                  disabled={carregando || !!lote || !!loteAConfirmar || comRascunho.length === 0}
-                  title="Emite no Tiny todas as notas com rascunho da lista filtrada (todas as páginas)"
-                >
-                  Emitir todas com rascunho ({comRascunho.length})
-                </button>
-              )}
-              {lote?.origem === 'selecionadas' ? (
-                <BotaoPararLote lote={lote} pararLote={pararLote} />
-              ) : (
-                <button
-                  onClick={emitirSelecionadas}
-                  disabled={carregando || !!lote || !!loteAConfirmar || selecionadasEmitiveis.length === 0}
-                  title="Cria o rascunho quando falta e emite as transferências marcadas — as já emitidas são reemitidas com um novo rascunho"
-                >
-                  Emitir selecionadas ({selecionadasEmitiveis.length})
-                </button>
-              )}
-            </div>
-          </div>
-
-          {loteAConfirmar && (
-            <div className="confirmacao">
-              <p style={{ marginTop: 0 }}>
-                <strong>
-                  Emitir {loteAConfirmar.lista.length} nota(s) de {loteAConfirmar.descricao}?
-                </strong>{' '}
-                Isso dá valor fiscal real no Tiny e é irreversível.
-                {loteAConfirmar.semRascunho > 0 &&
-                  ` ${loteAConfirmar.semRascunho} delas ainda não têm rascunho — ele será criado antes de emitir.`}
-                {loteAConfirmar.jaEmitidas > 0 && (
-                  <>
-                    {' '}
-                    <strong>{loteAConfirmar.jaEmitidas} delas JÁ ESTÃO EMITIDAS:</strong> cada uma ganha um novo
-                    rascunho e uma NOVA nota fiscal — as notas anteriores continuam valendo até serem canceladas à mão
-                    no Tiny.
-                  </>
-                )}
-              </p>
-              <div className="grupo-botoes">
-                <button onClick={confirmarLote}>Sim, emitir {loteAConfirmar.lista.length} nota(s)</button>
-                <button className="secundario" onClick={cancelarLote}>
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          )}
-
           <div className="tabela-rolavel">
-            <table className="tabela-transferencias">
+            <table className="tabela-controle">
               <thead>
                 <tr>
-                  <th className="col-check">
-                    <input
-                      type="checkbox"
-                      aria-label="Selecionar as transferências emitíveis desta página"
-                      checked={emitiveisDaPagina.length > 0 && emitiveisDaPagina.every((id) => selecionadas.has(id))}
-                      disabled={emitiveisDaPagina.length === 0 || !!lote}
-                      onChange={(e) => selecionarVarias(emitiveisDaPagina, e.target.checked)}
-                    />
-                  </th>
                   <th>Transferência</th>
                   <th>Destino ← origem</th>
                   <th>Shopify</th>
@@ -482,29 +248,18 @@ export default function ControleTransferencias() {
                 </tr>
               </thead>
               <tbody>
-                {transferenciasDaPagina.map((t) => {
-                  const estadoProdutos = produtos[t.id];
+                {visiveisDaPagina.map((t) => {
                   const acao = acoes[t.id];
                   const enviando = acao?.fase === 'enviando';
                   const temRascunho = t.situacaoFiscal === 'rascunho_criado';
                   const travada = !!t.bloqueio;
                   const podeCriar = !t.notaEmitida && !temRascunho && t.status !== 'CANCELED' && !travada;
-                  const expandida = estadoProdutos?.aberto || (acao && acao.fase !== 'enviando');
+                  const previewPronto = !!acao?.preview?.dados?.podeCriar;
+                  const expandida = acao && !enviando;
 
                   return (
                     <Fragment key={t.id}>
-                      <tr className={`${selecionadas.has(t.id) ? 'linha-selecionada' : ''} ${expandida ? 'linha-expandida' : ''}`}>
-                        <td className="col-check">
-                          {podeSelecionar(t) && (
-                            <input
-                              type="checkbox"
-                              aria-label={`Selecionar a transferência ${t.name}`}
-                              checked={selecionadas.has(t.id)}
-                              disabled={!!lote}
-                              onChange={() => alternarSelecao(t.id)}
-                            />
-                          )}
-                        </td>
+                      <tr className={expandida ? 'linha-expandida' : undefined}>
                         <td>
                           <div className="mono forte">{t.name}</div>
                           <div className="fraco">{formatarDataCurta(t.data)}</div>
@@ -555,46 +310,31 @@ export default function ControleTransferencias() {
                               <>
                                 <button
                                   className="pequeno"
-                                  onClick={() => definirAcao(t.id, { fase: 'confirmar-rascunho' })}
-                                  disabled={enviando || acao?.fase === 'confirmar-rascunho'}
-                                >
-                                  Criar rascunho
-                                </button>
-                                <button
-                                  className="pequeno secundario"
-                                  onClick={() => definirAcao(t.id, { fase: 'confirmar-emissao-direta' })}
-                                  disabled={enviando || !!lote || acao?.fase === 'confirmar-emissao-direta'}
+                                  onClick={() => pedirCriacao(t, 'confirmar-emissao-direta')}
+                                  disabled={enviando || acao?.fase === 'confirmar-emissao-direta'}
                                   title="Cria o rascunho no Tiny e emite em seguida"
                                 >
                                   Criar e emitir
                                 </button>
+                                <button
+                                  className="pequeno secundario"
+                                  onClick={() => pedirCriacao(t, 'confirmar-rascunho')}
+                                  disabled={enviando || acao?.fase === 'confirmar-rascunho'}
+                                  title="Cria só o rascunho no Tiny, para emitir depois"
+                                >
+                                  Só rascunho
+                                </button>
                               </>
                             )}
 
-                            {t.notaEmitida && t.status !== 'CANCELED' && !travada && (
-                              <button
-                                className="pequeno secundario"
-                                onClick={() => definirAcao(t.id, { fase: 'confirmar-reemissao' })}
-                                disabled={enviando || !!lote || acao?.fase === 'confirmar-reemissao'}
-                                title="Cria um novo rascunho a partir do Shopify e do cadastro da loja e emite uma nova nota"
-                              >
-                                Reemitir
-                              </button>
-                            )}
-
+                            {/* Rascunho já enviado: emitir, mandar um novo remontado do
+                                Shopify ou ajustar à mão antes de mandar um novo. */}
                             {temRascunho && !t.notaEmitida && !travada && (
                               <>
                                 <button
-                                  className="pequeno"
-                                  onClick={() => definirAcao(t.id, { fase: 'confirmar-emissao' })}
-                                  disabled={enviando || !!lote || acao?.fase === 'confirmar-emissao'}
-                                >
-                                  Emitir nota
-                                </button>
-                                <button
                                   className="pequeno secundario"
-                                  onClick={() => definirAcao(t.id, { fase: 'confirmar-novo-rascunho' })}
-                                  disabled={enviando || !!lote || acao?.fase === 'confirmar-novo-rascunho'}
+                                  onClick={() => pedirCriacao(t, 'confirmar-novo-rascunho')}
+                                  disabled={enviando || acao?.fase === 'confirmar-novo-rascunho'}
                                   title="Remonta a nota a partir do Shopify e do cadastro da loja e cria um novo rascunho no Tiny"
                                 >
                                   Novo rascunho
@@ -606,41 +346,51 @@ export default function ControleTransferencias() {
                                 >
                                   Editar rascunho
                                 </a>
+                                <button
+                                  className="pequeno"
+                                  onClick={() => definirAcao(t.id, { fase: 'confirmar-emissao' })}
+                                  disabled={enviando || acao?.fase === 'confirmar-emissao'}
+                                >
+                                  Emitir nota
+                                </button>
                               </>
-                            )}
-
-                            <button
-                              className="pequeno secundario"
-                              onClick={() => alternarProdutos(t.id)}
-                              aria-expanded={!!estadoProdutos?.aberto}
-                            >
-                              {estadoProdutos?.aberto ? 'Ocultar produtos ▴' : 'Produtos ▾'}
-                            </button>
-
-                            {precisaConferir(t) && (
-                              <button
-                                className="pequeno secundario"
-                                onClick={() => conferirNoTiny(t)}
-                                disabled={conferindo.has(t.id) || enviando}
-                                title="Busca no Tiny se a nota já foi autorizada e o número da NF"
-                              >
-                                {conferindo.has(t.id) ? 'Conferindo…' : 'Conferir no Tiny'}
-                              </button>
                             )}
                           </div>
                         </td>
                       </tr>
+
+                      {acao?.fase === 'confirmar-emissao-direta' && (
+                        <LinhaDetalhe>
+                          <div className="confirmacao">
+                            <p style={{ marginTop: 0 }}>
+                              <strong>Criar o rascunho e emitir a nota da transferência {t.name}?</strong> Isso
+                              grava a nota no Tiny de produção e dá valor fiscal real — é irreversível.
+                            </p>
+                            <ResumoPreview preview={acao.preview} />
+                            <div className="grupo-botoes">
+                              <button onClick={() => criarEEmitir(t)} disabled={!previewPronto}>
+                                Sim, criar e emitir
+                              </button>
+                              <button className="secundario" onClick={() => definirAcao(t.id, null)}>
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        </LinhaDetalhe>
+                      )}
 
                       {acao?.fase === 'confirmar-rascunho' && (
                         <LinhaDetalhe>
                           <div className="confirmacao">
                             <p style={{ marginTop: 0 }}>
                               <strong>Criar o rascunho da transferência {t.name}?</strong> Isto grava uma nota
-                              real no Tiny de produção. Confira os produtos e os avisos em &quot;Produtos&quot;
-                              antes.
+                              real no Tiny de produção, ainda sem valor fiscal.
                             </p>
+                            <ResumoPreview preview={acao.preview} />
                             <div className="grupo-botoes">
-                              <button onClick={() => criarRascunho(t)}>Sim, criar o rascunho</button>
+                              <button onClick={() => criarRascunho(t)} disabled={!previewPronto}>
+                                Sim, criar o rascunho
+                              </button>
                               <button className="secundario" onClick={() => definirAcao(t.id, null)}>
                                 Cancelar
                               </button>
@@ -658,34 +408,11 @@ export default function ControleTransferencias() {
                               Tiny de produção. O rascunho atual ({t.tinyNotaId}) não é apagado: cancele ou exclua
                               ele à mão no Tiny depois.
                             </p>
-                            <p className="fraco">
-                              Se o que precisa mudar não vem do Shopify nem do cadastro, use &quot;Editar
-                              rascunho&quot; (opcional) para ajustar à mão.
-                            </p>
+                            <ResumoPreview preview={acao.preview} />
                             <div className="grupo-botoes">
-                              <button onClick={() => novoRascunho(t)}>Sim, criar novo rascunho</button>
-                              <button className="secundario" onClick={() => definirAcao(t.id, null)}>
-                                Cancelar
+                              <button onClick={() => novoRascunho(t)} disabled={!previewPronto}>
+                                Sim, criar novo rascunho
                               </button>
-                            </div>
-                          </div>
-                        </LinhaDetalhe>
-                      )}
-
-                      {acao?.fase === 'confirmar-reemissao' && (
-                        <LinhaDetalhe>
-                          <div className="confirmacao">
-                            <p style={{ marginTop: 0 }}>
-                              <strong>
-                                Reemitir a transferência {t.name}
-                                {t.numeroNf ? ` (hoje NF nº ${t.numeroNf})` : ''}?
-                              </strong>{' '}
-                              Um novo rascunho é montado agora a partir do Shopify e do cadastro da loja e uma NOVA
-                              nota fiscal é emitida no Tiny — valor fiscal real, irreversível. A nota anterior (
-                              {t.tinyNotaId}) continua valendo até ser cancelada à mão no Tiny.
-                            </p>
-                            <div className="grupo-botoes">
-                              <button onClick={() => reemitir(t)}>Sim, criar novo rascunho e emitir</button>
                               <button className="secundario" onClick={() => definirAcao(t.id, null)}>
                                 Cancelar
                               </button>
@@ -699,28 +426,10 @@ export default function ControleTransferencias() {
                           <div className="confirmacao">
                             <p style={{ marginTop: 0 }}>
                               <strong>Emitir a nota {t.tinyNotaId} ({t.name})?</strong> Isso dá valor fiscal real
-                              e é irreversível.
+                              e é irreversível — não é possível desfazer pelo sistema.
                             </p>
                             <div className="grupo-botoes">
                               <button onClick={() => emitir(t)}>Sim, emitir</button>
-                              <button className="secundario" onClick={() => definirAcao(t.id, null)}>
-                                Cancelar
-                              </button>
-                            </div>
-                          </div>
-                        </LinhaDetalhe>
-                      )}
-
-                      {acao?.fase === 'confirmar-emissao-direta' && (
-                        <LinhaDetalhe>
-                          <div className="confirmacao">
-                            <p style={{ marginTop: 0 }}>
-                              <strong>Criar o rascunho e emitir a nota da transferência {t.name}?</strong> Isso
-                              grava a nota no Tiny de produção e dá valor fiscal real — é irreversível. Confira os
-                              produtos e os avisos em &quot;Produtos&quot; antes.
-                            </p>
-                            <div className="grupo-botoes">
-                              <button onClick={() => emitirDireto(t)}>Sim, criar e emitir</button>
                               <button className="secundario" onClick={() => definirAcao(t.id, null)}>
                                 Cancelar
                               </button>
@@ -743,16 +452,6 @@ export default function ControleTransferencias() {
                           </div>
                         </LinhaDetalhe>
                       )}
-
-                      {estadoProdutos?.aberto && (
-                        <LinhaDetalhe>
-                          <Produtos
-                            estado={estadoProdutos}
-                            temRascunho={temRascunho && !t.notaEmitida}
-                            cadastroItens={t.cadastroItens}
-                          />
-                        </LinhaDetalhe>
-                      )}
                     </Fragment>
                   );
                 })}
@@ -760,8 +459,9 @@ export default function ControleTransferencias() {
             </table>
           </div>
           <p className="fraco">
-            {transferencias.length} transferência(s)
-            {totalPaginas > 1 && ` — página ${pagina} de ${totalPaginas}`}.
+            {visiveis.length} de {transferencias.length} transferência(s)
+            {totalPaginas > 1 && ` — página ${pagina} de ${totalPaginas}`}
+            {carregando && ' — carregando…'}
           </p>
           <Paginacao pagina={pagina} totalPaginas={totalPaginas} aoMudarPagina={mudarPagina} />
         </>

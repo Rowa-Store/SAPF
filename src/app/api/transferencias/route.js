@@ -1,83 +1,64 @@
 // GET /api/transferencias — transferências de estoque entre lojas (Shopify)
-// com a situação fiscal de cada uma (Supabase).
+// com a situação fiscal de cada uma (Supabase). Rascunhos do Shopify ficam de
+// fora.
 //
-// Filtros aceitos na URL: origem, destino, excluir (gid do local), de, ate
-// (AAAA-MM-DD), rascunhos=1 (inclui transferências em rascunho no Shopify),
-// naoEmitidas=1, nf (número da nota) e nome (nome ou referência da
-// transferência, sem diferenciar maiúsculas). nf e nome aceitam vários termos
-// separados por vírgula — basta um deles bater. Origem, destino, datas e rascunhos vão
-// direto para a busca do Shopify; o resto depende do Supabase e é filtrado aqui.
-// origemNome (sem origem) procura a loja de origem pelo nome — é como a tela
-// abre já filtrada no CD; o gid encontrado volta em `origemId`.
+// Como a tela de atacado: sem busca, a lista é POR DIA (fuso de São Paulo,
+// ver lib/datas.js) e a tela navega dia a dia. Com busca, o resultado não se
+// prende a dia nenhum.
+//
+//   ?dia=    AAAA-MM-DD; sem ele, hoje
+//   ?busca=  termos separados por vírgula — basta um bater: nome ou referência
+//            da transferência, loja de origem ou de destino, ou nº da NF
 
-import { listarLocais, listarTransferencias } from '@/lib/integrations/shopifyTransferencias';
+import { listarTransferencias } from '@/lib/integrations/shopifyTransferencias';
 import { statusPorPedido } from '@/lib/db';
 import { bloqueioDaTransferencia } from '@/lib/fiscal/travaTransferencia';
+import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
 import { erroJson, idNumerico } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const DATA = /^\d{4}-\d{2}-\d{2}$/;
-
-/** "Rowa Centro de Distribuição 1" -> "rowacentrodedistribuicao1", para comparar nomes de loja sem ligar para caixa, acento e pontuação. */
-function chaveNome(nome) {
-  return String(nome ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-}
-
-/** "a, b ,c" -> ['a', 'b', 'c'], já normalizados; termos vazios são descartados. */
-function termos(valor, normalizar) {
-  return (valor ?? '').split(',').map(normalizar).filter(Boolean);
+/** A transferência bate com o termo da busca (já em minúsculas)? */
+function bateComTermo(t, termo) {
+  const textos = [t.name, t.referencia, t.origem, t.destino].map((v) => String(v ?? '').toLowerCase());
+  if (textos.some((v) => v.includes(termo))) return true;
+  // Termo só de dígitos também procura no nº da NF.
+  return /^\d+$/.test(termo) && String(t.numeroNf ?? '').replace(/\D+/g, '').includes(termo);
 }
 
 export async function GET(request) {
   const busca = new URL(request.url).searchParams;
-  const dataInicial = busca.get('de') || null;
-  const dataFinal = busca.get('ate') || null;
-  if ((dataInicial && !DATA.test(dataInicial)) || (dataFinal && !DATA.test(dataFinal))) {
-    return erroJson('Datas devem vir no formato AAAA-MM-DD.', 400);
+  const termos = (busca.get('busca') ?? '')
+    .split(',')
+    .map((t) => t.trim().toLowerCase())
+    .filter(Boolean);
+
+  const diaDeHoje = hoje();
+  const dia = termos.length === 0 ? busca.get('dia') || diaDeHoje : null;
+  if (dia && (!diaValido(dia) || dia > diaDeHoje)) {
+    return erroJson(`Dia inválido: "${dia}". Use AAAA-MM-DD, até hoje.`, 400);
   }
 
   try {
-    let origemId = busca.get('origem') || null;
-    let locaisProntos = null;
-    const origemNome = chaveNome(busca.get('origemNome'));
-    if (!origemId && origemNome) {
-      locaisProntos = await listarLocais();
-      origemId = locaisProntos.find((l) => chaveNome(l.name) === origemNome)?.id ?? null;
-    }
-
     // A situação fiscal de cada página já é pedida ao Supabase assim que a
     // página chega, em paralelo com a leitura da seguinte.
     const consultasSituacao = [];
-    const [{ transferencias, truncado }, locais] = await Promise.all([
-      listarTransferencias(
-        {
-          origemId,
-          destinoId: busca.get('destino') || null,
-          dataInicial,
-          dataFinal,
-          mostrarRascunhos: busca.get('rascunhos') === '1',
+    const { transferencias, truncado } = await listarTransferencias(
+      { periodo: dia ? intervaloDoDia(dia) : null },
+      {
+        aoReceberPagina: (nodes) => {
+          const consulta = statusPorPedido(nodes.map((t) => t.id));
+          // Se o Shopify falhar numa página seguinte, ninguém chega a
+          // esperar esta consulta — sem o catch, a falha dela ficaria solta.
+          consulta.catch(() => {});
+          consultasSituacao.push(consulta);
         },
-        {
-          aoReceberPagina: (nodes) => {
-            const consulta = statusPorPedido(nodes.map((t) => t.id));
-            // Se o Shopify falhar numa página seguinte, ninguém chega a
-            // esperar esta consulta — sem o catch, a falha dela ficaria solta.
-            consulta.catch(() => {});
-            consultasSituacao.push(consulta);
-          },
-        }
-      ),
-      locaisProntos ?? listarLocais(),
-    ]);
+      }
+    );
+    if (truncado) console.error(`[transferencias] Lista passou do limite de páginas — cortada (dia ${dia ?? '—'}).`);
 
     const situacoes = Object.assign({}, ...(await Promise.all(consultasSituacao)));
-
-    const excluir = busca.get('excluir');
-    const naoEmitidas = busca.get('naoEmitidas') === '1';
-    const nfs = termos(busca.get('nf'), (v) => v.replace(/\D+/g, ''));
-    const nomes = termos(busca.get('nome'), (v) => v.trim().toLowerCase());
 
     const lista = transferencias
       .map((t) => {
@@ -90,11 +71,9 @@ export async function GET(request) {
           data: t.dateCreated,
           status: t.status,
           origem: t.origin?.name ?? '—',
-          origemId: t.origin?.location?.id ?? null,
           // Motivo de a transferência não poder ter nota (CD 1 <-> CD 2), ou null.
           bloqueio: bloqueioDaTransferencia(t.origin?.name, t.destination?.name),
           destino: t.destination?.name ?? '—',
-          destinoId: t.destination?.location?.id ?? null,
           quantidadeTotal: t.totalQuantity,
           quantidadeRecebida: t.receivedQuantity,
           situacaoFiscal: situacao?.status ?? null,
@@ -107,24 +86,15 @@ export async function GET(request) {
           erroEm: situacao?.erro ? situacao.atualizado_em : null,
         };
       })
-      .filter((t) => !excluir || (t.origemId !== excluir && t.destinoId !== excluir))
-      .filter((t) => !naoEmitidas || !t.notaEmitida)
-      .filter((t) => {
-        if (!nfs.length) return true;
-        const numero = String(t.numeroNf ?? '').replace(/\D+/g, '');
-        return nfs.some((nf) => numero.includes(nf));
-      })
-      .filter((t) => {
-        if (!nomes.length) return true;
-        const campos = [t.name, t.referencia].map((v) => String(v ?? '').toLowerCase());
-        return nomes.some((nome) => campos.some((c) => c.includes(nome)));
-      });
+      .filter((t) => termos.length === 0 || termos.some((termo) => bateComTermo(t, termo)));
 
     return Response.json({
       transferencias: lista,
-      locais: locais.map((l) => ({ id: l.id, nome: l.name, ativo: l.isActive })),
-      truncado,
-      origemId,
+      // null numa busca. `completo: false` = passou do limite de páginas do
+      // Shopify e a lista veio cortada.
+      dia,
+      completo: !truncado,
+      hoje: diaDeHoje,
     });
   } catch (erro) {
     return erroJson(`Não foi possível listar as transferências: ${erro.message}`);

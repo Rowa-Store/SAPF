@@ -2,31 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
-import { intervaloDoMes } from '@/lib/datas';
+import { somarDias } from '@/lib/datas';
 
 export const FILTROS_VAZIOS = {
-  origem: '',
-  destino: '',
-  excluir: '',
-  de: '',
-  ate: '',
-  nf: '',
-  nome: '',
-  rascunhos: false,
   naoEmitidas: false,
+  busca: '',
 };
-
-// A tela abre filtrada nas transferências que saem do CD.
-const ORIGEM_PADRAO = 'Rowa Centro de Distribuição 2';
-
-function paraQuery(filtros) {
-  const busca = new URLSearchParams();
-  for (const [chave, valor] of Object.entries(filtros)) {
-    if (valor === true) busca.set(chave, '1');
-    else if (valor) busca.set(chave, valor);
-  }
-  return busca.toString();
-}
 
 async function lerJson(resposta, mensagemPadrao) {
   const corpo = await resposta.json().catch(() => ({}));
@@ -35,97 +16,94 @@ async function lerJson(resposta, mensagemPadrao) {
 }
 
 /**
- * /transferencias — transferências de estoque do Shopify + nota de cada uma no Tiny.
+ * /transferencias — transferências de estoque do Shopify + nota de cada uma
+ * no Tiny, no mesmo formato da tela de atacado (ver useAtacado).
  *
- * Por linha há três estados independentes: os produtos (preview da nota,
- * carregado sob demanda), a ação em andamento (rascunho/emissão, sempre com
- * confirmação antes) e a conferência da nota no Tiny.
+ * Por linha há dois estados independentes: a ação em andamento (sempre com
+ * confirmação na própria tela antes de gravar — nunca window.confirm, que o
+ * navegador pode bloquear) e a conferência da nota no Tiny.
+ *
+ * Criar o rascunho a partir da linha lê o preview primeiro e mostra os
+ * alertas e o total no painel de confirmação.
+ *
+ * A lista vem POR DIA do servidor: abre no dia de hoje e a navegação volta
+ * um dia por vez. Uma busca não se prende a dia — vem inteira e é paginada
+ * aqui, 50 por vez. O filtro "não emitidas" é aplicado na lista já carregada.
  *
  * O nº da NF nunca é digitado: vem da nota autorizada no Tiny. Toda linha da
  * página aberta que tem nota no Tiny mas ainda não tem número é conferida
  * sozinha, uma por vez (a API do Tiny tem limite de chamadas por minuto).
- *
- * A emissão em lote (todas com rascunho, ou as selecionadas) roda uma
- * transferência por vez e reaproveita o estado de ação da linha: a que falha
- * mostra o erro nela mesma, e o lote segue para a próxima. O botão que
- * começou o lote vira "Parar": a nota que está no Tiny termina (emissão não
- * se desfaz pela metade) e as seguintes não são enviadas.
  */
 export function useTransferencias() {
-  const [filtros, setFiltros] = useState(FILTROS_VAZIOS);
   const [transferencias, setTransferencias] = useState(null);
-  const [locais, setLocais] = useState([]);
-  const [truncado, setTruncado] = useState(false);
-  const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
+  const [filtros, setFiltros] = useState(FILTROS_VAZIOS);
+  const [carregando, setCarregando] = useState(false);
+  const [pagina, setPagina] = useState(1);
+  // Busca que valeu na última carga — a do campo só vale ao aplicar.
+  const [buscaAplicada, setBuscaAplicada] = useState('');
+  // Dia aberto (AAAA-MM-DD; null numa busca) e o "hoje" do servidor, que é
+  // o de São Paulo — o relógio do navegador pode estar em outro fuso.
+  const [dia, setDia] = useState(null);
+  const [diaDeHoje, setDiaDeHoje] = useState(null);
+  const [listaCompleta, setListaCompleta] = useState(true);
 
-  // { [id]: { aberto, carregando, dados?, erro? } }
-  const [produtos, setProdutos] = useState({});
-  // { [id]: { fase: 'confirmar-rascunho'|'confirmar-emissao'|'confirmar-emissao-direta'|'enviando'|'erro', erro? } }
+  // { [id]: { fase: 'confirmar-rascunho'|'confirmar-emissao-direta'|'confirmar-emissao'|'confirmar-novo-rascunho'|'enviando'|'erro',
+  //           preview?: { carregando, dados?, erro? }, erro? } }
   const [acoes, setAcoes] = useState({});
-  // ids com conferência no Tiny em andamento
-  const [conferindo, setConferindo] = useState(() => new Set());
   // ids já conferidos automaticamente nesta carga — não repete a cada render.
   const conferidos = useRef(new Set());
-  const [pagina, setPagina] = useState(1);
-  // ids marcados para "Emitir selecionadas" — vale entre páginas.
-  const [selecionadas, setSelecionadas] = useState(() => new Set());
-  // { feitas, total, origem, parando } enquanto um lote de emissão roda.
-  // origem: 'todas' | 'selecionadas' — qual botão vira "Parar".
-  const [lote, setLote] = useState(null);
-  // Lido pelo laço do lote antes de cada nota; ref para valer na hora, sem
-  // esperar o próximo render.
-  const pararLoteRef = useRef(false);
-  // { lista, descricao, origem, semRascunho, jaEmitidas } enquanto o lote espera confirmação.
-  const [loteAConfirmar, setLoteAConfirmar] = useState(null);
 
-  const carregar = useCallback(async (f, extra = '') => {
+  const carregar = useCallback(async ({ busca = '', dia: diaPedido = null } = {}) => {
     setCarregando(true);
     setErro(null);
     try {
-      const corpo = await lerJson(await fetch(`/api/transferencias?${paraQuery(f)}${extra}`), 'Falha ao carregar');
+      const query = new URLSearchParams();
+      if (busca.trim()) query.set('busca', busca.trim());
+      else if (diaPedido) query.set('dia', diaPedido);
+      const corpo = await lerJson(await fetch(`/api/transferencias?${query}`), 'Falha ao carregar');
       setTransferencias(corpo.transferencias);
-      conferidos.current = new Set();
-      // Filtro novo, lista nova: a página antiga pode nem existir mais.
+      setDia(corpo.dia ?? null);
+      setDiaDeHoje(corpo.hoje ?? null);
+      setListaCompleta(corpo.completo !== false);
       setPagina(1);
-      setSelecionadas(new Set());
-      setLocais(corpo.locais);
-      setTruncado(corpo.truncado);
-      return corpo;
+      setAcoes({});
+      conferidos.current = new Set();
+      return true;
     } catch (e) {
       setErro(e.message);
+      return false;
     } finally {
       setCarregando(false);
     }
   }, []);
 
   useEffect(() => {
-    carregar(FILTROS_VAZIOS, `&origemNome=${encodeURIComponent(ORIGEM_PADRAO)}`).then((corpo) => {
-      // Só aplica se o usuário ainda não escolheu outra origem enquanto carregava.
-      if (corpo?.origemId) setFiltros((atual) => (atual.origem ? atual : { ...atual, origem: corpo.origemId }));
-    });
+    carregar();
   }, [carregar]);
 
   function atualizarFiltro(campo, valor) {
     setFiltros((atual) => ({ ...atual, [campo]: valor }));
   }
 
-  function aplicarFiltros() {
-    carregar(filtros);
-  }
-
-  /** Preenche "de"–"ate" com o mês AAAA-MM inteiro e já filtra. Vazio limpa as datas. */
-  function aplicarMes(mes) {
-    const novos = { ...filtros, ...(mes ? intervaloDoMes(mes) : { de: '', ate: '' }) };
-    setFiltros(novos);
-    carregar(novos);
+  // Busca nova, lista nova (sem busca, hoje).
+  async function buscar(busca = filtros.busca) {
+    if (await carregar({ busca })) setBuscaAplicada(busca);
   }
 
   function limparFiltros() {
     setFiltros(FILTROS_VAZIOS);
-    carregar(FILTROS_VAZIOS);
+    if (buscaAplicada) buscar('');
   }
+
+  async function irParaDia(novo) {
+    if (!novo || carregando || (diaDeHoje && novo > diaDeHoje)) return;
+    if (await carregar({ dia: novo })) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  const diaAnterior = () => dia && irParaDia(somarDias(dia, -1));
+  const diaSeguinte = () => dia && irParaDia(somarDias(dia, 1));
 
   const filtrosAlterados = JSON.stringify(filtros) !== JSON.stringify(FILTROS_VAZIOS);
 
@@ -143,37 +121,35 @@ export function useTransferencias() {
     });
   }
 
-  async function carregarProdutos(id) {
-    setProdutos((atual) => ({ ...atual, [id]: { aberto: true, carregando: true } }));
+  // Abre a confirmação de criar (só rascunho, rascunho + emissão ou novo
+  // rascunho) e já lê o preview, para a pessoa ver os alertas e o total antes
+  // de confirmar.
+  async function pedirCriacao(t, fase) {
+    definirAcao(t.id, { fase, preview: { carregando: true } });
     try {
-      const dados = await lerJson(await fetch(`/api/transferencias/${id}/preview`), 'Falha ao ler a transferência');
-      setProdutos((atual) => ({ ...atual, [id]: { aberto: true, carregando: false, dados } }));
+      const dados = await lerJson(
+        await fetch(`/api/transferencias/${t.id}/preview`),
+        'Falha ao montar o preview da transferência'
+      );
+      setAcoes((atual) =>
+        atual[t.id]?.fase === fase ? { ...atual, [t.id]: { fase, preview: { carregando: false, dados } } } : atual
+      );
     } catch (e) {
-      setProdutos((atual) => ({ ...atual, [id]: { aberto: true, carregando: false, erro: e.message } }));
+      setAcoes((atual) =>
+        atual[t.id]?.fase === fase
+          ? { ...atual, [t.id]: { fase, preview: { carregando: false, erro: e.message } } }
+          : atual
+      );
     }
   }
 
-  function alternarProdutos(id) {
-    const atual = produtos[id];
-    if (atual?.aberto) {
-      setProdutos((p) => ({ ...p, [id]: { ...atual, aberto: false } }));
-    } else if (atual?.dados) {
-      setProdutos((p) => ({ ...p, [id]: { ...atual, aberto: true } }));
-    } else {
-      carregarProdutos(id);
-    }
-  }
-
-  /**
-   * `substituir`: cria um novo rascunho no lugar do que já existe (o antigo fica para remover no Tiny).
-   * `reemitir`: idem, mas por cima de uma nota já emitida — a linha volta a "não emitida".
-   */
-  async function enviarRascunho(t, { substituir = false, reemitir = false } = {}) {
+  /** `substituir`: cria um novo rascunho no lugar do que já existe (o antigo fica para remover no Tiny). */
+  async function enviarRascunho(t, { substituir = false } = {}) {
     const corpo = await lerJson(
       await fetch(`/api/transferencias/${t.id}/rascunho`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmacaoTeste: true, substituir, reemitir }),
+        body: JSON.stringify({ confirmacaoTeste: true, substituir }),
       }),
       'O Tiny recusou a inclusão.'
     );
@@ -182,8 +158,6 @@ export function useTransferencias() {
       tinyNotaId: corpo.tinyNotaId,
       erro: null,
       erroEm: null,
-      cadastroItens: corpo.cadastroItens ?? null,
-      ...(reemitir ? { notaEmitida: false, numeroNf: null } : {}),
       ...(corpo.tinyNotasSubstituidas ? { tinyNotasSubstituidas: corpo.tinyNotasSubstituidas } : {}),
     });
     return corpo;
@@ -198,39 +172,16 @@ export function useTransferencias() {
     return corpo;
   }
 
-  // Cria o rascunho quando ainda não existe e emite. Se o rascunho sair e a
-  // emissão falhar, a linha já fica como "rascunho criado" para tentar de novo.
-  async function rascunhoEEmissao(t) {
-    if (t.situacaoFiscal !== 'rascunho_criado') await enviarRascunho(t);
-    return enviarEmissao(t);
-  }
-
-  // Nota já emitida: cria um novo rascunho por cima e emite a nota nova. Se a
-  // emissão falhar, a linha fica com o rascunho novo, pronta para "Emitir nota".
-  async function reemissao(t) {
-    await enviarRascunho(t, { reemitir: true });
-    return enviarEmissao(t);
-  }
-
-  /** O que "emitir" significa para a linha: reemitir se já emitida, senão criar (se faltar) e emitir. */
-  const operacaoDeEmissao = (t) => (t.notaEmitida ? reemissao : rascunhoEEmissao);
-
   async function executarNaLinha(t, operacao, aoConcluir) {
     definirAcao(t.id, { fase: 'enviando' });
     try {
-      const corpo = await operacao(t);
+      const corpo = await operacao();
       definirAcao(t.id, null);
       aoConcluir?.(corpo);
-      return true;
     } catch (e) {
       definirAcao(t.id, { fase: 'erro', erro: e.message });
       // O servidor guarda o mesmo erro; aqui só deixa o "Ver erro" na linha sem recarregar.
-      atualizarLinha(t.id, {
-        erro: e.message,
-        erroEm: new Date().toISOString(),
-        ...(e.corpo?.cadastroItens ? { cadastroItens: e.corpo.cadastroItens } : {}),
-      });
-      return false;
+      atualizarLinha(t.id, { erro: e.message, erroEm: new Date().toISOString() });
     }
   }
 
@@ -240,128 +191,37 @@ export function useTransferencias() {
   }
 
   function criarRascunho(t) {
-    return executarNaLinha(t, enviarRascunho, (corpo) => setAviso(corpo.mensagem));
+    return executarNaLinha(t, () => enviarRascunho(t), (corpo) => setAviso(corpo.mensagem));
   }
 
   function novoRascunho(t) {
-    return executarNaLinha(t, (linha) => enviarRascunho(linha, { substituir: true }), (corpo) => setAviso(corpo.mensagem));
+    return executarNaLinha(t, () => enviarRascunho(t, { substituir: true }), (corpo) => setAviso(corpo.mensagem));
   }
 
-  function reemitir(t) {
-    return executarNaLinha(t, reemissao, (corpo) =>
-      setAviso(
-        `Transferência ${t.name} reemitida${corpo.numeroNf ? ` — NF nº ${corpo.numeroNf}` : ''}. ` +
-          'Cancele a nota anterior à mão no Tiny.'
-      )
+  // Se o rascunho sair e a emissão falhar, a linha já fica como "rascunho
+  // criado" para tentar de novo só a emissão.
+  function criarEEmitir(t) {
+    return executarNaLinha(
+      t,
+      async () => {
+        await enviarRascunho(t);
+        return enviarEmissao(t);
+      },
+      (corpo) => setAviso(`Nota da transferência ${t.name} emitida${corpo.numeroNf ? ` — NF nº ${corpo.numeroNf}` : ''}.`)
     );
   }
 
   function emitir(t) {
-    return executarNaLinha(t, enviarEmissao);
-  }
-
-  function emitirDireto(t) {
-    return executarNaLinha(t, rascunhoEEmissao, (corpo) =>
-      setAviso(`Nota da transferência ${t.name} emitida${corpo.numeroNf ? ` — NF nº ${corpo.numeroNf}` : ''}.`)
+    return executarNaLinha(
+      t,
+      () => enviarEmissao(t),
+      (corpo) => setAviso(`Nota da transferência ${t.name} emitida${corpo.numeroNf ? ` — NF nº ${corpo.numeroNf}` : ''}.`)
     );
-  }
-
-  // Transferência travada (CD 1 <-> CD 2) não tem nota: fica fora de tudo.
-  const podeEmitir = (t) => !t.notaEmitida && t.status !== 'CANCELED' && !t.bloqueio;
-  // Já emitidas também podem ser marcadas, para reemitir em lote — mas só uma a
-  // uma: "emitir todas" e o "marcar a página" continuam ignorando as emitidas.
-  const podeSelecionar = (t) => t.status !== 'CANCELED' && !t.bloqueio;
-  const comRascunho = (transferencias ?? []).filter((t) => podeEmitir(t) && t.situacaoFiscal === 'rascunho_criado');
-  const selecionadasEmitiveis = (transferencias ?? []).filter((t) => podeSelecionar(t) && selecionadas.has(t.id));
-
-  function alternarSelecao(id) {
-    setSelecionadas((atual) => {
-      const nova = new Set(atual);
-      if (nova.has(id)) nova.delete(id);
-      else nova.add(id);
-      return nova;
-    });
-  }
-
-  function selecionarVarias(ids, marcar) {
-    setSelecionadas((atual) => {
-      const nova = new Set(atual);
-      for (const id of ids) {
-        if (marcar) nova.add(id);
-        else nova.delete(id);
-      }
-      return nova;
-    });
-  }
-
-  // A confirmação é um painel na própria tela, não window.confirm: o navegador
-  // pode bloquear as caixas de diálogo da página, e aí o confirm devolve false
-  // na hora — o botão parecia não fazer nada.
-  function pedirConfirmacaoDoLote(lista, descricao, origem) {
-    if (lista.length === 0 || lote) return;
-    setLoteAConfirmar({
-      lista,
-      descricao,
-      origem,
-      semRascunho: lista.filter((t) => !t.notaEmitida && t.situacaoFiscal !== 'rascunho_criado').length,
-      jaEmitidas: lista.filter((t) => t.notaEmitida).length,
-    });
-  }
-
-  function cancelarLote() {
-    setLoteAConfirmar(null);
-  }
-
-  // Uma confirmação só vale para o lote inteiro, inclusive para as reemissões.
-  async function confirmarLote() {
-    if (!loteAConfirmar || lote) return;
-    const { lista, origem } = loteAConfirmar;
-    setLoteAConfirmar(null);
-    setErro(null);
-    pararLoteRef.current = false;
-    setLote({ feitas: 0, total: lista.length, origem, parando: false });
-    const falhas = [];
-    let feitas = 0;
-    for (const t of lista) {
-      if (pararLoteRef.current) break;
-      if (await executarNaLinha(t, operacaoDeEmissao(t))) selecionarVarias([t.id], false);
-      else falhas.push(t.name);
-      feitas += 1;
-      setLote((atual) => atual && { ...atual, feitas });
-    }
-    setLote(null);
-    const emitidas = feitas - falhas.length;
-    const naoEnviadas = lista.length - feitas;
-    setAviso(
-      (naoEnviadas ? `Emissão parada: ${naoEnviadas} nota(s) não foram enviadas. ` : '') +
-        `${emitidas} nota(s) emitida(s).` +
-        (falhas.length ? ` Falharam ${falhas.length}: ${falhas.join(', ')} — veja o erro em cada linha.` : '')
-    );
-  }
-
-  function emitirTodasComRascunho() {
-    return pedirConfirmacaoDoLote(
-      comRascunho,
-      'transferências com rascunho da lista filtrada (todas as páginas)',
-      'todas'
-    );
-  }
-
-  /** Para o lote depois da nota que está no Tiny agora. */
-  function pararLote() {
-    if (!lote) return;
-    pararLoteRef.current = true;
-    setLote((atual) => atual && { ...atual, parando: true });
-  }
-
-  function emitirSelecionadas() {
-    return pedirConfirmacaoDoLote(selecionadasEmitiveis, 'transferências selecionadas', 'selecionadas');
   }
 
   const precisaConferir = (t) => !!t.tinyNotaId && (!t.notaEmitida || !t.numeroNf);
 
   async function conferirNoTiny(t) {
-    setConferindo((atual) => new Set(atual).add(t.id));
     try {
       const corpo = await lerJson(
         await fetch(`/api/transferencias/${t.id}/situacao`),
@@ -370,27 +230,23 @@ export function useTransferencias() {
       atualizarLinha(t.id, { notaEmitida: corpo.notaEmitida || t.notaEmitida, numeroNf: corpo.numeroNf ?? t.numeroNf });
     } catch (e) {
       definirAcao(t.id, { fase: 'erro', erro: e.message });
-    } finally {
-      setConferindo((atual) => {
-        const nova = new Set(atual);
-        nova.delete(t.id);
-        return nova;
-      });
     }
   }
 
-  const totalPaginas = Math.max(1, Math.ceil((transferencias?.length ?? 0) / ITENS_POR_PAGINA));
-  const inicio = (pagina - 1) * ITENS_POR_PAGINA;
-  const transferenciasDaPagina = (transferencias ?? []).slice(inicio, inicio + ITENS_POR_PAGINA);
+  const visiveis = (transferencias ?? []).filter((t) => !filtros.naoEmitidas || !t.notaEmitida);
+  // A lista do dia vem inteira na tela; a da busca, em páginas de 50.
+  const totalPaginas = dia ? 1 : Math.max(1, Math.ceil(visiveis.length / ITENS_POR_PAGINA));
+  const inicio = (Math.min(pagina, totalPaginas) - 1) * ITENS_POR_PAGINA;
+  const visiveisDaPagina = dia ? visiveis : visiveis.slice(inicio, inicio + ITENS_POR_PAGINA);
 
-  const idsParaConferir = transferenciasDaPagina
+  const idsParaConferir = visiveisDaPagina
     .filter((t) => precisaConferir(t) && !conferidos.current.has(t.id))
     .map((t) => t.id)
     .join(',');
 
   useEffect(() => {
     if (!idsParaConferir) return;
-    const pendentes = transferenciasDaPagina.filter((t) => idsParaConferir.split(',').includes(t.id));
+    const pendentes = visiveisDaPagina.filter((t) => idsParaConferir.split(',').includes(t.id));
     for (const t of pendentes) conferidos.current.add(t.id);
     (async () => {
       for (const t of pendentes) await conferirNoTiny(t);
@@ -405,49 +261,35 @@ export function useTransferencias() {
   }
 
   return {
-    pagina,
-    verErro,
-    totalPaginas,
-    mudarPagina,
-    transferenciasDaPagina,
-    filtros,
-    atualizarFiltro,
-    aplicarFiltros,
-    aplicarMes,
-    limparFiltros,
-    filtrosAlterados,
     transferencias,
-    locais,
-    truncado,
-    carregando,
+    verErro,
     erro,
     aviso,
     setAviso,
-    produtos,
-    alternarProdutos,
+    filtros,
+    atualizarFiltro,
+    limparFiltros,
+    filtrosAlterados,
+    buscar,
+    buscaAplicada,
+    carregando,
+    visiveis,
+    visiveisDaPagina,
+    pagina: Math.min(pagina, totalPaginas),
+    totalPaginas,
+    mudarPagina,
+    dia,
+    diaDeHoje,
+    listaCompleta,
+    irParaDia,
+    diaAnterior,
+    diaSeguinte,
     acoes,
     definirAcao,
-    conferindo,
-    precisaConferir,
-    conferirNoTiny,
+    pedirCriacao,
     criarRascunho,
     novoRascunho,
+    criarEEmitir,
     emitir,
-    emitirDireto,
-    reemitir,
-    podeEmitir,
-    podeSelecionar,
-    selecionadas,
-    alternarSelecao,
-    selecionarVarias,
-    comRascunho,
-    selecionadasEmitiveis,
-    lote,
-    pararLote,
-    loteAConfirmar,
-    confirmarLote,
-    cancelarLote,
-    emitirTodasComRascunho,
-    emitirSelecionadas,
   };
 }

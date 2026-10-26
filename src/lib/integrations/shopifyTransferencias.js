@@ -5,7 +5,6 @@
 // ter também os escopos read_inventory_transfers, read_locations,
 // read_inventory e read_products.
 
-import { idNumerico } from '../utils.js';
 import { shopifyGraphQL } from './shopify.js';
 
 /** Aceita "123" ou o gid completo e sempre devolve o gid da transferência. */
@@ -61,23 +60,14 @@ query OrigemTransferencia($id: ID!) {
 const MAX_PAGINAS = 4;
 
 /**
- * Monta a busca do Shopify a partir dos filtros da tela. O que o Shopify sabe
- * filtrar vai para cá; "excluir loja", nº da NF e "só não emitidas" dependem
- * do Supabase e ficam para a rota.
+ * Busca do Shopify: rascunhos de fora e, se houver `periodo` (início
+ * inclusivo e fim exclusivo, ISO em UTC — ver intervaloDoDia), só as criadas
+ * nele.
  */
-function montarBusca({ origemId, destinoId, dataInicial, dataFinal, mostrarRascunhos }) {
-  const termos = [];
-  if (origemId) termos.push(`origin_id:${idNumerico(origemId)}`);
-  if (destinoId) termos.push(`destination_id:${idNumerico(destinoId)}`);
-  if (dataInicial) termos.push(`created_at:>=${dataInicial}`);
-  // `<=` com só a data corta o dia no meio-dia UTC; "menor que o dia seguinte" pega o dia inteiro.
-  if (dataFinal) {
-    const seguinte = new Date(`${dataFinal}T00:00:00Z`);
-    seguinte.setUTCDate(seguinte.getUTCDate() + 1);
-    termos.push(`created_at:<${seguinte.toISOString().slice(0, 10)}`);
-  }
-  if (!mostrarRascunhos) termos.push('-status:draft');
-  return termos.join(' AND ') || null;
+function montarBusca({ periodo = null }) {
+  const termos = ['-status:draft'];
+  if (periodo) termos.push(`created_at:>=${periodo.inicio}`, `created_at:<${periodo.fim}`);
+  return termos.join(' AND ');
 }
 
 /**
@@ -109,31 +99,13 @@ export async function listarTransferencias(filtros = {}, { aoReceberPagina } = {
 
   // O filtro `-status:draft` do Shopify é a primeira barreira; esta é a
   // garantia, caso a busca ignore o termo.
-  const lista = filtros.mostrarRascunhos ? transferencias : transferencias.filter((t) => t.status !== 'DRAFT');
-
-  return { transferencias: lista, truncado };
+  return { transferencias: transferencias.filter((t) => t.status !== 'DRAFT'), truncado };
 }
 
-// Lojas quase nunca mudam, e a lista era pedida ao Shopify a cada carga da
-// tela — na abertura, antes das transferências (para achar o CD pelo nome).
-// Fica guardada em memória por alguns minutos.
-const LOCAIS_VALIDOS_MS = 10 * 60 * 1000;
-let locaisEmCache = null;
-
-/** Locais (lojas) do Shopify, para os filtros de origem/destino/exclusão. */
-export async function listarLocais({ ignorarCache = false } = {}) {
-  if (!ignorarCache && locaisEmCache && Date.now() - locaisEmCache.em < LOCAIS_VALIDOS_MS) {
-    return locaisEmCache.promessa;
-  }
-  const promessa = shopifyGraphQL(QUERY_LOCAIS, {}).then((dados) =>
-    (dados.locations?.nodes ?? []).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
-  );
-  locaisEmCache = { em: Date.now(), promessa };
-  // Falha não fica guardada: a próxima carga tenta de novo.
-  promessa.catch(() => {
-    if (locaisEmCache?.promessa === promessa) locaisEmCache = null;
-  });
-  return promessa;
+/** Locais (lojas) do Shopify — só o ping do /api/saude usa. */
+async function listarLocais() {
+  const dados = await shopifyGraphQL(QUERY_LOCAIS, {});
+  return dados.locations?.nodes ?? [];
 }
 
 /** Transferência completa, com TODOS os itens (pagina `lineItems` até o fim). */
@@ -187,7 +159,7 @@ export async function obterLojasTransferencia(id) {
 
 /** Ping usado pelo /api/saude. */
 export async function verificarShopifyTransferencias() {
-  const locais = await listarLocais({ ignorarCache: true });
+  const locais = await listarLocais();
   return {
     servico: 'Shopify (transferências)',
     ok: true,
