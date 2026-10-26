@@ -95,31 +95,19 @@ function StatusBoleto({ b, alterarStatus }) {
   );
 }
 
-function IconeRefresh() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-      <path d="M21 3v6h-6" />
-    </svg>
-  );
-}
-
 /**
- * Nº da NF: clicar abre a edição. Enter (ou ✓) salva, Esc cancela; o botão de
- * refresh confere a nota no Tiny e põe o nº encontrado no campo. Salvar vazio
- * volta a valer o nº da nota no Tiny.
+ * Nº da NF: clicar abre a edição. Enter (ou ✓) salva, Esc cancela. Salvar
+ * vazio volta a valer o nº da nota no Tiny.
  */
-function CampoNumeroNf({ b, salvarNumeroNf, buscarNumeroNoTiny }) {
+function CampoNumeroNf({ b, salvarNumeroNf }) {
   const numero = b.numeroNfEditado ?? b.numeroNfTiny;
   const [editando, setEditando] = useState(false);
   const [valor, setValor] = useState('');
-  const [ocupado, setOcupado] = useState(null); // 'salvando' | 'buscando'
-  const [semNumero, setSemNumero] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const campo = useRef(null);
 
   function abrir() {
     setValor(numero ?? '');
-    setSemNumero(false);
     setEditando(true);
   }
 
@@ -128,12 +116,12 @@ function CampoNumeroNf({ b, salvarNumeroNf, buscarNumeroNoTiny }) {
   }, [editando]);
 
   async function salvar() {
-    if (ocupado) return;
+    if (salvando) return;
     if (valor.trim() === (b.numeroNfEditado ?? b.numeroNfTiny ?? '')) {
       setEditando(false);
       return;
     }
-    setOcupado('salvando');
+    setSalvando(true);
     try {
       // Igual ao nº do Tiny: não guarda cópia, para seguir o Tiny se ele mudar.
       await salvarNumeroNf(b, valor.trim() === (b.numeroNfTiny ?? '') ? '' : valor.trim());
@@ -141,18 +129,8 @@ function CampoNumeroNf({ b, salvarNumeroNf, buscarNumeroNoTiny }) {
     } catch {
       // O erro aparece abaixo da linha; a edição continua aberta.
     } finally {
-      setOcupado(null);
+      setSalvando(false);
     }
-  }
-
-  async function buscarDeNovo() {
-    setOcupado('buscando');
-    setSemNumero(false);
-    const encontrado = await buscarNumeroNoTiny(b);
-    setOcupado(null);
-    if (encontrado) setValor(encontrado);
-    else setSemNumero(true);
-    campo.current?.focus();
   }
 
   if (!editando) {
@@ -170,46 +148,33 @@ function CampoNumeroNf({ b, salvarNumeroNf, buscarNumeroNoTiny }) {
   }
 
   return (
-    <div className="pilha">
-      <div className="campo-nf-edicao">
-        <input
-          ref={campo}
-          value={valor}
-          inputMode="numeric"
-          placeholder="nº da NF"
-          aria-label={`Nº da NF do pedido ${b.name}`}
-          onChange={(e) => setValor(e.target.value.replace(/\D+/g, '').slice(0, 9))}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') salvar();
-            if (e.key === 'Escape') setEditando(false);
-          }}
-          disabled={ocupado === 'salvando'}
-        />
-        <button
-          type="button"
-          className={`botao-icone ${ocupado === 'buscando' ? 'botao-icone-girando' : ''}`}
-          onClick={buscarDeNovo}
-          disabled={!!ocupado}
-          title="Buscar o nº da NF no Tiny de novo"
-          aria-label="Buscar o nº da NF no Tiny de novo"
-        >
-          <IconeRefresh />
-        </button>
-        <button type="button" className="botao-icone" onClick={salvar} disabled={!!ocupado} title="Salvar (Enter)" aria-label="Salvar">
-          ✓
-        </button>
-        <button
-          type="button"
-          className="botao-icone"
-          onClick={() => setEditando(false)}
-          disabled={ocupado === 'salvando'}
-          title="Cancelar (Esc)"
-          aria-label="Cancelar"
-        >
-          ✕
-        </button>
-      </div>
-      {semNumero && <span className="fraco">Nenhuma NF emitida no Tiny para este pedido.</span>}
+    <div className="campo-nf-edicao">
+      <input
+        ref={campo}
+        value={valor}
+        inputMode="numeric"
+        placeholder="nº da NF"
+        aria-label={`Nº da NF do pedido ${b.name}`}
+        onChange={(e) => setValor(e.target.value.replace(/\D+/g, '').slice(0, 9))}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') salvar();
+          if (e.key === 'Escape') setEditando(false);
+        }}
+        disabled={salvando}
+      />
+      <button type="button" className="botao-icone" onClick={salvar} disabled={salvando} title="Salvar (Enter)" aria-label="Salvar">
+        ✓
+      </button>
+      <button
+        type="button"
+        className="botao-icone"
+        onClick={() => setEditando(false)}
+        disabled={salvando}
+        title="Cancelar (Esc)"
+        aria-label="Cancelar"
+      >
+        ✕
+      </button>
     </div>
   );
 }
@@ -240,7 +205,6 @@ export default function ControleBoletos() {
     paginaAnterior,
     alterarStatus,
     salvarNumeroNf,
-    buscarNumeroNoTiny,
   } = useBoletos();
 
   const paginacao = !dia && (pagina > 1 || temProxima) && (
@@ -362,7 +326,7 @@ export default function ControleBoletos() {
                     </td>
                     <td>
                       <div className="pilha">
-                        <CampoNumeroNf b={b} salvarNumeroNf={salvarNumeroNf} buscarNumeroNoTiny={buscarNumeroNoTiny} />
+                        <CampoNumeroNf b={b} salvarNumeroNf={salvarNumeroNf} />
                         {b.tinyNotaId && (
                           <a
                             className={`botao-pdf ${b.notaEmitida ? 'botao-pdf-destaque' : ''}`}

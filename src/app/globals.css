@@ -391,7 +391,6 @@ button.botao-icone {
 }
 button.botao-icone:hover:not(:disabled) { background: var(--realce); border-color: var(--tinta-fraca); }
 button.botao-icone:disabled { background: transparent; }
-.botao-icone-girando svg { animation: girar 0.8s linear infinite; }
 
 @media (max-width: 40rem) {
   .envelope { padding: 1.25rem 0.85rem 4rem; }

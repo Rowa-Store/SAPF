@@ -22,8 +22,7 @@ async function lerJson(resposta, mensagemPadrao) {
  * hoje; uma busca não se prende a dia e vem paginada por cursor.
  *
  * O nº da NF da linha é o digitado na tela, se houver; senão o da nota no
- * Tiny. Na edição, "buscar de novo" confere a nota no Tiny
- * (/api/pedidos/[id]/situacao) e põe o nº no campo, para a pessoa salvar.
+ * Tiny (gravado em notas_processadas).
  */
 export function useBoletos() {
   const [boletos, setBoletos] = useState(null);
@@ -159,19 +158,6 @@ export function useBoletos() {
     }
   }
 
-  /** Nº da NF conferido agora no Tiny (null se a nota não tem número ainda). */
-  async function buscarNumeroNoTiny(b) {
-    definirErroLinha(b.id, null);
-    try {
-      const corpo = await lerJson(await fetch(`/api/pedidos/${b.id}/situacao`), 'Falha ao consultar a nota no Tiny.');
-      if (corpo.numeroNf) atualizarLinha(b.id, { numeroNfTiny: corpo.numeroNf, notaEmitida: corpo.notaEmitida });
-      return corpo.numeroNf ?? null;
-    } catch (e) {
-      definirErroLinha(b.id, e.message);
-      return null;
-    }
-  }
-
   const visiveis = (boletos ?? []).filter((b) => !filtros.soPendentes || !b.emitido);
 
   return {
@@ -199,6 +185,5 @@ export function useBoletos() {
     paginaAnterior,
     alterarStatus,
     salvarNumeroNf,
-    buscarNumeroNoTiny,
   };
 }
