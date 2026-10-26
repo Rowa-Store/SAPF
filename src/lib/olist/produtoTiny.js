@@ -75,6 +75,11 @@ function doCadastro(cadastro) {
   };
 }
 
+/** O SKU existe na Olist de algum jeito: produto simples, variação de um pai
+ *  (modelo antigo) ou mais de um produto com o código. Produto sem nenhum
+ *  assim é que não está na Olist — os outros não se cadastram de novo. */
+const temCadastro = (l) => !!l.olist || l.situacao === 'em_pai' || l.situacao === 'bloqueado';
+
 /**
  * Comparação de um produto do Shopify (uma cor) com a Olist, SKU a SKU.
  *
@@ -111,7 +116,7 @@ export function compararProduto(produto, noTiny, { campos = CAMPOS.map((c) => c.
     return { ...base, olist, diferencas, situacao };
   });
 
-  const naOlist = linhas.filter((l) => l.olist).length;
+  const naOlist = linhas.filter(temCadastro).length;
   return {
     id: produto.id,
     titulo: produto.title,
@@ -170,5 +175,5 @@ export function comoFicou(produto, gravados) {
     const olist = { ...(l.olist ?? {}), ...l.esperado, id: id ?? l.olist?.id ?? null, ativo: true };
     return { ...l, olist, diferencas: [], situacao: 'igual' };
   });
-  return { ...produto, linhas, situacao: linhas.some((l) => l.olist) ? 'encontrado' : 'nao_encontrado' };
+  return { ...produto, linhas, situacao: linhas.some(temCadastro) ? 'encontrado' : 'nao_encontrado' };
 }

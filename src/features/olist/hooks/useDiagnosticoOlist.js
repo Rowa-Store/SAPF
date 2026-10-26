@@ -86,7 +86,9 @@ export const PROBLEMAS = [
 export const FOCOS = {
   nao_cadastrado: {
     rotulo: 'Não está na Olist',
-    problemas: ['nao_cadastrado', 'sku_faltando'],
+    // SKU em produto pai: está na Olist no modelo antigo — não vai na
+    // planilha, mas aparece para excluir a variação lá antes de cadastrar.
+    problemas: ['nao_cadastrado', 'sku_faltando', 'sku_em_pai'],
     enviavel: (l) => l.situacao === 'nova',
   },
   preco: {
