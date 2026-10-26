@@ -170,7 +170,7 @@ export async function GET(request, { params }) {
     }
 
     // 3b. Transporte. O metafield `transportadora` do pedido manda: Correios,
-    // retirada (nota sem dados de transporte) ou uma transportadora do
+    // retirada (forma de envio Transportadora, sem transportador) ou uma transportadora do
     // cadastro. Transportadora que não está no cadastro BLOQUEIA a criação —
     // a nota não pode sair com um transporte que ninguém pediu.
     //

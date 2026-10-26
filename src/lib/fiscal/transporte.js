@@ -34,6 +34,14 @@ export const TRANSPORTE_PADRAO = {
 const FORMA_ENVIO_TRANSPORTADORA = 'T';
 
 /**
+ * Retirada pelo cliente: forma de envio "Transportadora", sem forma de frete
+ * (fica "Não definida") e sem transportador. Não pode ir sem `forma_envio` —
+ * nota sem forma de envio o Tiny grava com 0 volumes, mesmo recebendo
+ * `quantidade_volumes` (pedido #80060, nota 024511: 13 volumes viraram 0).
+ */
+export const TRANSPORTE_RETIRADA = { forma_envio: FORMA_ENVIO_TRANSPORTADORA };
+
+/**
  * Bloco de transporte para uma linha da tabela `transportadoras`. Diferente
  * dos Correios, a transportadora não precisa existir no Tiny, e este sistema
  * não procura nem cadastra nada lá: a nota leva os dados do nosso cadastro.
@@ -209,8 +217,7 @@ export function problemaDoTransporte(resolvido) {
 /** Bloco de transporte da nota para o transporte resolvido; undefined = regra antiga. */
 export function blocoDoTransporte(resolvido) {
   if (resolvido.tipo === 'correios') return TRANSPORTE_PADRAO;
-  // Retirada: a nota não leva nenhum dado de transporte.
-  if (resolvido.tipo === 'retirada') return {};
+  if (resolvido.tipo === 'retirada') return TRANSPORTE_RETIRADA;
   if (resolvido.tipo === 'transportadora') return transporteDaTransportadora(resolvido.transportadora);
   return undefined;
 }
@@ -221,8 +228,8 @@ const CAMPOS_DO_TRANSPORTE = ['forma_envio', 'forma_frete', 'transportador'];
 
 /**
  * Troca o bloco de transporte de uma nota já montada. Os campos antigos saem
- * antes — retirada é um bloco vazio, e sobrar o `transportador` anterior
- * mandaria a nota com quem não vai levar.
+ * antes — a retirada não tem `transportador`, e sobrar o anterior mandaria a
+ * nota com quem não vai levar.
  */
 export function trocarTransporte(notaFiscal, bloco) {
   const nota = { ...notaFiscal };
@@ -237,7 +244,7 @@ export function trocarTransporte(notaFiscal, bloco) {
  */
 export function transporteEscolhido(opcao) {
   if (opcao === 'correios') return { tipo: 'correios', nome: TRANSPORTE_PADRAO.transportador.nome, bloco: TRANSPORTE_PADRAO };
-  if (opcao === 'retirada') return { tipo: 'retirada', nome: 'Retirada pelo cliente', bloco: {} };
+  if (opcao === 'retirada') return { tipo: 'retirada', nome: 'Retirada pelo cliente', bloco: TRANSPORTE_RETIRADA };
   return { tipo: 'transportadora', nome: opcao.nome, id: opcao.id, bloco: transporteDaTransportadora(opcao) };
 }
 
@@ -247,13 +254,13 @@ export function transporteEscolhido(opcao) {
  * (ver transporteEscolhido) passa por cima de tudo.
  */
 export function resumoDoTransporte(dados, escolhido = null) {
-  if (escolhido?.tipo === 'retirada') return 'Retirada pelo cliente — a nota vai sem dados de transporte (escolhida nesta tela)';
+  if (escolhido?.tipo === 'retirada') return 'Retirada pelo cliente — a nota vai sem transportador (escolhida nesta tela)';
   if (escolhido) return `${escolhido.nome} (escolhida nesta tela, só para este pedido)`;
   const nome = dados?.payload?.nota_fiscal?.transportador?.nome ?? '—';
   const informado = dados?.transporteInformado;
   switch (informado?.tipo) {
     case 'retirada':
-      return 'Retirada pelo cliente — a nota vai sem dados de transporte (metafield transportadora)';
+      return 'Retirada pelo cliente — a nota vai sem transportador (metafield transportadora)';
     case 'correios':
     case 'transportadora':
       return `${nome} (metafield transportadora: "${informado.texto}")`;
