@@ -44,7 +44,7 @@ query Transferencia($id: ID!, $cursor: String) {
         inventoryItem {
           sku
           unitCost { amount }
-          variants(first: 1) { nodes { price barcode displayName selectedOptions { value } } }
+          variants(first: 1) { nodes { price displayName selectedOptions { value } } }
         }
       }
     }

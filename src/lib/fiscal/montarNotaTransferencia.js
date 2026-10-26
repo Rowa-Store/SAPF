@@ -137,8 +137,8 @@ export function montarNotaTransferencia(transferencia, lojas = {}) {
         quantidade: Number(linha.totalQuantity ?? 0),
         valor_unitario: valorMonetario(valorUnitario),
         tipo: 'P',
-        gtin_ean: variante?.barcode || 'SEM GTIN',
-        gtin_ean_embalagem: 'SEM GTIN',
+        // Sem GTIN no item, como na nota de pedido (montarNota.js): a nota
+        // pega o GTIN do cadastro, que a conferência deixa vazio antes.
       },
     };
   });

@@ -10,8 +10,8 @@
 // `gtin_ean`: primeiro com o nome errado (nota.fiscal.incluir.xml.php, 404),
 // depois com o nome correto da doc (incluir.nota.xml.php) — mas o Tiny
 // rejeita esse endpoint nesta conta/token mesmo assim. Então ficamos em
-// JSON; o campo `gtin_ean` está no payload mesmo sem confirmação de que o
-// Tiny o usa de fato na emissão — ver alertas se a nota sair sem GTIN.
+// JSON, sem GTIN nos itens: a nota pega o do cadastro, que
+// olist/cadastroDosItens.js deixa vazio antes da inclusão.
 //
 // ATENÇÃO — este token é de PRODUÇÃO:
 // 
