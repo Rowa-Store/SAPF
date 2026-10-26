@@ -30,7 +30,7 @@ function paraQuery(filtros) {
 
 async function lerJson(resposta, mensagemPadrao) {
   const corpo = await resposta.json().catch(() => ({}));
-  if (!resposta.ok) throw new Error(corpo.erro ?? mensagemPadrao);
+  if (!resposta.ok) throw Object.assign(new Error(corpo.erro ?? mensagemPadrao), { corpo });
   return corpo;
 }
 
@@ -182,6 +182,7 @@ export function useTransferencias() {
       tinyNotaId: corpo.tinyNotaId,
       erro: null,
       erroEm: null,
+      cadastroItens: corpo.cadastroItens ?? null,
       ...(reemitir ? { notaEmitida: false, numeroNf: null } : {}),
       ...(corpo.tinyNotasSubstituidas ? { tinyNotasSubstituidas: corpo.tinyNotasSubstituidas } : {}),
     });
@@ -224,7 +225,11 @@ export function useTransferencias() {
     } catch (e) {
       definirAcao(t.id, { fase: 'erro', erro: e.message });
       // O servidor guarda o mesmo erro; aqui só deixa o "Ver erro" na linha sem recarregar.
-      atualizarLinha(t.id, { erro: e.message, erroEm: new Date().toISOString() });
+      atualizarLinha(t.id, {
+        erro: e.message,
+        erroEm: new Date().toISOString(),
+        ...(e.corpo?.cadastroItens ? { cadastroItens: e.corpo.cadastroItens } : {}),
+      });
       return false;
     }
   }

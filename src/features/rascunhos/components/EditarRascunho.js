@@ -8,6 +8,7 @@
 'use client';
 
 import { useState } from 'react';
+import ErrosCadastro from '@/components/ui/ErrosCadastro';
 import Paginacao from '@/components/ui/Paginacao';
 import { CAMPOS_CLIENTE } from '@/lib/fiscal/camposCliente';
 import { formatarMoeda } from '@/lib/format';
@@ -42,6 +43,7 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
     enviando,
     erroEnvio,
     resultado,
+    cadastroItens,
     carregado,
     totalPaginas,
     itensDaPagina,
@@ -194,6 +196,7 @@ export default function EditarRascunho({ params, tipo = 'transferencia' }) {
                   onChange={(e) => atualizarItem(indiceGlobal, 'codigo', e.target.value)}
                   disabled={!!resultado}
                 />
+                <ErrosCadastro conferencia={cadastroItens} codigo={item.codigo} />
               </td>
               <td>
                 <input

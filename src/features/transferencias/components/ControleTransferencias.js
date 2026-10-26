@@ -5,6 +5,7 @@
 'use client';
 
 import { Fragment, useEffect, useState } from 'react';
+import ErrosCadastro from '@/components/ui/ErrosCadastro';
 import IconePdf from '@/components/ui/IconePdf';
 import Paginacao from '@/components/ui/Paginacao';
 import { hoje, mesDoIntervalo, somarMeses } from '@/lib/datas';
@@ -96,7 +97,7 @@ function SeletorLoja({ id, rotulo, valor, locais, aoMudar, vazio }) {
   );
 }
 
-function Produtos({ estado, temRascunho }) {
+function Produtos({ estado, temRascunho, cadastroItens }) {
   if (estado.carregando) return <p className="fraco">Lendo os itens no Shopify…</p>;
   if (estado.erro) {
     return (
@@ -152,7 +153,10 @@ function Produtos({ estado, temRascunho }) {
         <tbody>
           {nota.itens.map(({ item }, i) => (
             <tr key={i}>
-              <td className="mono">{item.codigo || '—'}</td>
+              <td className="mono">
+                {item.codigo || '—'}
+                <ErrosCadastro conferencia={cadastroItens} codigo={item.codigo} />
+              </td>
               <td>{item.descricao}</td>
               <td className="num">{item.quantidade}</td>
               <td className="num">{formatarMoeda(item.valor_unitario)}</td>
@@ -742,7 +746,11 @@ export default function ControleTransferencias() {
 
                       {estadoProdutos?.aberto && (
                         <LinhaDetalhe>
-                          <Produtos estado={estadoProdutos} temRascunho={temRascunho && !t.notaEmitida} />
+                          <Produtos
+                            estado={estadoProdutos}
+                            temRascunho={temRascunho && !t.notaEmitida}
+                            cadastroItens={t.cadastroItens}
+                          />
                         </LinhaDetalhe>
                       )}
                     </Fragment>

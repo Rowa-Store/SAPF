@@ -33,6 +33,9 @@ export function useEditarRascunho(urlApi) {
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState(null);
   const [resultado, setResultado] = useState(null);
+  // Conferência do cadastro dos itens na Olist (GTIN/NCM) feita pela rota —
+  // vem também quando o Tiny recusa a nota.
+  const [cadastroItens, setCadastroItens] = useState(null);
 
   useEffect(() => {
     fetch(urlApi)
@@ -110,6 +113,7 @@ export function useEditarRascunho(urlApi) {
       });
 
       const corpo = await resposta.json();
+      if (corpo.cadastroItens) setCadastroItens(corpo.cadastroItens);
       if (!resposta.ok) throw new Error(corpo.erro ?? 'O Tiny recusou a recriação.');
       setResultado(corpo);
       setPedindoConfirmacao(false);
@@ -143,6 +147,7 @@ export function useEditarRascunho(urlApi) {
     enviando,
     erroEnvio,
     resultado,
+    cadastroItens,
     carregado,
     totalPaginas,
     itensDaPagina,

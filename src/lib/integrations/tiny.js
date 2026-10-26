@@ -532,7 +532,7 @@ async function pesquisarProdutos(termo, conta, filtros = {}) {
 }
 
 /** Produtos do Tiny com este código. */
-async function produtosPorCodigo(codigo, conta) {
+export async function produtosPorCodigo(codigo, conta) {
   const alvo = normalizarCodigo(codigo);
   return (await pesquisarProdutos(codigo, conta)).filter((p) => normalizarCodigo(p.codigo) === alvo);
 }
@@ -720,6 +720,21 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
 }
 
 /**
+ * Inclui o rascunho; no limite de chamadas por minuto (nada foi gravado),
+ * espera um minuto e tenta mais uma vez. A conferência do cadastro dos itens
+ * (olist/cadastroDosItens.js) roda logo antes e pode deixar o limite gasto.
+ */
+async function incluirEsperandoLimite(payload, conta) {
+  try {
+    return await incluirNotaRascunho(payload, conta);
+  } catch (erro) {
+    if (!erroDeLimite(erro.message)) throw erro;
+    await new Promise((resolver) => setTimeout(resolver, 60_000));
+    return incluirNotaRascunho(payload, conta);
+  }
+}
+
+/**
  * Inclui o rascunho; se o Tiny recusar por produto pai, troca pelos códigos
  * das variações e tenta de novo uma vez. Devolve também o payload aceito e
  * as trocas feitas. Lança com a lista do que não deu para resolver.
@@ -729,7 +744,7 @@ export async function trocarProdutosPai(itens, opcoesPorCodigo = {}, { mensagemE
  */
 export async function incluirNotaTrocandoProdutosPai(payload, { lerOpcoes = async () => ({}), conta = null } = {}) {
   try {
-    return { ...(await incluirNotaRascunho(payload, conta)), payload, trocas: [] };
+    return { ...(await incluirEsperandoLimite(payload, conta)), payload, trocas: [] };
   } catch (erro) {
     if (!erroDeProdutoPai(erro.message)) throw erro;
 

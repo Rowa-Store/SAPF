@@ -8,6 +8,7 @@
 'use client';
 
 import { useState } from 'react';
+import ErrosCadastro from '@/components/ui/ErrosCadastro';
 import Modal from '@/components/ui/Modal';
 import Paginacao from '@/components/ui/Paginacao';
 import { CAMPOS_CLIENTE } from '@/lib/fiscal/camposCliente';
@@ -55,6 +56,7 @@ export default function IncluirRascunho({ params }) {
     enviando,
     erroEnvio,
     resultado,
+    cadastroItens,
     carregado,
     totalPaginas,
     itensDaPagina,
@@ -424,6 +426,7 @@ export default function IncluirRascunho({ params }) {
                   onChange={(e) => atualizarItem(indiceGlobal, 'codigo', e.target.value)}
                   disabled={!!resultado}
                 />
+                <ErrosCadastro conferencia={cadastroItens} codigo={item.codigo} />
               </td>
               <td>
                 <input

@@ -26,6 +26,11 @@
 // pai é trocado pelo da variação certa e a inclusão é tentada mais UMA vez,
 // como no rascunho de pedido (incluirNotaTrocandoProdutosPai em tiny.js). O
 // payload gravado é o que foi aceito.
+//
+// Antes da inclusão (POST e PUT), o cadastro de cada item na conta da nota é
+// conferido e corrigido (GTIN vazio, NCM da regra — ver
+// olist/cadastroDosItens.js). Não bloqueia: o que não deu para corrigir volta
+// em `cadastroItens` e a tela marca "erro gtin" / "erro ncm" no item.
 
 import {
   avisoDeTrocas,
@@ -50,6 +55,7 @@ import {
   statusPorPedido,
 } from '@/lib/db';
 import { totalDaNota } from '@/lib/fiscal/montarNota';
+import { avisoDoCadastro, conferirCadastroDosItens } from '@/lib/olist/cadastroDosItens';
 import { bloqueioDaTransferencia } from '@/lib/fiscal/travaTransferencia';
 import { erroJson, somenteDigitos } from '@/lib/utils';
 
@@ -162,6 +168,8 @@ export async function PUT(request, { params }) {
   if (!lida.ok) return erroJson(lida.erro, 422);
   const conta = lida.conta;
 
+  const cadastroItens = await conferirCadastroDosItens(payload.nota_fiscal.itens, conta);
+
   try {
     const { idNota, retorno, payload: payloadAceito, trocas } = await incluirNotaTrocandoProdutosPai(payload, {
       conta,
@@ -202,11 +210,13 @@ export async function PUT(request, { params }) {
       tinyNotaIdAnterior,
       confirmacao,
       trocasProdutoPai: trocas,
+      cadastroItens,
       mensagem:
         `Novo rascunho ${idNota ?? ''} criado na conta do Tiny de "${conta.nome}" com os dados corrigidos. ` +
         `Cancele ou exclua o rascunho ${tinyNotaIdAnterior} dentro do Tiny — a API não faz isso ` +
         'automaticamente, e os dois ficam duplicados até você remover o antigo à mão.' +
         avisoDeTrocas(trocas) +
+        avisoDoCadastro(cadastroItens) +
         avisoNatureza(confirmacao, payloadAceito),
     });
   } catch (erro) {
@@ -214,7 +224,7 @@ export async function PUT(request, { params }) {
     const mensagem = `O Tiny recusou a inclusão da nota corrigida: ${erro.message}`;
     // O rascunho anterior continua valendo: só a mensagem fica guardada.
     await anotarErro(gid, mensagem);
-    return erroJson(mensagem, 502);
+    return erroJson(mensagem, 502, { cadastroItens });
   }
 }
 
@@ -313,6 +323,8 @@ export async function POST(request, { params }) {
   const erroToken = await conferirTokenDaConta(conta, cnpjOrigem);
   if (erroToken) return erroJson(erroToken, 422);
 
+  const cadastroItens = await conferirCadastroDosItens(payload.nota_fiscal.itens, conta);
+
   try {
     const { idNota, retorno, payload: payloadAceito, trocas } = await incluirNotaTrocandoProdutosPai(payload, {
       conta,
@@ -357,7 +369,9 @@ export async function POST(request, { params }) {
       tinyNotasSubstituidas: notasSubstituidas ?? null,
       confirmacao,
       trocasProdutoPai: trocas,
-      mensagem: mensagem + naConta + avisoDeTrocas(trocas) + avisoNatureza(confirmacao, payloadAceito),
+      cadastroItens,
+      mensagem:
+        mensagem + naConta + avisoDeTrocas(trocas) + avisoDoCadastro(cadastroItens) + avisoNatureza(confirmacao, payloadAceito),
     });
   } catch (erro) {
     console.error(`[transferencia] Tiny recusou a inclusão da transferência ${gid}:`, erro);
@@ -369,6 +383,6 @@ export async function POST(request, { params }) {
       payload,
       mensagem,
     });
-    return erroJson(mensagem, 502);
+    return erroJson(mensagem, 502, { cadastroItens });
   }
 }

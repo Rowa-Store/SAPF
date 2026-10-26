@@ -173,6 +173,20 @@ gravando só onde o NCM estiver diferente.
 O GTIN aparece do lado do Shopify só para consulta e vai sempre vazio para a
 Olist. Produto incluído entra com origem 0 (nacional).
 
+### Conferência do cadastro antes de cada nota
+
+Antes de incluir qualquer rascunho (atacado, franquia e transferência, na
+conta do Tiny da nota), o sistema confere o cadastro do produto de cada item
+(`src/lib/olist/cadastroDosItens.js`): GTIN tem que estar vazio, e o NCM tem
+que ser o da regra pelo nome. O que estiver errado é corrigido no cadastro e
+a nota segue, que é o que a aba Limpar GTIN fazia em lote. O que não dá para
+corrigir (Olist recusou, código sem cadastro, produto sem NCM e sem regra)
+**não bloqueia** o rascunho nem a emissão: aparece como `erro gtin` /
+`erro ncm` na linha do item na tela, com o motivo ao passar o mouse.
+Código de produto pai fica de fora (a troca pela variação cuida dele). No
+limite de chamadas do Tiny, espera e repete por até 2 minutos; o que faltar
+fica como "não conferido" na mensagem.
+
 Tudo é lido na hora do Shopify e do Tiny — nada fica guardado no Supabase.
 
 ---

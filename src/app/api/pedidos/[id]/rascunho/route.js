@@ -17,6 +17,11 @@
 // pai é trocado pelo da variação certa (ver incluirNotaTrocandoProdutosPai em tiny.js) e a
 // inclusão é tentada mais UMA vez. O payload gravado é o que foi aceito.
 //
+// Antes da inclusão, o cadastro de cada item na Olist é conferido e
+// corrigido (GTIN vazio, NCM da regra — ver olist/cadastroDosItens.js). Não
+// bloqueia: o que não deu para corrigir volta em `cadastroItens` e a tela
+// marca "erro gtin" / "erro ncm" na linha do item.
+//
 // Emissão fiscal (nota.fiscal.emitir) mora em /api/pedidos/[id]/emitir.
 
 import {
@@ -35,6 +40,7 @@ import {
   statusPorPedido,
 } from '@/lib/db';
 import { totalDaNota } from '@/lib/fiscal/montarNota';
+import { avisoDoCadastro, conferirCadastroDosItens } from '@/lib/olist/cadastroDosItens';
 import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -149,6 +155,8 @@ export async function POST(request, { params }) {
     console.error(`[rascunho] Pedido ${gid}: ${contribuinte.mensagem}`);
   }
 
+  const cadastroItens = await conferirCadastroDosItens(payload.nota_fiscal.itens);
+
   try {
     const { idNota, retorno, payload: payloadAceito, trocas } = await incluirNotaTrocandoProdutosPai(payload, {
       lerOpcoes: () => opcoesPorSku(gid),
@@ -193,12 +201,15 @@ export async function POST(request, { params }) {
       confirmacao,
       contribuinte,
       trocasProdutoPai: trocas,
+      cadastroItens,
       tinyNotaIdAnterior: anterior?.tiny_nota_id ?? null,
       mensagem: (anterior
         ? `Novo rascunho criado no Tiny no lugar do ${anterior.tiny_nota_id} — é este que "Emitir nota" ` +
           `vai emitir. Cancele ou exclua o rascunho ${anterior.tiny_nota_id} dentro do Tiny: a API não ` +
           'faz isso, e os dois ficam duplicados até você remover o antigo à mão.'
-        : 'Rascunho criado no Tiny. Confira os dados e emita a nota pela tela de atacado.') + avisoTrocas,
+        : 'Rascunho criado no Tiny. Confira os dados e emita a nota pela tela de atacado.') +
+        avisoTrocas +
+        avisoDoCadastro(cadastroItens),
     });
   } catch (erro) {
     console.error(`[rascunho] Tiny recusou a inclusão do pedido ${gid}:`, erro);
@@ -209,10 +220,10 @@ export async function POST(request, { params }) {
         `O Tiny recusou o novo rascunho: ${erro.message}. O rascunho ${anterior.tiny_nota_id} continua ` +
         'valendo. Se o Tiny acusou duplicidade, faça uma alteração mínima e envie de novo.';
       await anotarErro(gid, mensagem);
-      return erroJson(mensagem, 502);
+      return erroJson(mensagem, 502, { cadastroItens });
     }
     const mensagem = `O Tiny recusou a inclusão da nota: ${erro.message}`;
     await registrarErro({ orderId: gid, orderName, classificacao, payload, mensagem });
-    return erroJson(mensagem, 502);
+    return erroJson(mensagem, 502, { cadastroItens });
   }
 }
