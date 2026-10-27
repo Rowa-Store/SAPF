@@ -124,8 +124,8 @@ export async function GET(request) {
     }
     const cnpjsFranquia = cnpjsFranquiaResp.ok ? cnpjsFranquiaResp.cnpjs : [];
 
-    // Títulos da CAIXA já gravados para a NF de cada pedido; a tela procura
-    // os que faltam em seguida (POST /api/boletos/caixa).
+    // Títulos da CAIXA já gravados para a NF de cada pedido; o botão
+    // "Consultar boletos" da tela procura os que faltam.
     const numeroNf = (id) => boletos[id]?.numero_nf ?? situacoes[id]?.numero_nf ?? null;
     // Falha aqui não derruba a lista (o hub-rowa também lê esta rota): a tela
     // só fica sem os títulos e avisa.
@@ -167,7 +167,10 @@ export async function GET(request) {
       };
     });
 
-    return Response.json({ boletos: lista, proximoCursor, dia, diaCompleto, hoje: diaDeHoje, erroCaixa });
+    // O cedente vai para a tela porque quem baixa o boleto da CAIXA é o
+    // navegador (extensão), não o servidor — ver features/boletos/extensaoCaixa.js.
+    const caixaCedente = process.env.CAIXA_CEDENTE ?? null;
+    return Response.json({ boletos: lista, proximoCursor, dia, diaCompleto, hoje: diaDeHoje, erroCaixa, caixaCedente });
   } catch (erro) {
     return erroJson(`Não foi possível listar os boletos: ${erro.message}`);
   }

@@ -189,3 +189,8 @@ test('parcelaDoTitulo só aceita nosso número da própria NF', () => {
   assert.equal(parcelaDoTitulo('14000000024518002', 24518), 2);
   assert.equal(parcelaDoTitulo('14000000002343102', 24341), null);
 });
+
+test('3º campo da linha digitável começa com o fim do nosso número', () => {
+  const { linhaDigitavel } = lerLinhaDigitavel('10491.24892 34000.100049 00245.150172 2 16410000332886');
+  assert.equal(linhaDigitavel.slice(21, 30), montarNossoNumero(24515, 1).slice(-9));
+});

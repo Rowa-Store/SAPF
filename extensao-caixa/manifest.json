@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "SAPF — Boletos CAIXA",
+  "version": "1.0.0",
+  "description": "Deixa a tela de boletos do SAPF baixar os PDFs dos boletos da CAIXA pelo navegador de quem usa.",
+  "host_permissions": ["https://boletoonline.caixa.gov.br/ecobranca/SIGCB/imprimir/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://sapf-eight.vercel.app/boletos*", "http://localhost:3000/boletos*"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ]
+}

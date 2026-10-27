@@ -1,89 +1,52 @@
-// POST /api/boletos/caixa — procura na CAIXA os boletos destas NFs e grava
-// os achados em boletos_caixa (com a cópia do PDF). Corpo: { nfs: [24515, …] }.
-// Devolve { titulos: { [nf]: [...] }, erros: { [nf]: mensagem } }.
+// POST /api/boletos/caixa — grava um boleto da CAIXA baixado pela extensão
+// no navegador de quem usa a tela (ver src/features/boletos/extensaoCaixa.js:
+// a CAIXA recusa o acesso vindo do servidor). Multipart: { arquivo (PDF),
+// nf, parcela }. Lê valor e vencimento da linha digitável, guarda a cópia do
+// PDF no Storage e grava o título em boletos_caixa. Devolve { titulo }.
 //
-// Procura pelo nosso número padrão (14 + NF + parcela), parcela 1, 2, 3…, e
-// para depois de MAX_FALTAS parcelas seguidas sem boleto — o nº de parcelas
-// não é fixo. Parcela já gravada não é baixada de novo. Título fora do padrão
-// (ex.: 14000000024518002) não é achado assim: só vem por arquivo da CAIXA.
+// Só aceita o nosso número padrão (14 + NF + parcela), que é o que a tela
+// procura; título fora do padrão vem pela importação do arquivo da CAIXA.
 
 import { montarNossoNumero } from '@/lib/caixa/nossoNumero';
-import { baixarBoletoCaixa } from '@/lib/integrations/caixa';
-import { salvarTituloCaixa, titulosCaixaPorNf } from '@/lib/db';
+import { lerBoletoPdf } from '@/lib/caixa/boletoPdf';
+import { salvarTituloCaixa } from '@/lib/db';
 import { erroJson } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
 
-const MAX_NFS = 10;
-const MAX_PARCELAS = 12;
-const MAX_FALTAS = 2;
-const NFS_EM_PARALELO = 4;
-
-/** Procura as parcelas que faltam de uma NF. Devolve os títulos da NF. */
-async function sincronizarNf(nf, conhecidos) {
-  const titulos = [...conhecidos];
-  const jaTem = new Set(conhecidos.map((t) => t.nosso_numero));
-  let faltas = 0;
-  for (let parcela = 1; parcela <= MAX_PARCELAS && faltas < MAX_FALTAS; parcela++) {
-    const nossoNumero = montarNossoNumero(nf, parcela);
-    if (jaTem.has(nossoNumero)) {
-      faltas = 0;
-      continue;
-    }
-    const boleto = await baixarBoletoCaixa(nossoNumero);
-    if (!boleto.encontrado) {
-      faltas++;
-      continue;
-    }
-    faltas = 0;
-    const salvo = await salvarTituloCaixa({
-      nossoNumero,
-      nf,
-      parcela,
-      valor: boleto.valor,
-      vencimento: boleto.vencimento,
-      bytes: boleto.bytes,
-      origem: 'gerado',
-    });
-    if (!salvo.ok) throw new Error(`Não foi possível gravar a parcela ${parcela}: ${salvo.erro}`);
-    titulos.push(salvo.titulo);
-  }
-  return titulos.sort((a, b) => (a.parcela ?? 99) - (b.parcela ?? 99));
-}
+const TAMANHO_MAXIMO = 1024 * 1024;
 
 export async function POST(request) {
-  const corpo = await request.json().catch(() => null);
-  const nfs = [...new Set((corpo?.nfs ?? []).map(Number))];
-  if (nfs.length === 0 || nfs.some((n) => !Number.isInteger(n) || n <= 0 || n > 99999)) {
-    return erroJson('Envie { nfs: [...] } com os nºs das NFs (até 5 dígitos).', 400);
-  }
-  if (nfs.length > MAX_NFS) return erroJson(`No máximo ${MAX_NFS} NFs por vez.`, 400);
-  if (!process.env.CAIXA_CEDENTE) return erroJson('CAIXA_CEDENTE não configurado.', 500);
-
-  let conhecidos;
-  try {
-    conhecidos = await titulosCaixaPorNf(nfs);
-  } catch (erro) {
-    return erroJson(erro.message, 502);
+  const form = await request.formData().catch(() => null);
+  const arquivo = form?.get('arquivo');
+  const nf = Number(form?.get('nf'));
+  const parcela = Number(form?.get('parcela'));
+  if (!arquivo || typeof arquivo === 'string') return erroJson('Envie o PDF do boleto no campo "arquivo".', 400);
+  if (arquivo.size > TAMANHO_MAXIMO) return erroJson('PDF maior que 1 MB — não parece um boleto da CAIXA.', 400);
+  if (!Number.isInteger(nf) || nf <= 0 || nf > 99999 || !Number.isInteger(parcela) || parcela < 1 || parcela > 99) {
+    return erroJson('nf (até 5 dígitos) e parcela (1 a 99) são obrigatórios.', 400);
   }
 
-  const titulos = {};
-  const erros = {};
-  const fila = [...nfs];
-  await Promise.all(
-    Array.from({ length: NFS_EM_PARALELO }, async () => {
-      for (let nf = fila.shift(); nf !== undefined; nf = fila.shift()) {
-        try {
-          titulos[nf] = await sincronizarNf(nf, conhecidos[nf] ?? []);
-        } catch (erro) {
-          console.error(`[boletos-caixa] Falha ao consultar a NF ${nf}:`, erro.message);
-          erros[nf] = erro.message;
-          titulos[nf] = conhecidos[nf] ?? [];
-        }
-      }
-    })
-  );
-  return Response.json({ titulos, erros });
+  const bytes = new Uint8Array(await arquivo.arrayBuffer());
+  const lido = lerBoletoPdf(bytes);
+  if (!lido.encontrado) return erroJson('O arquivo não é um PDF.', 400);
+  // Na linha digitável da CAIXA (SIGCB), o 3º campo começa com os 9 últimos
+  // dígitos do nosso número: não batendo, o PDF é de outro título.
+  const nossoNumero = montarNossoNumero(nf, parcela);
+  if (lido.linhaDigitavel?.slice(21, 30) !== nossoNumero.slice(-9)) {
+    return erroJson(`O PDF não é o boleto da NF ${nf}, parcela ${parcela}.`, 400);
+  }
+
+  const salvo = await salvarTituloCaixa({
+    nossoNumero,
+    nf,
+    parcela,
+    valor: lido.valor,
+    vencimento: lido.vencimento,
+    bytes,
+    origem: 'gerado',
+  });
+  if (!salvo.ok) return erroJson(`Não foi possível gravar o boleto: ${salvo.erro}`, 502);
+  return Response.json({ titulo: salvo.titulo });
 }

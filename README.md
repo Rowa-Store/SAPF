@@ -234,13 +234,23 @@ O link de impressão da CAIXA
 (`boletoonline.caixa.gov.br/ecobranca/SIGCB/imprimir/<cedente>/<nosso número>`)
 abre **sem login**: devolve o PDF, ou o texto `BOLETO NAO ENCONTRADO`.
 
-Ao carregar a lista, a tela chama `POST /api/boletos/caixa` com as NFs da
-página. Para cada NF a rota tenta as parcelas 1, 2, 3… (para depois de duas
-seguidas sem boleto; o nº de parcelas não é fixo), lê valor e vencimento da
-linha digitável do PDF (`src/lib/caixa/boletoPdf.js`), guarda a cópia do PDF no
-bucket `boletos` (`caixa/<nosso número>.pdf`) e grava o título em
-`boletos_caixa`. Parcela já gravada não é baixada de novo. O botão
-"Consultar CAIXA" refaz a busca.
+**A CAIXA recusa esse link vindo do servidor (HTTP 403 na Vercel) e não libera
+CORS**, então quem baixa é o Chrome de quem usa a tela, pela extensão
+`extensao-caixa/` ("SAPF — Boletos CAIXA"). Ela só acessa o link de impressão
+do e-Cobrança e só roda nas páginas `/boletos` do SAPF. Instalação (uma vez por
+computador): baixar `/extensao-caixa.zip` (link na própria tela), descompactar,
+`chrome://extensions` → Modo do desenvolvedor → Carregar sem compactação.
+Mudou algo em `extensao-caixa/`? Rode `npm run extensao` para refazer o zip em
+`public/` e suba a versão no `manifest.json`.
+
+O botão **Consultar boletos** (`src/features/boletos/extensaoCaixa.js` e
+`sincronizarCaixa` em `useBoletos.js`) tenta, para cada NF da lista, as
+parcelas 1, 2, 3… (para depois de duas seguidas sem boleto; o nº de parcelas
+não é fixo), uma consulta por vez. Cada PDF achado sobe para
+`POST /api/boletos/caixa`, que confere que o PDF é daquele nosso número (pela
+linha digitável), lê valor e vencimento (`src/lib/caixa/boletoPdf.js`), guarda a
+cópia no bucket `boletos` (`caixa/<nosso número>.pdf`) e grava o título em
+`boletos_caixa`. Parcela já gravada não é consultada de novo.
 
 - **Coluna Boleto:** um botão por título ("Parcela 1 · 25/11 · R$ …"), que abre
   o PDF numa aba nova. O envio manual de PDF continua lá.
@@ -379,7 +389,7 @@ src/
                                       [id]/clientes/[cnpj] remove o anexo
     boletos/page.js                  Status dos boletos e nº da NF -> features/boletos
     api/boletos/                     Lista os pedidos com boleto; [id] grava status e nº da NF;
-                                      caixa/ procura os boletos das NFs na CAIXA e
+                                      caixa/ grava o boleto baixado pela extensão,
                                       caixa/[nossoNumero]/pdf abre o PDF de um título;
                                       caixa/importar lê o arquivo da Consulta de Títulos
     transferencias/page.js           Controle de transferências -> features/transferencias
@@ -436,8 +446,10 @@ src/
       shopify.js                     Admin GraphQL API — fonte real dos pedidos
       shopifyTransferencias.js       Transferências e locais
       sintegrapi.js                  Consulta de IE pelo CNPJ no SintegrAPI
-      caixa.js                       Baixa o boleto pelo link de impressão da CAIXA
       tiny.js                        API 2.0 do Tiny, com as travas de segurança
+
+extensao-caixa/                      Extensão do Chrome que baixa os boletos da CAIXA
+                                      (zip em public/ com npm run extensao)
 
 supabase/
   schema.sql                         As oito tabelas: notas, pendências,

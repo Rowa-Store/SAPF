@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { somarDias } from '@/lib/datas';
+import { montarNossoNumero } from '@/lib/caixa/nossoNumero';
+import { baixarPelaExtensao, extensaoInstalada } from '../extensaoCaixa';
 
 export const FILTROS_VAZIOS = {
   soPendentes: false,
@@ -20,8 +22,16 @@ export function nfDaLinha(b) {
   return Number.isInteger(nf) && nf > 0 ? nf : null;
 }
 
-// Limite do POST /api/boletos/caixa por requisição.
-const NFS_POR_CONSULTA = 10;
+// Busca dos boletos na CAIXA: parcelas 1, 2, 3… de cada NF, parando depois de
+// MAX_FALTAS seguidas sem boleto (o nº de parcelas não é fixo). Uma consulta
+// por vez, com pausa, para não martelar o site da CAIXA.
+const MAX_PARCELAS = 12;
+const MAX_FALTAS = 2;
+const PAUSA_MS = 250;
+const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+export const SEM_EXTENSAO =
+  'Para consultar os boletos, instale a extensão "SAPF — Boletos CAIXA" no Chrome (veja "Como instalar" ao lado do botão) e recarregue a página.';
 
 /**
  * /boletos — pedidos pagos com boleto, com o status do boleto (emitido ou
@@ -33,8 +43,8 @@ const NFS_POR_CONSULTA = 10;
  * O nº da NF da linha é o digitado na tela, se houver; senão o da nota no
  * Tiny (gravado em notas_processadas).
  *
- * Depois de cada carga, procura na CAIXA os boletos das NFs da lista
- * (sincronizarCaixa) e atualiza os títulos de cada linha.
+ * "Consultar boletos" (sincronizarCaixa) procura na CAIXA, pela extensão do
+ * Chrome, os boletos das NFs da lista e sobe os PDFs achados para o SAPF.
  */
 export function useBoletos() {
   const [boletos, setBoletos] = useState(null);
@@ -50,6 +60,9 @@ export function useBoletos() {
   // { [id]: mensagem } — erro da última gravação de cada linha.
   const [errosLinha, setErrosLinha] = useState({});
   const [consultandoCaixa, setConsultandoCaixa] = useState(false);
+  // { feitas, total } NFs, durante a consulta.
+  const [progressoCaixa, setProgressoCaixa] = useState(null);
+  const [caixaCedente, setCaixaCedente] = useState(null);
   const [erroCaixa, setErroCaixa] = useState(null);
   // Resumo da última importação do arquivo da CAIXA (ver importarConsultaCaixa).
   const [resumoImportacao, setResumoImportacao] = useState(null);
@@ -57,43 +70,82 @@ export function useBoletos() {
   // Cada carga ganha um nº: resposta da CAIXA de uma carga antiga é ignorada.
   const geracao = useRef(0);
 
-  /** Procura na CAIXA os boletos destas NFs e põe os títulos nas linhas. */
-  const sincronizarCaixa = useCallback(async (nfs) => {
-    const minha = geracao.current;
-    const pendentes = [...new Set(nfs.filter(Boolean))];
-    if (pendentes.length === 0) return;
-    setConsultandoCaixa(true);
-    const falhas = [];
-    try {
-      for (let i = 0; i < pendentes.length; i += NFS_POR_CONSULTA) {
-        const corpo = await lerJson(
-          await fetch('/api/boletos/caixa', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ nfs: pendentes.slice(i, i + NFS_POR_CONSULTA) }),
-          }),
-          'Não foi possível consultar a CAIXA.'
-        );
-        if (geracao.current !== minha) return;
-        falhas.push(...Object.keys(corpo.erros ?? {}));
-        setBoletos((atual) =>
-          atual?.map((b) => {
-            const titulos = corpo.titulos[nfDaLinha(b)];
-            return titulos ? { ...b, titulosCaixa: titulos } : b;
-          })
-        );
+  /** Põe os títulos de uma NF em todas as linhas com essa NF. */
+  function definirTitulos(nf, titulos) {
+    setBoletos((atual) => atual?.map((b) => (nfDaLinha(b) === nf ? { ...b, titulosCaixa: titulos } : b)));
+  }
+
+  /**
+   * Procura na CAIXA, pela extensão, as parcelas que faltam das NFs destas
+   * linhas e sobe cada PDF achado (POST /api/boletos/caixa).
+   */
+  const sincronizarCaixa = useCallback(
+    async (linhas) => {
+      const minha = geracao.current;
+      const porNf = new Map();
+      for (const b of linhas) if (nfDaLinha(b) && nfDaLinha(b) <= 99999) porNf.set(nfDaLinha(b), b.titulosCaixa);
+      if (porNf.size === 0) return;
+      if (!caixaCedente) return setErroCaixa('CAIXA_CEDENTE não configurado no servidor.');
+      if (!(await extensaoInstalada())) return setErroCaixa(SEM_EXTENSAO);
+
+      setConsultandoCaixa(true);
+      setErroCaixa(null);
+      setProgressoCaixa({ feitas: 0, total: porNf.size });
+      const falhas = [];
+      try {
+        let feitas = 0;
+        for (const [nf, conhecidos] of porNf) {
+          const titulos = [...conhecidos];
+          const jaTem = new Set(conhecidos.map((t) => t.nosso_numero));
+          try {
+            let faltas = 0;
+            for (let parcela = 1; parcela <= MAX_PARCELAS && faltas < MAX_FALTAS; parcela++) {
+              const nossoNumero = montarNossoNumero(nf, parcela);
+              if (jaTem.has(nossoNumero)) {
+                faltas = 0;
+                continue;
+              }
+              await esperar(PAUSA_MS);
+              if (geracao.current !== minha) return;
+              const boleto = await baixarPelaExtensao(caixaCedente, nossoNumero);
+              if (!boleto.encontrado) {
+                faltas++;
+                continue;
+              }
+              faltas = 0;
+              const form = new FormData();
+              form.append('arquivo', boleto.pdf, `${nossoNumero}.pdf`);
+              form.append('nf', String(nf));
+              form.append('parcela', String(parcela));
+              const corpo = await lerJson(
+                await fetch('/api/boletos/caixa', { method: 'POST', body: form }),
+                `Não foi possível gravar a parcela ${parcela}.`
+              );
+              titulos.push(corpo.titulo);
+              titulos.sort((a, b) => (a.parcela ?? 99) - (b.parcela ?? 99));
+              if (geracao.current === minha) definirTitulos(nf, [...titulos]);
+            }
+          } catch (e) {
+            falhas.push(`NF ${nf}: ${e.message}`);
+          }
+          if (geracao.current !== minha) return;
+          setProgressoCaixa({ feitas: ++feitas, total: porNf.size });
+        }
+        setErroCaixa(falhas.length ? `Não foi possível consultar a CAIXA:\n${falhas.join('\n')}` : null);
+      } finally {
+        if (geracao.current === minha) {
+          setConsultandoCaixa(false);
+          setProgressoCaixa(null);
+        }
       }
-      setErroCaixa(falhas.length ? `Não foi possível consultar a CAIXA para a(s) NF(s) ${falhas.join(', ')}.` : null);
-    } catch (e) {
-      if (geracao.current === minha) setErroCaixa(e.message);
-    } finally {
-      if (geracao.current === minha) setConsultandoCaixa(false);
-    }
-  }, []);
+    },
+    [caixaCedente]
+  );
 
   const carregar = useCallback(async ({ cursor = null, busca = '', dia: diaPedido = null } = {}) => {
     geracao.current++;
     setConsultandoCaixa(false);
+    setProgressoCaixa(null);
     setCarregando(true);
     setErro(null);
     try {
@@ -108,8 +160,8 @@ export function useBoletos() {
       setDiaDeHoje(corpo.hoje ?? null);
       setDiaCompleto(corpo.diaCompleto !== false);
       setErrosLinha({});
+      setCaixaCedente(corpo.caixaCedente ?? null);
       setErroCaixa(corpo.erroCaixa ? `Não foi possível ler os boletos da CAIXA: ${corpo.erroCaixa}` : null);
-      if (!corpo.erroCaixa) sincronizarCaixa(corpo.boletos.map(nfDaLinha));
       return true;
     } catch (e) {
       setErro(e.message);
@@ -117,7 +169,7 @@ export function useBoletos() {
     } finally {
       setCarregando(false);
     }
-  }, [sincronizarCaixa]);
+  }, []);
 
   useEffect(() => {
     carregar();
@@ -220,10 +272,9 @@ export function useBoletos() {
     );
     atualizarLinha(b.id, { emitido: corpo.emitido, numeroNfEditado: corpo.numeroNfEditado });
     if (campos.numeroNf !== undefined) {
-      // NF trocada: os títulos da NF antiga não valem mais.
-      const nf = nfDaLinha({ ...b, numeroNfEditado: corpo.numeroNfEditado });
+      // NF trocada: os títulos da NF antiga não valem mais; os da nova vêm no
+      // próximo "Consultar boletos" (ou recarregando a lista).
       atualizarLinha(b.id, { titulosCaixa: [] });
-      sincronizarCaixa([nf]);
     }
   }
 
@@ -323,6 +374,7 @@ export function useBoletos() {
     enviarPdfs,
     removerPdf,
     consultandoCaixa,
+    progressoCaixa,
     erroCaixa,
     sincronizarCaixa,
     importando,

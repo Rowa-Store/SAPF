@@ -197,6 +197,10 @@ button.secundario:hover:not(:disabled) { background: var(--realce); border-color
 label.botao-arquivo { display: inline-block; font-size: 0.95rem; padding: 0.55rem 1.1rem; border: 1px solid var(--linha); border-radius: var(--raio); color: var(--tinta); font-weight: 500; cursor: pointer; }
 label.botao-arquivo:hover { background: var(--realce); border-color: var(--tinta-fraca); }
 label.botao-arquivo.carregando { opacity: 0.6; cursor: progress; }
+.texto-quebra { white-space: pre-line; }
+.ajuda-extensao { margin: 0 0 1rem; font-size: 0.85rem; color: var(--tinta-fraca); }
+.ajuda-extensao summary { cursor: pointer; }
+.ajuda-extensao ol { margin: 0.4rem 0 0; padding-left: 1.2rem; }
 button.botao-emitido:disabled { background: var(--ok-fundo); border-color: var(--ok); color: var(--ok); }
 
 .botao-pdf {

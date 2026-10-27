@@ -424,6 +424,7 @@ export default function ControleBoletos() {
     enviarPdfs,
     removerPdf,
     consultandoCaixa,
+    progressoCaixa,
     erroCaixa,
     sincronizarCaixa,
     importando,
@@ -486,11 +487,13 @@ export default function ControleBoletos() {
           <div className="grupo-botoes">
             <button
               className="secundario"
-              onClick={() => sincronizarCaixa((boletos ?? []).map(nfDaLinha))}
+              onClick={() => sincronizarCaixa(boletos ?? [])}
               disabled={carregando || consultandoCaixa || !boletos?.length}
-              title="Procura de novo na CAIXA os boletos das NFs desta lista"
+              title="Procura na CAIXA os boletos das NFs desta lista e sobe os PDFs para o sistema (precisa da extensão no Chrome)"
             >
-              {consultandoCaixa ? 'Consultando CAIXA…' : 'Consultar CAIXA'}
+              {consultandoCaixa
+                ? `Consultando boletos… ${progressoCaixa ? `${progressoCaixa.feitas}/${progressoCaixa.total} NFs` : ''}`
+                : 'Consultar boletos'}
             </button>
             <label
               className={`botao-arquivo ${importando ? 'carregando' : ''}`}
@@ -532,9 +535,28 @@ export default function ControleBoletos() {
       {erroCaixa && (
         <div className="aviso">
           <strong>Boletos da CAIXA</strong>
-          <p>{erroCaixa}</p>
+          <p className="texto-quebra">{erroCaixa}</p>
         </div>
       )}
+
+      <details className="ajuda-extensao">
+        <summary>Como instalar a extensão da CAIXA (uma vez por computador)</summary>
+        <p>
+          A CAIXA não deixa o servidor baixar os boletos, então quem baixa é o seu Chrome, por uma extensão. Só ela
+          acessa o link de impressão de boletos da CAIXA, e só quando você clica em &quot;Consultar boletos&quot;.
+        </p>
+        <ol>
+          <li>
+            Baixe <a href="/extensao-caixa.zip">extensao-caixa.zip</a> e descompacte numa pasta que não vá ser apagada.
+          </li>
+          <li>
+            No Chrome, abra <span className="mono">chrome://extensions</span> e ligue o &quot;Modo do
+            desenvolvedor&quot; (canto superior direito).
+          </li>
+          <li>Clique em &quot;Carregar sem compactação&quot; e escolha a pasta descompactada.</li>
+          <li>Recarregue esta página.</li>
+        </ol>
+      </details>
 
       {boletos && dia && !diaCompleto && (
         <div className="aviso">
