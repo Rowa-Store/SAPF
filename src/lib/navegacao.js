@@ -3,8 +3,8 @@
 export const AREAS = [
   {
     href: '/pedidos',
-    rotulo: 'Atacado',
-    descricao: 'Pedidos de atacado e franquia do Shopify: criar o rascunho, emitir a nota fiscal e baixar o DANFE.',
+    rotulo: 'B2B',
+    descricao: 'Pedidos B2B do Shopify (atacado e franquia): criar o rascunho, emitir a nota fiscal e baixar o DANFE.',
   },
   {
     href: '/boletos',

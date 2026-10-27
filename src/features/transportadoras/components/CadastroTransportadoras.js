@@ -231,7 +231,7 @@ export default function CadastroTransportadoras() {
     <>
       <AbasAtacado />
       <div className="cabecalho-pagina">
-        <h2>Transportadoras do atacado</h2>
+        <h2>Transportadoras do B2B</h2>
         <div className="grupo-botoes">
           <button onClick={abrirNova}>Nova transportadora</button>
         </div>

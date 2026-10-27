@@ -138,7 +138,7 @@ export default function IncluirRascunho({ params }) {
         <strong>Não foi possível abrir este pedido.</strong>
         <p>{erroCarregamento}</p>
         <p>
-          <a href="/pedidos">Voltar para a tela de atacado</a>
+          <a href="/pedidos">Voltar para a tela B2B</a>
         </p>
       </div>
     );
@@ -162,8 +162,8 @@ export default function IncluirRascunho({ params }) {
       <h2>
         <a
           href="/pedidos"
-          aria-label="Voltar para a tela de atacado"
-          title="Voltar para a tela de atacado"
+          aria-label="Voltar para a tela B2B"
+          title="Voltar para a tela B2B"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -237,10 +237,10 @@ export default function IncluirRascunho({ params }) {
             Nota {emissao.tinyNotaId} emitida{emissao.numeroNf ? ` — NF nº ${emissao.numeroNf}` : ''}.
           </strong>
           {!emissao.numeroNf && (
-            <p>A SEFAZ ainda não devolveu o número — a tela de atacado confere de novo depois.</p>
+            <p>A SEFAZ ainda não devolveu o número — a tela B2B confere de novo depois.</p>
           )}
           <p>
-            <a href="/pedidos">Voltar para a tela de atacado</a>
+            <a href="/pedidos">Voltar para a tela B2B</a>
           </p>
         </div>
       )}

@@ -212,7 +212,7 @@ export async function POST(request, { params }) {
         ? `Novo rascunho criado no Tiny no lugar do ${anterior.tiny_nota_id} — é este que "Emitir nota" ` +
           `vai emitir. Cancele ou exclua o rascunho ${anterior.tiny_nota_id} dentro do Tiny: a API não ` +
           'faz isso, e os dois ficam duplicados até você remover o antigo à mão.'
-        : 'Rascunho criado no Tiny. Confira os dados e emita a nota pela tela de atacado.') +
+        : 'Rascunho criado no Tiny. Confira os dados e emita a nota pela tela B2B.') +
         avisoTrocas +
         avisoDoCadastro(cadastroItens),
     });
