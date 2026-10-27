@@ -83,7 +83,7 @@ No painel do Supabase: **SQL Editor > New query**, cole o conteúdo de
 `supabase/schema.sql` e clique em **Run**. São nove tabelas:
 `notas_processadas`, `itens_pendentes`, `configuracoes`, `cnpjs_franquia`,
 `lojas_fiscais`, `transportadoras`, `clientes_transportadora`, `clientes_ie`
-e `boletos`.
+e `boletos` (mais `boletos_pdfs` e `boletos_caixa`).
 Quem já tinha rodado o schema antes das transportadoras existirem roda só
 `supabase/transportadoras.sql`; antes de `clientes_ie`, roda
 `supabase/clientes-ie.sql`.
@@ -225,6 +225,48 @@ filtro de boleto é aplicado depois, então uma página pode vir com menos linha
 
 Quem já tinha rodado o schema antes desta tela roda `supabase/boletos.sql`.
 
+### Boletos da CAIXA (automático)
+
+Os boletos são registrados na CAIXA (e-Cobrança, beneficiário `CAIXA_CEDENTE`)
+com o nosso número `14` + NF em 13 dígitos + parcela em 2 dígitos (ex.: NF
+24515, parcela 1 → `14000000002451501`) — ver `src/lib/caixa/nossoNumero.js`.
+O link de impressão da CAIXA
+(`boletoonline.caixa.gov.br/ecobranca/SIGCB/imprimir/<cedente>/<nosso número>`)
+abre **sem login**: devolve o PDF, ou o texto `BOLETO NAO ENCONTRADO`.
+
+Ao carregar a lista, a tela chama `POST /api/boletos/caixa` com as NFs da
+página. Para cada NF a rota tenta as parcelas 1, 2, 3… (para depois de duas
+seguidas sem boleto; o nº de parcelas não é fixo), lê valor e vencimento da
+linha digitável do PDF (`src/lib/caixa/boletoPdf.js`), guarda a cópia do PDF no
+bucket `boletos` (`caixa/<nosso número>.pdf`) e grava o título em
+`boletos_caixa`. Parcela já gravada não é baixada de novo. O botão
+"Consultar CAIXA" refaz a busca.
+
+- **Coluna Boleto:** um botão por título ("Parcela 1 · 25/11 · R$ …"), que abre
+  o PDF numa aba nova. O envio manual de PDF continua lá.
+- **Coluna Status:** além da marca manual, "CAIXA: …", calculado em
+  `src/lib/caixa/statusTitulos.js` — Pendente (nenhum título), Parcial (menos
+  títulos que as parcelas da nota; só para nota com parcelas, como franquia),
+  Divergente (soma ≠ total do pedido além de R$ 0,05, ou dois títulos com o
+  mesmo vencimento; o tooltip mostra o motivo e a diferença), Emitido,
+  Liquidado. Marcado como emitido sem nenhum título na CAIXA aparece um alerta.
+
+O que o link **não** dá: a situação do título (pago, baixado) e títulos fora do
+padrão (ex.: `14000000024518002`, duplicado/correção). Para isso, o botão
+**Importar consulta CAIXA** recebe o arquivo texto exportado em Banco de
+Títulos → Consulta de Títulos do e-Cobrança (`POST /api/boletos/caixa/importar`,
+leitura em `src/lib/caixa/consultaTitulos.js`). Cada título é gravado por nosso
+número, com a NF tirada do **Num. Documento** (não do nosso número: há títulos
+registrados fora do padrão, e alguns com o nosso número de outra NF — esses
+voltam listados no resumo para conferir na CAIXA). O resumo diz quantos foram
+novos, atualizados e quais NFs não têm pedido no sistema. Título que não está
+no arquivo não é mexido (a consulta costuma vir filtrada por situação). Título
+baixado não conta no status. Nunca guardar usuário/senha do e-Cobrança nem
+automatizar o login.
+
+Quem já tinha rodado o schema antes disto roda `supabase/boletos-caixa.sql` e
+configura `CAIXA_CEDENTE` (ver `.env.example`). Testes: `npm test`.
+
 ---
 
 ## Transferências entre lojas
@@ -336,7 +378,10 @@ src/
                                       [id]/clientes lista/anexa CNPJs e
                                       [id]/clientes/[cnpj] remove o anexo
     boletos/page.js                  Status dos boletos e nº da NF -> features/boletos
-    api/boletos/                     Lista os pedidos com boleto; [id] grava status e nº da NF
+    api/boletos/                     Lista os pedidos com boleto; [id] grava status e nº da NF;
+                                      caixa/ procura os boletos das NFs na CAIXA e
+                                      caixa/[nossoNumero]/pdf abre o PDF de um título;
+                                      caixa/importar lê o arquivo da Consulta de Títulos
     transferencias/page.js           Controle de transferências -> features/transferencias
     api/transferencias/              Lista transferências + situação fiscal; subrotas
                                       [id]/preview, [id]/rascunho, [id]/emitir
@@ -373,6 +418,12 @@ src/
     format.js                        Formatação para exibição na UI
     utils.js                         Formatação de valor, data, CEP, CNPJ, endereço, ids
     db.js                            Histórico, franquias e configurações no Supabase
+    caixa/
+      nossoNumero.js                 Nosso número da CAIXA e link do PDF do boleto
+      boletoPdf.js                   Valor e vencimento lidos da linha digitável do PDF
+      statusTitulos.js               Status do boleto (pendente, divergente...) pelos títulos
+      consultaTitulos.js             Lê o arquivo da Consulta de Títulos do e-Cobrança
+      caixa.test.js                  Testes (npm test)
     fiscal/
       classificacao.js               Atacado, franquia ou outro, a partir do CNPJ
       inscricaoEstadual.js           IE do cliente: cache no Supabase, senão SintegrAPI
@@ -385,6 +436,7 @@ src/
       shopify.js                     Admin GraphQL API — fonte real dos pedidos
       shopifyTransferencias.js       Transferências e locais
       sintegrapi.js                  Consulta de IE pelo CNPJ no SintegrAPI
+      caixa.js                       Baixa o boleto pelo link de impressão da CAIXA
       tiny.js                        API 2.0 do Tiny, com as travas de segurança
 
 supabase/
@@ -393,6 +445,7 @@ supabase/
                                       transportadoras, clientes anexados e IEs
   transportadoras.sql                Só as tabelas de transportadoras (migração)
   clientes-ie.sql                    Só a tabela clientes_ie (migração)
+  boletos-caixa.sql                  Só a tabela boletos_caixa (migração)
 ```
 
 Novos fluxos fiscais (transferência entre lojas, devolução) entram como uma

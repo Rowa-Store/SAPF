@@ -1,6 +1,6 @@
 // GET /api/boletos — pedidos pagos com boleto (metafield
 // `custom.metodo_pagamento` com "boleto"), com o status do boleto e o nº da
-// NF de cada um.
+// NF de cada um, mais os títulos da CAIXA já achados para a NF.
 //
 // Mesma navegação da tela de atacado (ver api/pedidos/route.js): sem busca, a
 // lista é POR DIA; com busca, não se prende a dia e vem paginada por cursor.
@@ -26,6 +26,7 @@ import {
   pedidosPorNfOuCnpj,
   registrarNumeroNf,
   statusPorPedido,
+  titulosCaixaPorNf,
 } from '@/lib/db';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
 import { erroJson, idNumerico, somenteDigitos } from '@/lib/utils';
@@ -123,6 +124,20 @@ export async function GET(request) {
     }
     const cnpjsFranquia = cnpjsFranquiaResp.ok ? cnpjsFranquiaResp.cnpjs : [];
 
+    // Títulos da CAIXA já gravados para a NF de cada pedido; a tela procura
+    // os que faltam em seguida (POST /api/boletos/caixa).
+    const numeroNf = (id) => boletos[id]?.numero_nf ?? situacoes[id]?.numero_nf ?? null;
+    // Falha aqui não derruba a lista (o hub-rowa também lê esta rota): a tela
+    // só fica sem os títulos e avisa.
+    let titulosCaixa = {};
+    let erroCaixa = null;
+    try {
+      titulosCaixa = await titulosCaixaPorNf(ids.map(numeroNf).filter(Boolean));
+    } catch (erro) {
+      console.error('[boletos]', erro.message);
+      erroCaixa = erro.message;
+    }
+
     const lista = comBoleto.map((p) => {
       const situacao = situacoes[p.id];
       const boleto = boletos[p.id];
@@ -145,10 +160,14 @@ export async function GET(request) {
         emitido: boleto?.emitido ?? false,
         pdfs: boleto?.pdfs ?? [],
         temPdf: (boleto?.pdfs.length ?? 0) > 0,
+        // Parcelas da nota (franquia com boleto leva 3; atacado vai sem) e os
+        // títulos da CAIXA achados para a NF — o status sai de statusTitulos.js.
+        parcelasEsperadas: Array.isArray(situacao?.parcelas) ? situacao.parcelas.length || null : null,
+        titulosCaixa: titulosCaixa[Number(numeroNf(p.id))] ?? [],
       };
     });
 
-    return Response.json({ boletos: lista, proximoCursor, dia, diaCompleto, hoje: diaDeHoje });
+    return Response.json({ boletos: lista, proximoCursor, dia, diaCompleto, hoje: diaDeHoje, erroCaixa });
   } catch (erro) {
     return erroJson(`Não foi possível listar os boletos: ${erro.message}`);
   }

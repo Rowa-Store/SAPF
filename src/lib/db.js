@@ -239,7 +239,12 @@ export async function statusPorPedido(orderIds) {
     lotes.map((ids) =>
       db
         .from('notas_processadas')
-        .select('shopify_order_id, status, tiny_nota_id, nota_emitida, numero_nf, tiny_notas_substituidas, erro, atualizado_em')
+        .select(
+          'shopify_order_id, status, tiny_nota_id, nota_emitida, numero_nf, tiny_notas_substituidas, erro, atualizado_em, ' +
+            // Só as parcelas do payload, não ele inteiro: a tela de boletos
+            // compara quantas são com os títulos achados na CAIXA.
+            'parcelas:payload_enviado->nota_fiscal->parcelas'
+        )
         .in('shopify_order_id', ids)
     )
   );
@@ -744,4 +749,148 @@ export async function removerPdfBoleto(orderId, pdfId) {
   // A linha já saiu: o arquivo que sobrar no bucket não aparece em lugar nenhum.
   if (erroStorage) console.error(`[boletos] PDF ${linha.path} removido da lista, mas não do Storage:`, erroStorage.message);
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Títulos da CAIXA (tabela boletos_caixa), por nº da NF. Ver
+// supabase/boletos-caixa.sql e src/lib/caixa/.
+// ---------------------------------------------------------------------------
+
+const COLUNAS_TITULO = 'nosso_numero, nf_numero, parcela, valor, vencimento, situacao, data_liquidacao, pdf_path, origem';
+
+/** Mapa nº da NF -> títulos da CAIXA, por parcela. Lança erro se o Supabase
+ *  falhar, como boletosPorPedido: {} faria toda NF parecer sem boleto. */
+export async function titulosCaixaPorNf(numerosNf) {
+  const db = obterCliente();
+  const nfs = [...new Set(numerosNf.map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+  if (!db || nfs.length === 0) return {};
+
+  const { data, error } = await db
+    .from('boletos_caixa')
+    .select(COLUNAS_TITULO)
+    .in('nf_numero', nfs)
+    .order('parcela', { ascending: true });
+  if (error) throw new Error(`Falha ao ler os títulos da CAIXA no Supabase: ${error.message}`);
+
+  const mapa = {};
+  for (const t of data ?? []) (mapa[t.nf_numero] ??= []).push(t);
+  return mapa;
+}
+
+/** Grava um título achado na CAIXA e, se vier, o PDF dele no Storage. */
+export async function salvarTituloCaixa({ nossoNumero, nf, parcela, valor, vencimento, bytes, origem }) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  let pdfPath;
+  if (bytes) {
+    pdfPath = `caixa/${nossoNumero}.pdf`;
+    const { error } = await db.storage
+      .from(BUCKET_BOLETOS)
+      .upload(pdfPath, bytes, { contentType: 'application/pdf', upsert: true });
+    if (error) return { ok: false, erro: `upload do PDF: ${error.message}` };
+  }
+
+  const { data, error } = await db
+    .from('boletos_caixa')
+    .upsert(
+      {
+        nosso_numero: nossoNumero,
+        nf_numero: nf,
+        parcela,
+        valor,
+        vencimento,
+        origem,
+        ...(pdfPath ? { pdf_path: pdfPath } : {}),
+        atualizado_em: new Date().toISOString(),
+      },
+      { onConflict: 'nosso_numero' }
+    )
+    .select(COLUNAS_TITULO)
+    .single();
+  return error ? { ok: false, erro: error.message } : { ok: true, titulo: data };
+}
+
+/** Link temporário (5 min) da cópia do PDF guardada no Storage. `semPdf`
+ *  quando o título não existe ou ainda não tem cópia. */
+export async function linkPdfTituloCaixa(nossoNumero) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { data: linha, error } = await db
+    .from('boletos_caixa')
+    .select('pdf_path')
+    .eq('nosso_numero', nossoNumero)
+    .maybeSingle();
+  if (error) return { ok: false, erro: error.message };
+  if (!linha?.pdf_path) return { ok: false, erro: 'Título sem cópia do PDF.', semPdf: true };
+
+  const { data, error: erroLink } = await db.storage.from(BUCKET_BOLETOS).createSignedUrl(linha.pdf_path, 300);
+  return erroLink ? { ok: false, erro: erroLink.message } : { ok: true, url: data.signedUrl };
+}
+
+/**
+ * Grava os títulos lidos de um arquivo da CAIXA, por nosso número. Título
+ * novo entra com origem 'importado'; o que já existia (achado pelo link)
+ * fica com a origem e o PDF que tinha e só ganha os dados do arquivo.
+ * Devolve { ok, novos, atualizados }.
+ */
+export async function importarTitulosCaixa(titulos) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  let novos = 0;
+  let atualizados = 0;
+  const agora = new Date().toISOString();
+  for (let i = 0; i < titulos.length; i += IDS_POR_CONSULTA) {
+    const lote = titulos.slice(i, i + IDS_POR_CONSULTA);
+    const { data: existentes, error: erroLeitura } = await db
+      .from('boletos_caixa')
+      .select('nosso_numero, origem')
+      .in('nosso_numero', lote.map((t) => t.nosso_numero));
+    if (erroLeitura) return { ok: false, erro: erroLeitura.message, novos, atualizados };
+
+    // A origem vai junto mesmo no que já existe: o upsert confere o not null
+    // antes de ver que a linha existe.
+    const jaTem = new Map((existentes ?? []).map((r) => [r.nosso_numero, r.origem]));
+    const paraAtualizar = lote
+      .filter((t) => jaTem.has(t.nosso_numero))
+      .map((t) => ({ ...t, origem: jaTem.get(t.nosso_numero), atualizado_em: agora }));
+    const paraInserir = lote
+      .filter((t) => !jaTem.has(t.nosso_numero))
+      .map((t) => ({ ...t, origem: 'importado', atualizado_em: agora }));
+    for (const linhas of [paraAtualizar, paraInserir]) {
+      if (linhas.length === 0) continue;
+      const { error } = await db.from('boletos_caixa').upsert(linhas, { onConflict: 'nosso_numero' });
+      if (error) return { ok: false, erro: error.message, novos, atualizados };
+    }
+    novos += paraInserir.length;
+    atualizados += paraAtualizar.length;
+  }
+  return { ok: true, novos, atualizados };
+}
+
+/**
+ * Das NFs informadas, as que têm pedido no sistema: nº da nota em
+ * notas_processadas ou nº digitado na tela de boletos. O nº é texto lá, e
+ * pode estar com ou sem zero à esquerda — procura as duas formas.
+ */
+export async function nfsComPedido(numerosNf) {
+  const db = obterCliente();
+  if (!db || numerosNf.length === 0) return { ok: !!db, erro: db ? undefined : SEM_CONFIG.erro, nfs: new Set() };
+
+  const formas = (nf) => [...new Set([String(nf), String(nf).padStart(6, '0')])];
+  const achadas = new Set();
+  for (let i = 0; i < numerosNf.length; i += IDS_POR_CONSULTA) {
+    const textos = numerosNf.slice(i, i + IDS_POR_CONSULTA).flatMap(formas);
+    const respostas = await Promise.all([
+      db.from('notas_processadas').select('numero_nf').in('numero_nf', textos),
+      db.from('boletos').select('numero_nf').in('numero_nf', textos),
+    ]);
+    for (const { data, error } of respostas) {
+      if (error) return { ok: false, erro: error.message, nfs: achadas };
+      for (const r of data ?? []) achadas.add(Number(r.numero_nf));
+    }
+  }
+  return { ok: true, nfs: achadas };
 }

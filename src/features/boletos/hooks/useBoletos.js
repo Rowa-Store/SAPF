@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { somarDias } from '@/lib/datas';
 
 export const FILTROS_VAZIOS = {
@@ -14,6 +14,15 @@ async function lerJson(resposta, mensagemPadrao) {
   return corpo;
 }
 
+/** Nº da NF da linha: o digitado na tela vale sobre o do Tiny. */
+export function nfDaLinha(b) {
+  const nf = Number(b.numeroNfEditado ?? b.numeroNfTiny);
+  return Number.isInteger(nf) && nf > 0 ? nf : null;
+}
+
+// Limite do POST /api/boletos/caixa por requisição.
+const NFS_POR_CONSULTA = 10;
+
 /**
  * /boletos — pedidos pagos com boleto, com o status do boleto (emitido ou
  * pendente, marcado à mão) e o nº da NF de cada um.
@@ -23,6 +32,9 @@ async function lerJson(resposta, mensagemPadrao) {
  *
  * O nº da NF da linha é o digitado na tela, se houver; senão o da nota no
  * Tiny (gravado em notas_processadas).
+ *
+ * Depois de cada carga, procura na CAIXA os boletos das NFs da lista
+ * (sincronizarCaixa) e atualiza os títulos de cada linha.
  */
 export function useBoletos() {
   const [boletos, setBoletos] = useState(null);
@@ -37,8 +49,51 @@ export function useBoletos() {
   const [diaCompleto, setDiaCompleto] = useState(true);
   // { [id]: mensagem } — erro da última gravação de cada linha.
   const [errosLinha, setErrosLinha] = useState({});
+  const [consultandoCaixa, setConsultandoCaixa] = useState(false);
+  const [erroCaixa, setErroCaixa] = useState(null);
+  // Resumo da última importação do arquivo da CAIXA (ver importarConsultaCaixa).
+  const [resumoImportacao, setResumoImportacao] = useState(null);
+  const [importando, setImportando] = useState(false);
+  // Cada carga ganha um nº: resposta da CAIXA de uma carga antiga é ignorada.
+  const geracao = useRef(0);
+
+  /** Procura na CAIXA os boletos destas NFs e põe os títulos nas linhas. */
+  const sincronizarCaixa = useCallback(async (nfs) => {
+    const minha = geracao.current;
+    const pendentes = [...new Set(nfs.filter(Boolean))];
+    if (pendentes.length === 0) return;
+    setConsultandoCaixa(true);
+    const falhas = [];
+    try {
+      for (let i = 0; i < pendentes.length; i += NFS_POR_CONSULTA) {
+        const corpo = await lerJson(
+          await fetch('/api/boletos/caixa', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nfs: pendentes.slice(i, i + NFS_POR_CONSULTA) }),
+          }),
+          'Não foi possível consultar a CAIXA.'
+        );
+        if (geracao.current !== minha) return;
+        falhas.push(...Object.keys(corpo.erros ?? {}));
+        setBoletos((atual) =>
+          atual?.map((b) => {
+            const titulos = corpo.titulos[nfDaLinha(b)];
+            return titulos ? { ...b, titulosCaixa: titulos } : b;
+          })
+        );
+      }
+      setErroCaixa(falhas.length ? `Não foi possível consultar a CAIXA para a(s) NF(s) ${falhas.join(', ')}.` : null);
+    } catch (e) {
+      if (geracao.current === minha) setErroCaixa(e.message);
+    } finally {
+      if (geracao.current === minha) setConsultandoCaixa(false);
+    }
+  }, []);
 
   const carregar = useCallback(async ({ cursor = null, busca = '', dia: diaPedido = null } = {}) => {
+    geracao.current++;
+    setConsultandoCaixa(false);
     setCarregando(true);
     setErro(null);
     try {
@@ -53,6 +108,8 @@ export function useBoletos() {
       setDiaDeHoje(corpo.hoje ?? null);
       setDiaCompleto(corpo.diaCompleto !== false);
       setErrosLinha({});
+      setErroCaixa(corpo.erroCaixa ? `Não foi possível ler os boletos da CAIXA: ${corpo.erroCaixa}` : null);
+      if (!corpo.erroCaixa) sincronizarCaixa(corpo.boletos.map(nfDaLinha));
       return true;
     } catch (e) {
       setErro(e.message);
@@ -60,7 +117,7 @@ export function useBoletos() {
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [sincronizarCaixa]);
 
   useEffect(() => {
     carregar();
@@ -107,6 +164,34 @@ export function useBoletos() {
     if (await carregar({ dia: novo })) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  /** Recarrega a lista que está na tela (mesmo dia, ou mesma busca e página). */
+  function recarregar() {
+    return dia ? carregar({ dia }) : carregar({ cursor: cursores[cursores.length - 1], busca: buscaAplicada });
+  }
+
+  /**
+   * Importa o arquivo da Consulta de Títulos do e-Cobrança (situação, valor,
+   * vencimento de cada título) e recarrega a lista com os dados novos.
+   */
+  async function importarConsultaCaixa(arquivo) {
+    setImportando(true);
+    setResumoImportacao(null);
+    try {
+      const form = new FormData();
+      form.append('arquivo', arquivo);
+      const corpo = await lerJson(
+        await fetch('/api/boletos/caixa/importar', { method: 'POST', body: form }),
+        'Não foi possível importar o arquivo.'
+      );
+      setResumoImportacao({ arquivo: arquivo.name, ...corpo });
+      await recarregar();
+    } catch (e) {
+      setResumoImportacao({ arquivo: arquivo.name, erro: e.message });
+    } finally {
+      setImportando(false);
+    }
+  }
+
   const diaAnterior = () => dia && irParaDia(somarDias(dia, -1));
   const diaSeguinte = () => dia && irParaDia(somarDias(dia, 1));
 
@@ -134,6 +219,12 @@ export function useBoletos() {
       'Não foi possível salvar o boleto.'
     );
     atualizarLinha(b.id, { emitido: corpo.emitido, numeroNfEditado: corpo.numeroNfEditado });
+    if (campos.numeroNf !== undefined) {
+      // NF trocada: os títulos da NF antiga não valem mais.
+      const nf = nfDaLinha({ ...b, numeroNfEditado: corpo.numeroNfEditado });
+      atualizarLinha(b.id, { titulosCaixa: [] });
+      sincronizarCaixa([nf]);
+    }
   }
 
   /** Troca o status já na tela e volta atrás se o servidor recusar. */
@@ -201,7 +292,8 @@ export function useBoletos() {
     }
   }
 
-  const visiveis = (boletos ?? []).filter((b) => !filtros.soPendentes || !b.emitido);
+  // Pendente: nem marcado à mão, nem com título achado na CAIXA.
+  const visiveis = (boletos ?? []).filter((b) => !filtros.soPendentes || (!b.emitido && b.titulosCaixa.length === 0));
 
   return {
     boletos,
@@ -230,5 +322,12 @@ export function useBoletos() {
     salvarNumeroNf,
     enviarPdfs,
     removerPdf,
+    consultandoCaixa,
+    erroCaixa,
+    sincronizarCaixa,
+    importando,
+    importarConsultaCaixa,
+    resumoImportacao,
+    fecharResumoImportacao: () => setResumoImportacao(null),
   };
 }

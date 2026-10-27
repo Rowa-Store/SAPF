@@ -234,3 +234,23 @@ select shopify_order_id, coalesce(shopify_order_name, 'boleto') || '.pdf', pdf_p
 from boletos
 where pdf_path is not null
 on conflict (path) do nothing;
+
+-- Títulos da CAIXA (e-Cobrança) por NF — ver supabase/boletos-caixa.sql.
+create table if not exists boletos_caixa (
+  nosso_numero text primary key,           -- 17 dígitos, sem o DV
+  nf_numero integer not null,
+  parcela integer,                         -- null: nosso número fora do padrão da NF
+  valor numeric(12, 2),
+  vencimento date,
+  situacao text check (situacao in ('em_aberto', 'liquidado', 'baixado', 'outro')),
+  data_entrada date,
+  data_liquidacao date,
+  pdf_path text,
+  origem text not null check (origem in ('gerado', 'importado')),
+  criado_em timestamptz default now(),
+  atualizado_em timestamptz default now()
+);
+-- Quem rodou a primeira versão deste arquivo tinha parcela not null.
+alter table boletos_caixa alter column parcela drop not null;
+create index if not exists boletos_caixa_nf_idx on boletos_caixa (nf_numero, parcela);
+alter table boletos_caixa enable row level security;
