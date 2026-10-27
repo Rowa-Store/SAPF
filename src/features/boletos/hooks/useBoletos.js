@@ -158,6 +158,23 @@ export function useBoletos() {
     }
   }
 
+  /** Sobe o PDF do boleto; o servidor já marca como emitido. */
+  async function enviarPdf(b, arquivo) {
+    definirErroLinha(b.id, null);
+    const form = new FormData();
+    form.append('arquivo', arquivo);
+    form.append('orderName', b.name);
+    try {
+      const corpo = await lerJson(
+        await fetch(`/api/boletos/${b.id}/pdf`, { method: 'POST', body: form }),
+        'Não foi possível enviar o PDF do boleto.'
+      );
+      atualizarLinha(b.id, { emitido: corpo.emitido, numeroNfEditado: corpo.numeroNfEditado, temPdf: corpo.temPdf });
+    } catch (e) {
+      definirErroLinha(b.id, e.message);
+    }
+  }
+
   const visiveis = (boletos ?? []).filter((b) => !filtros.soPendentes || !b.emitido);
 
   return {
@@ -185,5 +202,6 @@ export function useBoletos() {
     paginaAnterior,
     alterarStatus,
     salvarNumeroNf,
+    enviarPdf,
   };
 }

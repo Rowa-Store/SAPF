@@ -208,3 +208,10 @@ create table if not exists boletos (
 );
 
 alter table boletos enable row level security;
+
+-- PDF do boleto (upload na tela /boletos): bucket privado no Storage; o
+-- caminho do arquivo fica em boletos.pdf_path. Subir o PDF marca emitido.
+alter table boletos add column if not exists pdf_path text;
+insert into storage.buckets (id, name, public)
+values ('boletos', 'boletos', false)
+on conflict (id) do nothing;

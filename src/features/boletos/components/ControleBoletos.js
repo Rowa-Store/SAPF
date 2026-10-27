@@ -1,5 +1,6 @@
 // /boletos — pedidos pagos com boleto: status do boleto (emitido/pendente,
-// marcado à mão) e o nº da NF de cada um, editável.
+// marcado à mão ou ao subir o PDF), o PDF do boleto e o nº da NF de cada um,
+// editável.
 
 'use client';
 
@@ -179,6 +180,74 @@ function CampoNumeroNf({ b, salvarNumeroNf }) {
   );
 }
 
+/**
+ * PDF do boleto, no formato do botão do DANFE, em azul. Sem PDF, o botão
+ * escolhe o arquivo; com PDF, abre o boleto e "trocar" sobe outro. Subir o
+ * PDF marca o boleto como emitido (no servidor).
+ */
+function PdfBoleto({ b, enviarPdf }) {
+  const [enviando, setEnviando] = useState(false);
+  const campo = useRef(null);
+
+  async function escolher(e) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = '';
+    if (!arquivo) return;
+    setEnviando(true);
+    try {
+      await enviarPdf(b, arquivo);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const input = (
+    <input
+      ref={campo}
+      type="file"
+      accept="application/pdf,.pdf"
+      className="input-arquivo-oculto"
+      onChange={escolher}
+      disabled={enviando}
+    />
+  );
+
+  if (enviando) {
+    return (
+      <span className="botao-pdf botao-pdf-boleto carregando">
+        <IconePdf /> Enviando…
+      </span>
+    );
+  }
+
+  if (!b.temPdf) {
+    return (
+      <label className="botao-pdf botao-pdf-boleto" title="Enviar o PDF do boleto — marca como emitido">
+        {input}
+        <IconePdf /> Enviar boleto
+      </label>
+    );
+  }
+
+  return (
+    <div className="pilha">
+      <a
+        className="botao-pdf botao-pdf-boleto"
+        href={`/api/boletos/${b.id}/pdf`}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Abrir o PDF do boleto"
+      >
+        <IconePdf /> Boleto
+      </a>
+      <label className="botao-pdf-trocar" title="Enviar outro PDF no lugar deste">
+        {input}
+        trocar PDF
+      </label>
+    </div>
+  );
+}
+
 export default function ControleBoletos() {
   const {
     boletos,
@@ -205,6 +274,7 @@ export default function ControleBoletos() {
     paginaAnterior,
     alterarStatus,
     salvarNumeroNf,
+    enviarPdf,
   } = useBoletos();
 
   const paginacao = !dia && (pagina > 1 || temProxima) && (
@@ -303,6 +373,7 @@ export default function ControleBoletos() {
                   <th>Cliente</th>
                   <th className="num">Total</th>
                   <th>Classificação</th>
+                  <th>Boleto</th>
                   <th>Nº da NF</th>
                   <th>Status do boleto</th>
                 </tr>
@@ -323,6 +394,9 @@ export default function ControleBoletos() {
                     <td className="num">{formatarMoedaOuTraco(b.total)}</td>
                     <td>
                       <span className={`marca marca-${b.classificacao}`}>{b.classificacao}</span>
+                    </td>
+                    <td>
+                      <PdfBoleto b={b} enviarPdf={enviarPdf} />
                     </td>
                     <td>
                       <div className="pilha">
@@ -350,7 +424,7 @@ export default function ControleBoletos() {
                   </tr>,
                   errosLinha[b.id] && (
                     <tr key={`${b.id}-erro`} className="linha-detalhe">
-                      <td colSpan={6}>
+                      <td colSpan={7}>
                         <div className="aviso aviso-fechavel">
                           <p className="texto-erro" style={{ margin: 0 }}>{errosLinha[b.id]}</p>
                           <button className="secundario pequeno" onClick={() => definirErroLinha(b.id, null)}>

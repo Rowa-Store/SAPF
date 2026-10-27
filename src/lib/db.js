@@ -597,7 +597,7 @@ export async function gravarIeDoCliente({ cnpj, ie, uf, origem }) {
 // nota em notas_processadas.
 // ---------------------------------------------------------------------------
 
-/** Mapa orderId -> { emitido, numero_nf }. Lança erro se o Supabase falhar,
+/** Mapa orderId -> { emitido, numero_nf, pdf_path }. Lança erro se o Supabase falhar,
  *  pelo mesmo motivo de statusPorPedido: {} faria todo boleto parecer pendente. */
 export async function boletosPorPedido(orderIds) {
   const db = obterCliente();
@@ -606,7 +606,7 @@ export async function boletosPorPedido(orderIds) {
   const lotes = [];
   for (let i = 0; i < orderIds.length; i += IDS_POR_CONSULTA) lotes.push(orderIds.slice(i, i + IDS_POR_CONSULTA));
   const respostas = await Promise.all(
-    lotes.map((ids) => db.from('boletos').select('shopify_order_id, emitido, numero_nf').in('shopify_order_id', ids))
+    lotes.map((ids) => db.from('boletos').select('shopify_order_id, emitido, numero_nf, pdf_path').in('shopify_order_id', ids))
   );
   const linhas = respostas.flatMap(({ data, error }) => {
     if (error) throw new Error(`Falha ao ler os boletos no Supabase: ${error.message}`);
@@ -634,4 +634,53 @@ export async function salvarBoleto({ orderId, orderName, emitido, numeroNf }) {
     .select('shopify_order_id, emitido, numero_nf')
     .single();
   return error ? { ok: false, erro: error.message } : { ok: true, boleto: data };
+}
+
+// PDF do boleto: fica no bucket privado BUCKET_BOLETOS do Supabase Storage,
+// em <id numérico do pedido>.pdf; o caminho vai em boletos.pdf_path.
+const BUCKET_BOLETOS = 'boletos';
+
+/** Sobe (ou troca) o PDF do boleto e marca o boleto como emitido. */
+export async function salvarPdfBoleto({ orderId, orderName, bytes }) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const caminho = `${orderId.split('/').pop()}.pdf`;
+  const { error: erroUpload } = await db.storage
+    .from(BUCKET_BOLETOS)
+    .upload(caminho, bytes, { contentType: 'application/pdf', upsert: true });
+  if (erroUpload) return { ok: false, erro: `upload do PDF: ${erroUpload.message}` };
+
+  const { data, error } = await db
+    .from('boletos')
+    .upsert(
+      {
+        shopify_order_id: orderId,
+        ...(orderName ? { shopify_order_name: orderName } : {}),
+        emitido: true,
+        pdf_path: caminho,
+        atualizado_em: new Date().toISOString(),
+      },
+      { onConflict: 'shopify_order_id' }
+    )
+    .select('shopify_order_id, emitido, numero_nf, pdf_path')
+    .single();
+  return error ? { ok: false, erro: error.message } : { ok: true, boleto: data };
+}
+
+/** Link temporário (5 min) para abrir o PDF do boleto. */
+export async function linkPdfBoleto(orderId) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { data: linha, error } = await db
+    .from('boletos')
+    .select('pdf_path')
+    .eq('shopify_order_id', orderId)
+    .maybeSingle();
+  if (error) return { ok: false, erro: error.message };
+  if (!linha?.pdf_path) return { ok: false, erro: 'Este boleto ainda não tem PDF.', semPdf: true };
+
+  const { data, error: erroLink } = await db.storage.from(BUCKET_BOLETOS).createSignedUrl(linha.pdf_path, 300);
+  return erroLink ? { ok: false, erro: erroLink.message } : { ok: true, url: data.signedUrl };
 }

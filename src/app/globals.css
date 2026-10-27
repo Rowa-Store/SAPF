@@ -20,6 +20,9 @@
   --ok-fundo: rgba(52, 211, 153, 0.14);
   --amarelo: #f5c84c;
   --amarelo-fundo: rgba(245, 200, 76, 0.14);
+  /* Azul de verdade — o --azul acima é o acento verde-menta. */
+  --celeste: #6cb4ff;
+  --celeste-fundo: rgba(108, 180, 255, 0.14);
   --raio: 10px;
   --largura: 74rem;
 }
@@ -243,6 +246,12 @@ a.botao-link {
 }
 a.botao-link:hover { background: var(--realce); border-color: var(--tinta-fraca); text-decoration: none; }
 .botao-pdf-destaque { border-color: var(--ok); color: var(--ok); background: var(--ok-fundo); }
+.botao-pdf-boleto { border-color: var(--celeste); color: var(--celeste); background: var(--celeste-fundo); cursor: pointer; }
+.botao-pdf-boleto:hover { background: var(--celeste-fundo); filter: brightness(1.2); }
+.botao-pdf-boleto.carregando { opacity: 0.6; cursor: progress; }
+.botao-pdf-trocar { font-size: 0.72rem; color: var(--tinta-fraca); cursor: pointer; }
+.botao-pdf-trocar:hover { color: var(--celeste); text-decoration: underline; }
+.input-arquivo-oculto { display: none; }
 .grupo-botoes { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
 .forte { font-weight: 600; }
 .pilha { display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }

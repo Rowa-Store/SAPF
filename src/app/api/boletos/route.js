@@ -138,6 +138,7 @@ export async function GET(request) {
         numeroNfTiny: situacao?.numero_nf ?? null,
         numeroNfEditado: boleto?.numero_nf ?? null,
         emitido: boleto?.emitido ?? false,
+        temPdf: !!boleto?.pdf_path,
       };
     });
 
