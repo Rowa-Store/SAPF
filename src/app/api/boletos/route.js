@@ -11,6 +11,8 @@
 //   ?dia=     AAAA-MM-DD; sem ele, hoje
 //   ?busca=   termos separados por vírgula: nº do pedido, cliente, nº da NF ou CNPJ
 //   ?cursor=  só com busca: página seguinte
+//   ?todas=1  todos os pedidos B2B, de qualquer forma de pagamento (usado
+//             pelo Fechamento de Caixa do hub-rowa); `ehBoleto` diz quais são
 
 import { listarPedidosDoDia, listarPedidosRecentes, metodosDePagamento } from '@/lib/integrations/shopify';
 import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
@@ -62,6 +64,7 @@ export async function GET(request) {
   try {
     const busca = new URL(request.url).searchParams;
     const cursor = busca.get('cursor') || null;
+    const todasAsFormas = busca.get('todas') === '1';
     const termos = (busca.get('busca') ?? '')
       .split(',')
       .map((t) => t.trim())
@@ -105,7 +108,8 @@ export async function GET(request) {
       pedidos.map((p) => p.id),
       Object.fromEntries(pedidos.map((p) => [p.id, p._bruto.customAttributes]))
     );
-    const comBoleto = pedidos.filter((p) => formaDePagamentoTiny(metodos[p.id]) === FORMA_BOLETO);
+    const ehBoleto = (p) => formaDePagamentoTiny(metodos[p.id]) === FORMA_BOLETO;
+    const comBoleto = todasAsFormas ? pedidos : pedidos.filter(ehBoleto);
 
     const ids = comBoleto.map((p) => p.id);
     const [situacoes, boletos, cnpjsFranquiaResp] = await Promise.all([
@@ -131,6 +135,7 @@ export async function GET(request) {
         cnpj: extrairCnpj(p._bruto).cnpj,
         total: p.total,
         metodoPagamento: metodos[p.id],
+        ehBoleto: ehBoleto(p),
         classificacao: classificarComListaFranquia(p._bruto, cnpjsFranquia),
         tinyNotaId: situacao?.status === 'rascunho_criado' ? situacao.tiny_nota_id : null,
         notaEmitida: situacao?.nota_emitida ?? false,
