@@ -29,8 +29,8 @@ async function lerJson(resposta, mensagemPadrao) {
  *
  * A lista vem POR DIA do servidor: abre no dia de hoje e a navegação volta
  * um dia por vez. Uma busca não se prende a dia — vem paginada por cursor
- * do Shopify, 50 por vez. Pedidos "outro" e o filtro "não emitidas" são
- * aplicados na lista já carregada.
+ * do Shopify, 50 por vez. O filtro "não emitidas" é aplicado na lista já
+ * carregada.
  *
  * O nº da NF nunca é digitado: vem da nota autorizada no Tiny. Toda linha da
  * página aberta que tem nota no Tiny mas ainda não tem número é conferida
@@ -262,10 +262,10 @@ export function useAtacado() {
     }
   }
 
-  // Pedido que não é de atacado nem de franquia ("outro") nunca aparece aqui.
-  const visiveis = (pedidos ?? []).filter(
-    (p) => p.classificacao !== 'outro' && (!filtros.naoEmitidas || !p.notaEmitida)
-  );
+  // Todo pedido B2B (rascunho pago no Shopify) aparece, como no Fechamento de
+  // Caixa do hub-rowa — inclusive o "outro", sem CNPJ reconhecido, que o
+  // preview avisa antes de criar a nota.
+  const visiveis = (pedidos ?? []).filter((p) => !filtros.naoEmitidas || !p.notaEmitida);
 
   const idsParaConferir = visiveis
     .filter((p) => precisaConferir(p) && !conferidos.current.has(p.id))

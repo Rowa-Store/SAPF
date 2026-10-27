@@ -243,7 +243,7 @@ export default function ControleAtacado() {
       ) : visiveis.length === 0 ? (
         <>
           <div className="vazio">
-            {dia ? 'Nenhum pedido de atacado ou franquia neste dia.' : 'Nenhum pedido corresponde aos filtros nesta página.'}
+            {dia ? 'Nenhum pedido B2B pago neste dia.' : 'Nenhum pedido corresponde aos filtros nesta página.'}
           </div>
           {paginacao}
         </>
