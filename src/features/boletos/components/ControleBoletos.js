@@ -1,5 +1,5 @@
 // /boletos — pedidos pagos com boleto: status do boleto (emitido/pendente,
-// marcado à mão ou ao subir o PDF), o PDF do boleto e o nº da NF de cada um,
+// marcado à mão ou ao subir PDF), os PDFs do boleto e o nº da NF de cada um,
 // editável.
 
 'use client';
@@ -181,69 +181,87 @@ function CampoNumeroNf({ b, salvarNumeroNf }) {
 }
 
 /**
- * PDF do boleto, no formato do botão do DANFE, em azul. Sem PDF, o botão
- * escolhe o arquivo; com PDF, abre o boleto e "trocar" sobe outro. Subir o
- * PDF marca o boleto como emitido (no servidor).
+ * PDFs do boleto, no formato do botão do DANFE, em azul. Um pedido pode ter
+ * vários (um por parcela, por exemplo): cada um abre o seu PDF e tem um ✕
+ * para remover; "Enviar boleto" / "+ adicionar PDF" escolhe um ou mais
+ * arquivos de uma vez. Subir PDF marca o boleto como emitido (no servidor).
  */
-function PdfBoleto({ b, enviarPdf }) {
-  const [enviando, setEnviando] = useState(false);
-  const campo = useRef(null);
+function PdfsBoleto({ b, enviarPdfs, removerPdf }) {
+  const [enviando, setEnviando] = useState(0);
+  const [removendo, setRemovendo] = useState(null);
 
   async function escolher(e) {
-    const arquivo = e.target.files?.[0];
+    const arquivos = [...(e.target.files ?? [])];
     e.target.value = '';
-    if (!arquivo) return;
-    setEnviando(true);
+    if (arquivos.length === 0) return;
+    setEnviando(arquivos.length);
     try {
-      await enviarPdf(b, arquivo);
+      await enviarPdfs(b, arquivos);
     } finally {
-      setEnviando(false);
+      setEnviando(0);
+    }
+  }
+
+  async function remover(pdf) {
+    if (!window.confirm(`Remover "${pdf.nome}" deste boleto?`)) return;
+    setRemovendo(pdf.id);
+    try {
+      await removerPdf(b, pdf);
+    } finally {
+      setRemovendo(null);
     }
   }
 
   const input = (
     <input
-      ref={campo}
       type="file"
       accept="application/pdf,.pdf"
+      multiple
       className="input-arquivo-oculto"
       onChange={escolher}
-      disabled={enviando}
+      disabled={enviando > 0}
     />
   );
 
-  if (enviando) {
-    return (
-      <span className="botao-pdf botao-pdf-boleto carregando">
-        <IconePdf /> Enviando…
-      </span>
-    );
-  }
-
-  if (!b.temPdf) {
-    return (
-      <label className="botao-pdf botao-pdf-boleto" title="Enviar o PDF do boleto — marca como emitido">
-        {input}
-        <IconePdf /> Enviar boleto
-      </label>
-    );
-  }
-
   return (
     <div className="pilha">
-      <a
-        className="botao-pdf botao-pdf-boleto"
-        href={`/api/boletos/${b.id}/pdf`}
-        target="_blank"
-        rel="noopener noreferrer"
-        title="Abrir o PDF do boleto"
-      >
-        <IconePdf /> Boleto
-      </a>
-      <label className="botao-pdf-trocar" title="Enviar outro PDF no lugar deste">
-        {input}
-        trocar PDF
-      </label>
+      {b.pdfs.map((pdf, i) => (
+        <div key={pdf.id} className="pdf-boleto">
+          <a
+            className={`botao-pdf botao-pdf-boleto ${removendo === pdf.id ? 'carregando' : ''}`}
+            href={`/api/boletos/${b.id}/pdf?pdf=${pdf.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={`Abrir ${pdf.nome}`}
+          >
+            <IconePdf /> {b.pdfs.length > 1 ? `Boleto ${i + 1}` : 'Boleto'}
+          </a>
+          <button
+            type="button"
+            className="botao-icone"
+            onClick={() => remover(pdf)}
+            disabled={!!removendo || enviando > 0}
+            title={`Remover ${pdf.nome}`}
+            aria-label={`Remover ${pdf.nome}`}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      {enviando > 0 ? (
+        <span className="botao-pdf botao-pdf-boleto carregando">
+          <IconePdf /> Enviando {enviando > 1 ? `${enviando} PDFs` : 'PDF'}…
+        </span>
+      ) : b.pdfs.length === 0 ? (
+        <label className="botao-pdf botao-pdf-boleto" title="Enviar os PDFs do boleto (pode escolher vários) — marca como emitido">
+          {input}
+          <IconePdf /> Enviar boleto
+        </label>
+      ) : (
+        <label className="botao-pdf-trocar" title="Enviar mais PDFs para este boleto (pode escolher vários)">
+          {input}+ adicionar PDF
+        </label>
+      )}
     </div>
   );
 }
@@ -274,7 +292,8 @@ export default function ControleBoletos() {
     paginaAnterior,
     alterarStatus,
     salvarNumeroNf,
-    enviarPdf,
+    enviarPdfs,
+    removerPdf,
   } = useBoletos();
 
   const paginacao = !dia && (pagina > 1 || temProxima) && (
@@ -396,7 +415,7 @@ export default function ControleBoletos() {
                       <span className={`marca marca-${b.classificacao}`}>{b.classificacao}</span>
                     </td>
                     <td>
-                      <PdfBoleto b={b} enviarPdf={enviarPdf} />
+                      <PdfsBoleto b={b} enviarPdfs={enviarPdfs} removerPdf={removerPdf} />
                     </td>
                     <td>
                       <div className="pilha">

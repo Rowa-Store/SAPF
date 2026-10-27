@@ -253,6 +253,7 @@ a.botao-link:hover { background: var(--realce); border-color: var(--tinta-fraca)
 .botao-pdf-trocar { font-size: 0.72rem; color: var(--tinta-fraca); cursor: pointer; }
 .botao-pdf-trocar:hover { color: var(--celeste); text-decoration: underline; }
 .input-arquivo-oculto { display: none; }
+.pdf-boleto { display: inline-flex; align-items: center; gap: 0.2rem; }
 .grupo-botoes { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }
 .forte { font-weight: 600; }
 .pilha { display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start; }

@@ -215,3 +215,22 @@ alter table boletos add column if not exists pdf_path text;
 insert into storage.buckets (id, name, public)
 values ('boletos', 'boletos', false)
 on conflict (id) do nothing;
+
+-- Vários PDFs por boleto (um por parcela, por exemplo): uma linha por arquivo,
+-- em <id numérico do pedido>/<uuid>.pdf no bucket. Subir qualquer um marca o
+-- boleto como emitido. O PDF único de boletos.pdf_path é copiado para cá; a
+-- coluna fica só por compatibilidade e não é mais gravada.
+create table if not exists boletos_pdfs (
+  id uuid primary key default gen_random_uuid(),
+  shopify_order_id text not null references boletos (shopify_order_id) on delete cascade,
+  nome text not null,                    -- nome original do arquivo
+  path text not null unique,             -- caminho no bucket boletos
+  criado_em timestamptz default now()
+);
+create index if not exists boletos_pdfs_pedido_idx on boletos_pdfs (shopify_order_id, criado_em);
+alter table boletos_pdfs enable row level security;
+insert into boletos_pdfs (shopify_order_id, nome, path)
+select shopify_order_id, coalesce(shopify_order_name, 'boleto') || '.pdf', pdf_path
+from boletos
+where pdf_path is not null
+on conflict (path) do nothing;

@@ -158,18 +158,44 @@ export function useBoletos() {
     }
   }
 
-  /** Sobe o PDF do boleto; o servidor já marca como emitido. */
-  async function enviarPdf(b, arquivo) {
+  /**
+   * Sobe os PDFs do boleto, um por requisição (limite de corpo da Vercel); o
+   * servidor já marca como emitido. A linha é atualizada a cada arquivo, então
+   * um erro no meio não perde os que já subiram.
+   */
+  async function enviarPdfs(b, arquivos) {
     definirErroLinha(b.id, null);
-    const form = new FormData();
-    form.append('arquivo', arquivo);
-    form.append('orderName', b.name);
+    for (const arquivo of arquivos) {
+      const form = new FormData();
+      form.append('arquivo', arquivo);
+      form.append('orderName', b.name);
+      try {
+        const corpo = await lerJson(
+          await fetch(`/api/boletos/${b.id}/pdf`, { method: 'POST', body: form }),
+          `Não foi possível enviar "${arquivo.name}".`
+        );
+        atualizarLinha(b.id, {
+          emitido: corpo.emitido,
+          numeroNfEditado: corpo.numeroNfEditado,
+          pdfs: corpo.pdfs,
+          temPdf: corpo.temPdf,
+        });
+      } catch (e) {
+        definirErroLinha(b.id, e.message);
+        return;
+      }
+    }
+  }
+
+  /** Remove um PDF do boleto; o status fica como está. */
+  async function removerPdf(b, pdf) {
+    definirErroLinha(b.id, null);
     try {
       const corpo = await lerJson(
-        await fetch(`/api/boletos/${b.id}/pdf`, { method: 'POST', body: form }),
-        'Não foi possível enviar o PDF do boleto.'
+        await fetch(`/api/boletos/${b.id}/pdf?pdf=${pdf.id}`, { method: 'DELETE' }),
+        `Não foi possível remover "${pdf.nome}".`
       );
-      atualizarLinha(b.id, { emitido: corpo.emitido, numeroNfEditado: corpo.numeroNfEditado, temPdf: corpo.temPdf });
+      atualizarLinha(b.id, { pdfs: corpo.pdfs, temPdf: corpo.temPdf });
     } catch (e) {
       definirErroLinha(b.id, e.message);
     }
@@ -202,6 +228,7 @@ export function useBoletos() {
     paginaAnterior,
     alterarStatus,
     salvarNumeroNf,
-    enviarPdf,
+    enviarPdfs,
+    removerPdf,
   };
 }
