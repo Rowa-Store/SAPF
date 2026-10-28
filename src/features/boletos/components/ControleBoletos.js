@@ -10,8 +10,7 @@ import IconePdf from '@/components/ui/IconePdf';
 import NavegacaoDia from '@/components/ui/NavegacaoDia';
 import { formatarDataCurta, formatarMoeda, formatarMoedaOuTraco } from '@/lib/format';
 import { parseNossoNumero } from '@/lib/caixa/nossoNumero';
-import { statusBoletoCaixa } from '@/lib/caixa/statusTitulos';
-import { nfDaLinha, useBoletos } from '../hooks/useBoletos';
+import { useBoletos } from '../hooks/useBoletos';
 
 const STATUS = [
   { emitido: false, rotulo: 'Pendente', classe: 'marca-acessorio' },
@@ -99,14 +98,6 @@ function StatusBoleto({ b, alterarStatus }) {
   );
 }
 
-const STATUS_CAIXA = {
-  pendente: { rotulo: 'Pendente', classe: 'marca-outro' },
-  parcial: { rotulo: 'Parcial', classe: 'marca-acessorio' },
-  divergente: { rotulo: 'Divergente', classe: 'marca-erro' },
-  emitido: { rotulo: 'Emitido', classe: 'marca-ok' },
-  liquidado: { rotulo: 'Liquidado', classe: 'marca-atacado' },
-};
-
 /** "2026-11-25" -> "25/11", sem passar por Date (fuso). */
 const diaMes = (data) => (data ? `${data.slice(8, 10)}/${data.slice(5, 7)}` : '—');
 
@@ -136,40 +127,6 @@ function TitulosCaixa({ titulos }) {
           </a>
         );
       })}
-    </div>
-  );
-}
-
-/**
- * Status do boleto na CAIXA, calculado dos títulos achados para a NF (ver
- * statusTitulos.js), com o porquê no tooltip. Alerta quando o boleto está
- * marcado como emitido aqui e não há nenhum título na CAIXA.
- */
-function StatusCaixa({ b, consultando }) {
-  if (!nfDaLinha(b)) return <span className="fraco">CAIXA: sem NF</span>;
-  if (consultando && b.titulosCaixa.length === 0) return <span className="fraco">CAIXA: consultando…</span>;
-
-  const { status, diferenca, motivos } = statusBoletoCaixa({
-    titulos: b.titulosCaixa,
-    total: b.total,
-    parcelasEsperadas: b.parcelasEsperadas,
-  });
-  const { rotulo, classe } = STATUS_CAIXA[status];
-  const dica = [
-    ...motivos,
-    ...(diferenca ? [`Soma dos títulos − total do pedido: ${formatarMoeda(diferenca / 100)}`] : []),
-  ].join('\n');
-
-  return (
-    <div className="pilha">
-      <span className={`marca ${classe}`} title={dica || undefined}>
-        CAIXA: {rotulo}
-      </span>
-      {b.emitido && status === 'pendente' && (
-        <span className="marca marca-erro" title="Marcado como emitido, mas nenhum boleto desta NF foi achado na CAIXA.">
-          ⚠ Emitido sem boleto na CAIXA
-        </span>
-      )}
     </div>
   );
 }
@@ -633,10 +590,7 @@ export default function ControleBoletos() {
                       </div>
                     </td>
                     <td>
-                      <div className="pilha">
-                        <StatusBoleto b={b} alterarStatus={alterarStatus} />
-                        <StatusCaixa b={b} consultando={consultandoCaixa} />
-                      </div>
+                      <StatusBoleto b={b} alterarStatus={alterarStatus} />
                     </td>
                   </tr>,
                   errosLinha[b.id] && (
