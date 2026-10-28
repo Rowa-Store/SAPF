@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { somarDias } from '@/lib/datas';
+import { formatarDia, somarDias } from '@/lib/datas';
 import { montarNossoNumero } from '@/lib/caixa/nossoNumero';
 import { baixarPelaExtensao, extensaoInstalada } from '../extensaoCaixa';
 
@@ -44,7 +44,8 @@ export const SEM_EXTENSAO =
  * Tiny (gravado em notas_processadas).
  *
  * "Consultar boletos" (sincronizarCaixa) procura na CAIXA, pela extensão do
- * Chrome, os boletos das NFs da lista e sobe os PDFs achados para o SAPF.
+ * Chrome, os boletos das NFs da lista e sobe os PDFs achados para o SAPF;
+ * "Consultar boletos do mês" (consultarMes) faz o mesmo com o mês inteiro.
  */
 export function useBoletos() {
   const [boletos, setBoletos] = useState(null);
@@ -64,9 +65,6 @@ export function useBoletos() {
   const [progressoCaixa, setProgressoCaixa] = useState(null);
   const [caixaCedente, setCaixaCedente] = useState(null);
   const [erroCaixa, setErroCaixa] = useState(null);
-  // Resumo da última importação do arquivo da CAIXA (ver importarConsultaCaixa).
-  const [resumoImportacao, setResumoImportacao] = useState(null);
-  const [importando, setImportando] = useState(false);
   // Cada carga ganha um nº: resposta da CAIXA de uma carga antiga é ignorada.
   const geracao = useRef(0);
 
@@ -90,7 +88,7 @@ export function useBoletos() {
 
       setConsultandoCaixa(true);
       setErroCaixa(null);
-      setProgressoCaixa({ feitas: 0, total: porNf.size });
+      setProgressoCaixa({ feitas: 0, total: porNf.size, unidade: 'NFs' });
       const falhas = [];
       try {
         let feitas = 0;
@@ -129,7 +127,7 @@ export function useBoletos() {
             falhas.push(`NF ${nf}: ${e.message}`);
           }
           if (geracao.current !== minha) return;
-          setProgressoCaixa({ feitas: ++feitas, total: porNf.size });
+          setProgressoCaixa({ feitas: ++feitas, total: porNf.size, unidade: 'NFs' });
         }
         setErroCaixa(falhas.length ? `Não foi possível consultar a CAIXA:\n${falhas.join('\n')}` : null);
       } finally {
@@ -216,31 +214,52 @@ export function useBoletos() {
     if (await carregar({ dia: novo })) window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  /** Recarrega a lista que está na tela (mesmo dia, ou mesma busca e página). */
-  function recarregar() {
-    return dia ? carregar({ dia }) : carregar({ cursor: cursores[cursores.length - 1], busca: buscaAplicada });
-  }
-
   /**
-   * Importa o arquivo da Consulta de Títulos do e-Cobrança (situação, valor,
-   * vencimento de cada título) e recarrega a lista com os dados novos.
+   * "Consultar boletos do mês": junta os pedidos de cada dia do mês do dia na
+   * tela (ou do mês atual, numa busca), até hoje, e consulta a CAIXA para
+   * todos. Um dia por vez, pela mesma rota da lista (limite do Tiny).
    */
-  async function importarConsultaCaixa(arquivo) {
-    setImportando(true);
-    setResumoImportacao(null);
+  async function consultarMes() {
+    const base = dia ?? diaDeHoje;
+    if (!base || consultandoCaixa) return;
+    if (!caixaCedente) return setErroCaixa('CAIXA_CEDENTE não configurado no servidor.');
+    if (!(await extensaoInstalada())) return setErroCaixa(SEM_EXTENSAO);
+
+    const minha = geracao.current;
+    const dias = [];
+    for (let d = `${base.slice(0, 8)}01`; d.slice(0, 7) === base.slice(0, 7) && d <= diaDeHoje; d = somarDias(d, 1)) {
+      dias.push(d);
+    }
+    setConsultandoCaixa(true);
+    setErroCaixa(null);
+    const linhas = [];
+    const cortados = [];
     try {
-      const form = new FormData();
-      form.append('arquivo', arquivo);
-      const corpo = await lerJson(
-        await fetch('/api/boletos/caixa/importar', { method: 'POST', body: form }),
-        'Não foi possível importar o arquivo.'
-      );
-      setResumoImportacao({ arquivo: arquivo.name, ...corpo });
-      await recarregar();
+      for (const [i, d] of dias.entries()) {
+        setProgressoCaixa({ feitas: i, total: dias.length, unidade: 'dias' });
+        const corpo = await lerJson(
+          await fetch(`/api/boletos?dia=${d}`),
+          `Não foi possível carregar os pedidos de ${formatarDia(d)}.`
+        );
+        if (geracao.current !== minha) return;
+        linhas.push(...corpo.boletos);
+        if (corpo.diaCompleto === false) cortados.push(formatarDia(d));
+      }
     } catch (e) {
-      setResumoImportacao({ arquivo: arquivo.name, erro: e.message });
-    } finally {
-      setImportando(false);
+      if (geracao.current === minha) {
+        setErroCaixa(e.message);
+        setConsultandoCaixa(false);
+        setProgressoCaixa(null);
+      }
+      return;
+    }
+    await sincronizarCaixa(linhas);
+    if (geracao.current !== minha) return;
+    setConsultandoCaixa(false);
+    setProgressoCaixa(null);
+    if (cortados.length) {
+      const aviso = `Dias com pedidos demais (lista cortada, alguns pedidos ficaram de fora): ${cortados.join(', ')}.`;
+      setErroCaixa((atual) => (atual ? `${atual}\n${aviso}` : aviso));
     }
   }
 
@@ -377,9 +396,6 @@ export function useBoletos() {
     progressoCaixa,
     erroCaixa,
     sincronizarCaixa,
-    importando,
-    importarConsultaCaixa,
-    resumoImportacao,
-    fecharResumoImportacao: () => setResumoImportacao(null),
+    consultarMes,
   };
 }

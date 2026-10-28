@@ -131,57 +131,6 @@ function TitulosCaixa({ titulos }) {
   );
 }
 
-/** Resultado da importação do arquivo da CAIXA. */
-function ResumoImportacao({ resumo, fechar }) {
-  if (resumo.erro) {
-    return (
-      <div className="aviso aviso-fechavel">
-        <div>
-          <strong>Não foi possível importar {resumo.arquivo}.</strong>
-          <p>{resumo.erro}</p>
-        </div>
-        <button className="secundario pequeno" onClick={fechar}>
-          Fechar
-        </button>
-      </div>
-    );
-  }
-  return (
-    <div className="aviso aviso-ok aviso-fechavel">
-      <div>
-        <strong>
-          {resumo.arquivo}: {resumo.lidos} título(s) — {resumo.novos} novo(s), {resumo.atualizados} atualizado(s)
-          {resumo.ignoradas > 0 && `, ${resumo.ignoradas} linha(s) ilegível(is)`}.
-        </strong>
-        <ul>
-          {resumo.semPedido == null ? (
-            <li>Não foi possível conferir quais NFs têm pedido no sistema.</li>
-          ) : (
-            resumo.semPedido.length > 0 && (
-              <li>
-                {resumo.semPedido.length} NF(s) sem pedido correspondente:{' '}
-                <span className="mono">{resumo.semPedido.join(', ')}</span>
-              </li>
-            )
-          )}
-          {resumo.divergentes.length > 0 && (
-            <li>
-              {resumo.divergentes.length} título(s) com nosso número fora do padrão da NF do documento (conferir na
-              CAIXA):{' '}
-              <span className="mono">
-                {resumo.divergentes.map((d) => `${d.nossoNumero} (doc. ${d.documento})`).join(', ')}
-              </span>
-            </li>
-          )}
-        </ul>
-      </div>
-      <button className="secundario pequeno" onClick={fechar}>
-        Fechar
-      </button>
-    </div>
-  );
-}
-
 /**
  * Nº da NF: clicar abre a edição. Enter (ou ✓) salva, Esc cancela. Salvar
  * vazio volta a valer o nº da nota no Tiny.
@@ -384,11 +333,12 @@ export default function ControleBoletos() {
     progressoCaixa,
     erroCaixa,
     sincronizarCaixa,
-    importando,
-    importarConsultaCaixa,
-    resumoImportacao,
-    fecharResumoImportacao,
+    consultarMes,
   } = useBoletos();
+
+  const progressoTexto = progressoCaixa
+    ? `${progressoCaixa.feitas}/${progressoCaixa.total} ${progressoCaixa.unidade}`
+    : '';
 
   const paginacao = !dia && (pagina > 1 || temProxima) && (
     <div className="paginacao">
@@ -448,27 +398,16 @@ export default function ControleBoletos() {
               disabled={carregando || consultandoCaixa || !boletos?.length}
               title="Procura na CAIXA os boletos das NFs desta lista e sobe os PDFs para o sistema (precisa da extensão no Chrome)"
             >
-              {consultandoCaixa
-                ? `Consultando boletos… ${progressoCaixa ? `${progressoCaixa.feitas}/${progressoCaixa.total} NFs` : ''}`
-                : 'Consultar boletos'}
+              {consultandoCaixa ? `Consultando boletos… ${progressoTexto}` : 'Consultar boletos'}
             </button>
-            <label
-              className={`botao-arquivo ${importando ? 'carregando' : ''}`}
-              title="Arquivo texto da Consulta de Títulos do e-Cobrança (Banco de Títulos → Consulta de Títulos). Atualiza a situação de cada título."
+            <button
+              className="secundario"
+              onClick={consultarMes}
+              disabled={carregando || consultandoCaixa || !diaDeHoje}
+              title="Procura na CAIXA os boletos de todos os pedidos do mês deste dia, até hoje (precisa da extensão no Chrome)"
             >
-              <input
-                type="file"
-                accept=".txt,text/plain"
-                className="input-arquivo-oculto"
-                disabled={importando}
-                onChange={(e) => {
-                  const arquivo = e.target.files?.[0];
-                  e.target.value = '';
-                  if (arquivo) importarConsultaCaixa(arquivo);
-                }}
-              />
-              {importando ? 'Importando…' : 'Importar consulta CAIXA'}
-            </label>
+              Consultar boletos do mês
+            </button>
             <button className="secundario" onClick={limparFiltros} disabled={carregando || !filtrosAlterados}>
               Limpar
             </button>
@@ -486,8 +425,6 @@ export default function ControleBoletos() {
           <p>Confira as integrações em Sys Info e tente de novo.</p>
         </div>
       )}
-
-      {resumoImportacao && <ResumoImportacao resumo={resumoImportacao} fechar={fecharResumoImportacao} />}
 
       {erroCaixa && (
         <div className="aviso">

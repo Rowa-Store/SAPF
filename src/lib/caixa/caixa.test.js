@@ -6,7 +6,6 @@ import { deflateSync } from 'node:zlib';
 import { montarNossoNumero, parseNossoNumero, urlBoletoPdf } from './nossoNumero.js';
 import { dataDoFator, lerBoletoPdf, lerLinhaDigitavel } from './boletoPdf.js';
 import { centavos, statusBoletoCaixa } from './statusTitulos.js';
-import { lerConsultaTitulos, parcelaDoTitulo } from './consultaTitulos.js';
 
 test('montarNossoNumero segue 14 + NF(13) + parcela(2)', () => {
   assert.equal(montarNossoNumero(24515, 1), '14000000002451501');
@@ -143,51 +142,6 @@ test('título baixado não conta', () => {
   ];
   assert.equal(statusBoletoCaixa({ titulos, total: 300 }).status, 'emitido');
   assert.equal(statusBoletoCaixa({ titulos: [titulos[1]], total: 300 }).status, 'pendente');
-});
-
-// Linhas no formato do arquivo real da Consulta de Títulos, com sacado fictício.
-const CABECALHO =
-  'NOSSO NUMERO          NUM.DOCUMENTO      NOME DO SACADO                              VALOR DO TITULO    DT.VENCTO     SITUACAO                                 ULTIMO COMANDO    DT.ENTRADA';
-const linha = (nn, doc, valor, venc, situacao = 'EM ABERTO') =>
-  ` ${nn.padEnd(21)}${doc.padEnd(19)}${'CLIENTE EXEMPLO LTDA'.padEnd(44)}${valor.padStart(15)}    ${venc}    ${situacao.padEnd(41)}28.09.2026        28.09.2026`;
-
-test('lerConsultaTitulos lê o arquivo de largura fixa da CAIXA', () => {
-  const texto = [
-    'CONSULTA DE TITULOS',
-    '',
-    '-'.repeat(200),
-    CABECALHO,
-    '-'.repeat(200),
-    linha('14000000002451501', '24515', '3.328,86', '25.11.2026'),
-    '',
-    linha('14000000024518002', '24518', '26.225,13', '10.12.2026', 'LIQUIDADO'),
-    linha('14000000002168103', '21681  /003/003', '11.824,72', '10.11.2026'),
-    linha('14000000002343102', '24341', '100,00', '10.11.2026', 'BAIXADO'),
-    linha('14000000000022418', '022418', '4.406,63', '28.10.2026', 'PROTESTADO'),
-  ].join('\r\n');
-  const { titulos, divergentes, ignoradas } = lerConsultaTitulos(texto);
-  assert.equal(ignoradas, 0);
-  assert.deepEqual(titulos[0], {
-    nosso_numero: '14000000002451501',
-    nf_numero: 24515,
-    parcela: 1,
-    valor: '3328.86',
-    vencimento: '2026-11-25',
-    situacao: 'em_aberto',
-    data_entrada: '2026-09-28',
-  });
-  assert.deepEqual(
-    titulos.map((x) => [x.nf_numero, x.parcela, x.situacao]),
-    [[24515, 1, 'em_aberto'], [24518, 2, 'liquidado'], [21681, 3, 'em_aberto'], [24341, null, 'baixado'], [22418, null, 'outro']]
-  );
-  assert.deepEqual(divergentes.map((d) => d.nossoNumero), ['14000000002343102', '14000000000022418']);
-  assert.throws(() => lerConsultaTitulos('outro arquivo qualquer'), /cabeçalho/);
-});
-
-test('parcelaDoTitulo só aceita nosso número da própria NF', () => {
-  assert.equal(parcelaDoTitulo('14000000002451503', 24515), 3);
-  assert.equal(parcelaDoTitulo('14000000024518002', 24518), 2);
-  assert.equal(parcelaDoTitulo('14000000002343102', 24341), null);
 });
 
 test('3º campo da linha digitável começa com o fim do nosso número', () => {

@@ -261,18 +261,11 @@ cópia no bucket `boletos` (`caixa/<nosso número>.pdf`) e grava o título em
   mesmo vencimento; o tooltip mostra o motivo e a diferença), Emitido,
   Liquidado. Marcado como emitido sem nenhum título na CAIXA aparece um alerta.
 
+**Consultar boletos do mês** (`consultarMes`) faz o mesmo para todos os
+pedidos do mês do dia na tela (até hoje), carregando a lista dia a dia.
+
 O que o link **não** dá: a situação do título (pago, baixado) e títulos fora do
-padrão (ex.: `14000000024518002`, duplicado/correção). Para isso, o botão
-**Importar consulta CAIXA** recebe o arquivo texto exportado em Banco de
-Títulos → Consulta de Títulos do e-Cobrança (`POST /api/boletos/caixa/importar`,
-leitura em `src/lib/caixa/consultaTitulos.js`). Cada título é gravado por nosso
-número, com a NF tirada do **Num. Documento** (não do nosso número: há títulos
-registrados fora do padrão, e alguns com o nosso número de outra NF — esses
-voltam listados no resumo para conferir na CAIXA). O resumo diz quantos foram
-novos, atualizados e quais NFs não têm pedido no sistema. Título que não está
-no arquivo não é mexido (a consulta costuma vir filtrada por situação). Título
-baixado não conta no status. Nunca guardar usuário/senha do e-Cobrança nem
-automatizar o login.
+padrão. Nunca guardar usuário/senha do e-Cobrança nem automatizar o login.
 
 Quem já tinha rodado o schema antes disto roda `supabase/boletos-caixa.sql` e
 configura `CAIXA_CEDENTE` (ver `.env.example`). Testes: `npm test`.
@@ -390,8 +383,7 @@ src/
     boletos/page.js                  Status dos boletos e nº da NF -> features/boletos
     api/boletos/                     Lista os pedidos com boleto; [id] grava status e nº da NF;
                                       caixa/ grava o boleto baixado pela extensão,
-                                      caixa/[nossoNumero]/pdf abre o PDF de um título;
-                                      caixa/importar lê o arquivo da Consulta de Títulos
+                                      caixa/[nossoNumero]/pdf abre o PDF de um título
     transferencias/page.js           Controle de transferências -> features/transferencias
     api/transferencias/              Lista transferências + situação fiscal; subrotas
                                       [id]/preview, [id]/rascunho, [id]/emitir
@@ -432,7 +424,6 @@ src/
       nossoNumero.js                 Nosso número da CAIXA e link do PDF do boleto
       boletoPdf.js                   Valor e vencimento lidos da linha digitável do PDF
       statusTitulos.js               Status do boleto (pendente, divergente...) pelos títulos
-      consultaTitulos.js             Lê o arquivo da Consulta de Títulos do e-Cobrança
       caixa.test.js                  Testes (npm test)
     fiscal/
       classificacao.js               Atacado, franquia ou outro, a partir do CNPJ
