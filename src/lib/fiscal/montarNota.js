@@ -186,19 +186,22 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
   } = montarDesconto({ desconto: opcoes.desconto, total: totalItens });
   alertas.push(...alertasDesconto);
 
+  // Frete: o que o cliente pagou de frete no Shopify. `valor_frete` é do mesmo
+  // bloco de `valor_desconto` na nota do Tiny (ver desconto.js) e segue a mesma
+  // regra: só entra quando há valor, para a nota não levar campo zerado à toa.
+  // Vem antes do pagamento: as parcelas fecham no total da nota, com frete.
+  const valorFrete = Number(pedidoShopify.currentShippingPriceSet?.shopMoney?.amount ?? 0);
+  const frete = valorFrete > 0 ? { valor_frete: valorMonetario(valorFrete) } : {};
+
   const { pagamento, alertas: alertasPagamento } = montarPagamento({
     classificacao,
     metodoPagamento: opcoes.metodoPagamento,
     dataBaseIso: pedidoShopify.createdAt,
     total: Math.max(0, totalItens - valorDesconto),
+    frete: valorFrete,
   });
   alertas.push(...alertasPagamento);
 
-  // Frete: o que o cliente pagou de frete no Shopify. `valor_frete` é do mesmo
-  // bloco de `valor_desconto` na nota do Tiny (ver desconto.js) e segue a mesma
-  // regra: só entra quando há valor, para a nota não levar campo zerado à toa.
-  const valorFrete = Number(pedidoShopify.currentShippingPriceSet?.shopMoney?.amount ?? 0);
-  const frete = valorFrete > 0 ? { valor_frete: valorMonetario(valorFrete) } : {};
 
   const payload =
    {

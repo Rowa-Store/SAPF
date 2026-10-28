@@ -32,7 +32,7 @@ function descreverMarkup(markup) {
   if (!ehMarkupHibrido(markup)) return um(markup);
   return `${um(markup.acessorio)} nos acessórios + ${um(markup.vestuario)} no vestuário`;
 }
-import { rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
+import { OBS_PARCELA_FRETE_PIX, rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
 import { formatarMoeda } from '@/lib/format';
 import { resumoDoTransporte } from '@/lib/fiscal/transporte';
 import { useIncluirRascunho } from '../hooks/useIncluirRascunho';
@@ -580,7 +580,8 @@ export default function IncluirRascunho({ params }) {
         </div>
         <div>Método de pagamento (Shopify): {dados.pedido.metodoPagamento}</div>
         {/* O que vai na nota nem sempre é o que veio do Shopify: franquia com
-            boleto vira "múltiplas" com 3 parcelas (ver pagamento.js). */}
+            boleto vira "múltiplas" com 3 parcelas, e boleto + PIX do frete ganha
+            a parcela do frete (ver pagamento.js). */}
         <div>
           Forma de pagamento na nota:{' '}
           {rotuloFormaPagamento(dados.payload?.nota_fiscal?.forma_pagamento)}
@@ -589,7 +590,11 @@ export default function IncluirRascunho({ params }) {
           <div>
             Parcelas:{' '}
             {dados.payload.nota_fiscal.parcelas
-              .map(({ parcela }) => `${parcela.dias} dias (${parcela.data})`)
+              .map(({ parcela }) =>
+                parcela.obs === OBS_PARCELA_FRETE_PIX
+                  ? `frete por PIX, dia ${parcela.data}`
+                  : `${parcela.dias} dias (${parcela.data})`
+              )
               .join(', ')}
           </div>
         )}

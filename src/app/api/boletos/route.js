@@ -17,7 +17,7 @@
 import { listarPedidosDoDia, listarPedidosRecentes, metodosDePagamento } from '@/lib/integrations/shopify';
 import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
 import { classificarComListaFranquia, extrairCnpj } from '@/lib/fiscal/classificacao';
-import { FORMA_BOLETO, formaDePagamentoTiny } from '@/lib/fiscal/pagamento';
+import { FORMA_BOLETO, ehParcelaDoFretePix, formaDePagamentoTiny } from '@/lib/fiscal/pagamento';
 import { obterSituacaoNota } from '@/lib/integrations/tiny';
 import {
   atualizarNotaEmitida,
@@ -160,9 +160,12 @@ export async function GET(request) {
         emitido: boleto?.emitido ?? false,
         pdfs: boleto?.pdfs ?? [],
         temPdf: (boleto?.pdfs.length ?? 0) > 0,
-        // Parcelas da nota (franquia com boleto leva 3; atacado vai sem) e os
-        // títulos da CAIXA achados para a NF — o status sai de statusTitulos.js.
-        parcelasEsperadas: Array.isArray(situacao?.parcelas) ? situacao.parcelas.length || null : null,
+        // Parcelas de boleto da nota (franquia com boleto leva 3; atacado vai
+        // sem; o PIX do frete não conta) e os títulos da CAIXA achados para a
+        // NF — o status sai de statusTitulos.js.
+        parcelasEsperadas: Array.isArray(situacao?.parcelas)
+          ? situacao.parcelas.filter((p) => !ehParcelaDoFretePix(p)).length || null
+          : null,
         titulosCaixa: titulosCaixa[Number(numeroNf(p.id))] ?? [],
       };
     });

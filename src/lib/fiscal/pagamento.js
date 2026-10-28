@@ -7,6 +7,17 @@
 //     vencimento em 30, 45 e 60 dias contados da data de emissão.
 //   - ATACADO pagando com BOLETO: a nota leva `boleto_bancario`, sem parcelas.
 //   - PIX (atacado ou franquia): a nota leva `pix`, sem parcelas.
+//   - BOLETO + PIX DO FRETE ("Boleto + Pix (frete)"), atacado ou franquia: os
+//     boletos cobram só a mercadoria e o frete é pago à parte, por PIX. A nota
+//     vai como `multiplas` com uma parcela a mais, de dia 0, só com o frete
+//     (marcada na `obs`), antes das parcelas de boleto — as 3 de 30/45/60 da
+//     franquia, ou a única de ATACADO_PRAZO_BOLETO dias do atacado.
+//
+// As parcelas têm que somar o TOTAL DA NOTA (itens − desconto + frete).
+// Quando não somam, o Tiny joga fora os valores enviados e refaz as parcelas
+// pela "condição de pagamento" sobre o total — foi o que aconteceu na NF
+// 24807, cujos boletos saíram com o frete dentro. Por isso, no boleto sem PIX
+// o frete entra nas parcelas de boleto.
 //   - Qualquer outra forma de pagamento (cartão, transferência...), forma
 //     misturada ("Cartão + Pix") ou metafield vazio: a nota vai SEM
 //     `forma_pagamento`, para ser preenchida lá dentro do Tiny.
@@ -70,8 +81,16 @@ export const FORMA_DA_PARCELA = 'Conta a Receber';
 /** Prazos, em dias, das parcelas de franquia com boleto. */
 export const PRAZOS_FRANQUIA_BOLETO = [30, 45, 60];
 
-/** "30 45 60" — o texto que o Tiny lê em "Condição de pagamento". */
-export const CONDICAO_FRANQUIA_BOLETO = PRAZOS_FRANQUIA_BOLETO.join(' ');
+/** Prazo, em dias, do boleto de atacado quando o frete vai por PIX. */
+export const ATACADO_PRAZO_BOLETO = 30;
+
+/** `obs` da parcela do frete pago por PIX — é por ela que se sabe que não é boleto. */
+export const OBS_PARCELA_FRETE_PIX = 'Frete via PIX';
+
+/** A parcela é a do frete pago por PIX (não vira boleto). */
+export function ehParcelaDoFretePix(item) {
+  return item?.parcela?.obs === OBS_PARCELA_FRETE_PIX;
+}
 
 /**
  * De-para do texto livre do Shopify para o código do Tiny. A ordem importa: o
@@ -126,6 +145,12 @@ function soPix(textoShopify) {
   return formaDePagamentoTiny(resto) === '' && !/cart[ao]+/.test(resto);
 }
 
+/** "Boleto + Pix (frete)": boleto e PIX no mesmo texto. */
+function boletoComPix(textoShopify) {
+  const texto = normalizar(textoShopify);
+  return /boleto/.test(texto) && /\bpix\b/.test(texto);
+}
+
 /** dd/mm/aaaa de `dias` dias depois da data base (ISO do pedido, ou hoje). */
 function vencimento(baseIso, dias) {
   const data = baseIso ? new Date(baseIso) : new Date();
@@ -149,10 +174,13 @@ function dividirEmParcelas(total, quantidade) {
   );
 }
 
-/** As 3 parcelas de 30/45/60 dias da franquia com boleto. */
-function parcelasFranquiaBoleto(dataBaseIso, total) {
-  const valores = dividirEmParcelas(total, PRAZOS_FRANQUIA_BOLETO.length);
-  return PRAZOS_FRANQUIA_BOLETO.map((dias, indice) => ({
+/**
+ * As parcelas da nota: o PIX do frete (dia 0), quando há, seguido dos boletos
+ * nos `prazos`, que dividem `totalBoletos` entre si.
+ */
+function montarParcelas({ prazos, dataBaseIso, totalBoletos, fretePix = 0 }) {
+  const valores = dividirEmParcelas(totalBoletos, prazos.length);
+  const boletos = prazos.map((dias, indice) => ({
     parcela: {
       dias,
       data: vencimento(dataBaseIso, dias),
@@ -160,6 +188,28 @@ function parcelasFranquiaBoleto(dataBaseIso, total) {
       forma_pagamento: FORMA_DA_PARCELA,
     },
   }));
+  if (!(fretePix > 0)) return boletos;
+  return [
+    {
+      parcela: {
+        dias: 0,
+        data: vencimento(dataBaseIso, 0),
+        valor: valorMonetario(fretePix),
+        obs: OBS_PARCELA_FRETE_PIX,
+        forma_pagamento: FORMA_DA_PARCELA,
+      },
+    },
+    ...boletos,
+  ];
+}
+
+/** Forma, condição e parcelas da nota — a condição lista os mesmos prazos das parcelas. */
+function pagamentoParcelado(parcelas) {
+  return {
+    forma_pagamento: FORMA_MULTIPLAS,
+    condicao_pagamento: parcelas.map(({ parcela }) => parcela.dias).join(' '),
+    parcelas,
+  };
 }
 
 /**
@@ -169,28 +219,52 @@ function parcelasFranquiaBoleto(dataBaseIso, total) {
  * @param {"atacado"|"franquia"|"outro"} opcoes.classificacao
  * @param {string} opcoes.metodoPagamento texto cru do metafield do Shopify
  * @param {string} [opcoes.dataBaseIso] data de emissão (createdAt do pedido)
- * @param {number} [opcoes.total] total dos itens da nota
+ * @param {number} [opcoes.total] total dos itens da nota, já sem o desconto
+ * @param {number} [opcoes.frete] valor do frete da nota
  * @returns {{ pagamento: object, alertas: string[] }} `pagamento` já pronto
  *   para entrar em `nota_fiscal` — vem vazio sempre que o pagamento não é
  *   boleto nem PIX, porque só esses dois são enviados ao Tiny.
  */
-export function montarPagamento({ classificacao, metodoPagamento, dataBaseIso, total = 0 }) {
+export function montarPagamento({ classificacao, metodoPagamento, dataBaseIso, total = 0, frete = 0 }) {
   const alertas = [];
   const forma = formaDePagamentoTiny(metodoPagamento);
+  const fretePix = forma === FORMA_BOLETO && boletoComPix(metodoPagamento) && frete > 0 ? frete : 0;
+
+  if (forma === FORMA_BOLETO && boletoComPix(metodoPagamento) && !fretePix) {
+    alertas.push('Boleto + PIX sem frete no pedido: a nota vai só com os boletos.');
+  }
+
+  if (fretePix && classificacao !== 'franquia') {
+    alertas.push(
+      `Boleto + PIX do frete: a nota vai como múltiplas formas de pagamento — o frete numa parcela de dia 0 ` +
+        `e a mercadoria num boleto de ${ATACADO_PRAZO_BOLETO} dias.`
+    );
+    return {
+      pagamento: pagamentoParcelado(
+        montarParcelas({ prazos: [ATACADO_PRAZO_BOLETO], dataBaseIso, totalBoletos: total, fretePix })
+      ),
+      alertas,
+    };
+  }
 
   if (classificacao === 'franquia' && forma === FORMA_BOLETO) {
     alertas.push(
       'Franquia pagando com boleto: a nota vai como múltiplas formas de pagamento, em 3 parcelas ' +
-        `(${PRAZOS_FRANQUIA_BOLETO.join('/')} dias).`
+        `(${PRAZOS_FRANQUIA_BOLETO.join('/')} dias)` +
+        (fretePix ? ', mais o frete numa parcela de dia 0, por PIX.' : '.')
     );
+    // A condição monta a tabela de parcelas no Tiny; as parcelas vão junto
+    // para os valores saírem exatos, já rateados. Sem PIX, o frete entra nos
+    // boletos (ver o topo do arquivo).
     return {
-      pagamento: {
-        forma_pagamento: FORMA_MULTIPLAS,
-        // É a condição que monta a tabela de parcelas no Tiny; as parcelas
-        // abaixo vão junto para os valores saírem exatos, já rateados.
-        condicao_pagamento: CONDICAO_FRANQUIA_BOLETO,
-        parcelas: parcelasFranquiaBoleto(dataBaseIso, total),
-      },
+      pagamento: pagamentoParcelado(
+        montarParcelas({
+          prazos: PRAZOS_FRANQUIA_BOLETO,
+          dataBaseIso,
+          totalBoletos: fretePix ? total : total + frete,
+          fretePix,
+        })
+      ),
       alertas,
     };
   }
@@ -215,19 +289,25 @@ export function montarPagamento({ classificacao, metodoPagamento, dataBaseIso, t
  * pedido original. Mexe só no `valor` — prazos e datas continuam os que foram
  * calculados na montagem.
  *
- * `total` é a soma dos itens; o desconto da nota é abatido aqui dentro, para
- * as parcelas somarem o que o cliente vai pagar de fato (ver desconto.js).
+ * `total` é a soma dos itens; o desconto da nota é abatido e o frete somado
+ * aqui dentro, para as parcelas fecharem no total da nota (ver o topo do
+ * arquivo). A parcela do PIX do frete fica com o frete; os boletos dividem o
+ * resto.
  */
 export function recalcularParcelas(notaFiscal, total) {
   const parcelas = notaFiscal?.parcelas;
   if (!Array.isArray(parcelas) || parcelas.length === 0) return notaFiscal;
 
   const desconto = Number(notaFiscal[CAMPO_DESCONTO_TINY] ?? 0) || 0;
-  const valores = dividirEmParcelas(Math.max(0, total - desconto), parcelas.length);
+  const frete = Number(notaFiscal.valor_frete ?? 0) || 0;
+  const fretePix = parcelas.some(ehParcelaDoFretePix);
+  const totalBoletos = Math.max(0, total - desconto) + (fretePix ? 0 : frete);
+  const valores = dividirEmParcelas(totalBoletos, parcelas.length - (fretePix ? 1 : 0));
+  let proximo = 0;
   return {
     ...notaFiscal,
-    parcelas: parcelas.map((p, indice) => ({
-      parcela: { ...p.parcela, valor: valores[indice] },
+    parcelas: parcelas.map((p) => ({
+      parcela: { ...p.parcela, valor: ehParcelaDoFretePix(p) ? valorMonetario(frete) : valores[proximo++] },
     })),
   };
 }
