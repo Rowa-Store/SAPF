@@ -71,13 +71,8 @@ a:focus-visible, button:focus-visible, input:focus-visible {
 }
 .marca-app { display: flex; align-items: center; gap: 0.6rem; color: var(--tinta); }
 .marca-app:hover { text-decoration: none; }
-.marca-app-icone {
-  width: 1.35rem;
-  height: 1.35rem;
-  border-radius: 6px;
-  background: linear-gradient(135deg, var(--azul), var(--roxo));
-  flex-shrink: 0;
-}
+/* Ícone do SAP: o mesmo SVG do favicon (src/app/icon.svg). */
+.marca-app-icone { width: 1.35rem; height: 1.35rem; flex-shrink: 0; }
 .topo h1 { font-size: 1.15rem; margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 .topo nav { display: flex; flex-wrap: wrap; gap: 0.25rem; font-size: 0.9rem; }
 .topo nav a {

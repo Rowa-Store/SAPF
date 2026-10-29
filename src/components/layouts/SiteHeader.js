@@ -16,7 +16,7 @@ export default function SiteHeader() {
   return (
     <header className="topo">
       <a href="/" className="marca-app">
-        <span className="marca-app-icone" aria-hidden="true" />
+        <img src="/icon.svg" className="marca-app-icone" alt="" width={22} height={22} />
         <h1>SAP</h1>
       </a>
       <nav>
