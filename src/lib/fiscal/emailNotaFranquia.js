@@ -84,10 +84,7 @@ export async function enviarNotaParaFranquia({ orderId, tinyNotaId, franquia, re
       // O Resend descarta a mesma chave por 24h: no reenvio ela atrapalharia.
       idempotencia: reenvio ? undefined : `nf-franquia/${tinyNotaId}`,
     });
-    if (reenvio) {
-      const registro = await registrarEmailNf(orderId);
-      if (!registro.ok) console.error(`[email-nf] Nota enviada, mas falhou ao registrar o envio de ${orderId}:`, registro.erro);
-    }
+    if (reenvio) await registrarReenvio(orderId);
     return { enviado: true, para };
   } catch (erro) {
     console.error(`[email-nf] Falha ao enviar a nota ${tinyNotaId} para ${para}:`, erro);
@@ -96,6 +93,17 @@ export async function enviarNotaParaFranquia({ orderId, tinyNotaId, franquia, re
       if (!liberacao.ok) console.error(`[email-nf] Falha ao liberar o envio de ${orderId}:`, liberacao.erro);
     }
     return { aviso: `Não foi possível enviar a nota por e-mail para ${para}: ${erro.message}` };
+  }
+}
+
+/** O e-mail já saiu: falha ao registrar só loga — virar aviso de erro faria a
+ *  pessoa clicar de novo e mandar em dobro. */
+async function registrarReenvio(orderId) {
+  try {
+    const registro = await registrarEmailNf(orderId);
+    if (!registro.ok) throw new Error(registro.erro);
+  } catch (erro) {
+    console.error(`[email-nf] Nota enviada, mas falhou ao registrar o envio de ${orderId}:`, erro);
   }
 }
 
