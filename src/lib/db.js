@@ -319,35 +319,105 @@ export async function markupDaFranquia(cnpj) {
   return { ok: true, markup: Number.isFinite(markup) ? markup : null };
 }
 
-/** Todos os clientes franqueados, ativos ou não, por nome. */
+const CAMPOS_FRANQUIA = [
+  'apelido',
+  'razao_social',
+  'contato',
+  'email',
+  'telefone',
+  'cep',
+  'logradouro',
+  'numero',
+  'complemento',
+  'bairro',
+  'cidade',
+  'uf',
+  'observacoes',
+  'markup',
+  'ativo',
+];
+
+/** Só os campos editáveis que vieram, já normalizados (texto aparado, vazio
+ *  vira null). Quem valida o conteúdo é a rota. */
+function linhaFranquia(dados) {
+  const linha = {};
+  for (const campo of CAMPOS_FRANQUIA) {
+    if (!(campo in (dados ?? {}))) continue;
+    const valor = dados[campo];
+    if (campo === 'ativo') linha.ativo = valor !== false;
+    else if (campo === 'markup') linha.markup = valor ?? null;
+    else if (campo === 'cep') linha.cep = somenteDigitos(valor) || null;
+    else if (campo === 'uf') linha.uf = String(valor ?? '').trim().toUpperCase() || null;
+    else linha[campo] = String(valor ?? '').trim() || null;
+  }
+  return linha;
+}
+
+/**
+ * Todos os clientes franqueados, ativos ou não, por nome — cada um com a
+ * transportadora anexada (`transportadora: { id, nome, ativo } | null`) e a
+ * IE gravada em clientes_ie (`ie: string | null`). O casamento é feito em
+ * dígitos, do lado de cá: o CNPJ de client_exce pode ter vindo com máscara.
+ */
 export async function listarFranquias() {
   const db = obterCliente();
   if (!db) return { ok: false, erro: SEM_CONFIG.erro, franquias: [] };
 
   const { data, error } = await db
     .from(TABELA_FRANQUIAS)
-    .select('cnpj, apelido, markup, ativo, criado_em')
+    .select('*')
     .order('apelido', { ascending: true, nullsFirst: false });
   if (error) return { ok: false, erro: error.message, franquias: [] };
-  return { ok: true, franquias: data ?? [] };
+
+  const chaves = [...new Set((data ?? []).map((f) => somenteDigitos(f.cnpj)).filter(Boolean))];
+  const [anexos, ies] = chaves.length
+    ? await Promise.all([
+        db.from('clientes_transportadora').select('cnpj, transportadora:transportadoras(id, nome, ativo)').in('cnpj', chaves),
+        db.from('clientes_ie').select('cnpj, ie').in('cnpj', chaves),
+      ])
+    : [{ data: [] }, { data: [] }];
+  const erroExtra = anexos.error ?? ies.error;
+  if (erroExtra) return { ok: false, erro: erroExtra.message, franquias: [] };
+
+  const transportadoraPorCnpj = new Map((anexos.data ?? []).map((a) => [a.cnpj, a.transportadora ?? null]));
+  const iePorCnpj = new Map((ies.data ?? []).map((i) => [i.cnpj, i.ie || null]));
+  return {
+    ok: true,
+    franquias: (data ?? []).map((f) => {
+      const chave = somenteDigitos(f.cnpj);
+      return { ...f, transportadora: transportadoraPorCnpj.get(chave) ?? null, ie: iePorCnpj.get(chave) ?? null };
+    }),
+  };
 }
 
 /** Inclui o cliente na lista de franquias. Quem valida o conteúdo é a rota. */
-export async function criarFranquia({ cnpj, apelido, markup, ativo }) {
+export async function criarFranquia({ cnpj, ...dados }) {
   const db = obterCliente();
   if (!db) return SEM_CONFIG;
 
   const { data, error } = await db
     .from(TABELA_FRANQUIAS)
-    .insert({
-      cnpj: somenteDigitos(cnpj),
-      apelido: String(apelido ?? '').trim() || null,
-      markup: markup ?? null,
-      ativo: ativo !== false,
-    })
-    .select('cnpj, apelido, markup, ativo, criado_em')
+    .insert({ ...linhaFranquia(dados), cnpj: somenteDigitos(cnpj) })
+    .select()
     .single();
-  if (error) return { ok: false, erro: error.code === '23505' ? 'Este CNPJ já está cadastrado como franquia.' : error.message };
+  if (error) return { ok: false, erro: erroDeGravacao(error, 'Este CNPJ já está cadastrado como franquia.') };
+  return { ok: true, franquia: data };
+}
+
+/** Edita o cadastro. `cnpj` é a chave exatamente como está gravada (pode ter
+ *  máscara); ele não muda. Os campos que não vierem ficam como estão. */
+export async function atualizarFranquia(cnpj, dados) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { data, error } = await db
+    .from(TABELA_FRANQUIAS)
+    .update({ ...linhaFranquia(dados), atualizado_em: new Date().toISOString() })
+    .eq('cnpj', cnpj)
+    .select()
+    .maybeSingle();
+  if (error) return { ok: false, erro: error.message };
+  if (!data) return { ok: false, erro: 'Cliente não encontrado.', naoEncontrada: true };
   return { ok: true, franquia: data };
 }
 
@@ -593,6 +663,15 @@ export async function gravarIeDoCliente({ cnpj, ie, uf, origem }) {
     },
     { onConflict: 'cnpj' }
   );
+  return error ? { ok: false, erro: error.message } : { ok: true };
+}
+
+/** Apaga a IE gravada do CNPJ — o próximo pedido volta a consultar o SintegrAPI. */
+export async function removerIeDoCliente(cnpj) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { error } = await db.from('clientes_ie').delete().eq('cnpj', somenteDigitos(cnpj));
   return error ? { ok: false, erro: error.message } : { ok: true };
 }
 

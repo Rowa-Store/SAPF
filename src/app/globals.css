@@ -155,7 +155,7 @@ button.marca:hover:not(:disabled) { filter: brightness(1.2); text-decoration: un
 
 .campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.75rem 1rem; }
 label { display: block; font-size: 0.82rem; color: var(--tinta-fraca); margin-bottom: 0.2rem; }
-input, select {
+input, select, textarea {
   width: 100%;
   padding: 0.45rem 0.55rem;
   border: 1px solid var(--linha);
@@ -436,6 +436,11 @@ dialog.modal::backdrop { background: rgba(0, 0, 0, 0.6); }
 .campo-check { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.75rem; font-size: 0.9rem; color: var(--tinta); }
 .campo-check input { width: auto; }
 .campo-largo { grid-column: 1 / -1; }
+textarea { resize: vertical; font-family: inherit; }
+input:disabled { color: var(--tinta-fraca); cursor: not-allowed; }
+.secao-form { border: none; border-top: 1px solid var(--linha); padding: 0.75rem 0 0; margin: 1rem 0 0; min-width: 0; }
+.secao-form legend { padding: 0 0.5rem 0 0; font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tinta-fraca); }
+tbody tr.linha-clicavel { cursor: pointer; }
 .texto-erro { margin: 0; padding: 0.75rem 0.9rem; border: 1px solid var(--alerta); border-radius: 8px; background: var(--alerta-fundo); color: var(--tinta); font-size: 0.85rem; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow-y: auto; }
 
 /* ---- /olist ---- */

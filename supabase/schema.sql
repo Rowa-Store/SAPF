@@ -79,6 +79,22 @@ alter table client_exce   enable row level security;
 alter table client_exce add column if not exists markup numeric(6,4)
   check (markup is null or (markup >= 1 and markup <= 10));
 
+-- Dados cadastrais da franquia (tela /pedidos/clientes) — mesmo trecho de
+-- supabase/client-exce-cadastro.sql. Só referência: a nota usa o pedido.
+alter table client_exce add column if not exists razao_social text;
+alter table client_exce add column if not exists contato text;
+alter table client_exce add column if not exists email text;
+alter table client_exce add column if not exists telefone text;
+alter table client_exce add column if not exists cep text;
+alter table client_exce add column if not exists logradouro text;
+alter table client_exce add column if not exists numero text;
+alter table client_exce add column if not exists complemento text;
+alter table client_exce add column if not exists bairro text;
+alter table client_exce add column if not exists cidade text;
+alter table client_exce add column if not exists uf text;
+alter table client_exce add column if not exists observacoes text;
+alter table client_exce add column if not exists atualizado_em timestamptz default now();
+
 -- ---------------------------------------------------------------------------
 -- Transferências entre lojas (tela /transferencias)
 --
