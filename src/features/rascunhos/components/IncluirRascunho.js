@@ -199,7 +199,7 @@ export default function IncluirRascunho({ params }) {
           {dados.classificacao === 'franquia' && (
             <>
               <p>
-                <button className="secundario" onClick={enviarEmailNota} disabled={enviandoEmail}>
+                <button className="botao-email" onClick={enviarEmailNota} disabled={enviandoEmail}>
                   {enviandoEmail ? 'Enviando…' : 'Enviar nota por e-mail'}
                 </button>{' '}
                 <span className="fraco">DANFE e XML para o e-mail do cadastro da franquia.</span>

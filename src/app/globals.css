@@ -191,6 +191,9 @@ button.secundario:hover:not(:disabled) { background: var(--realce); border-color
 button.perigo { background: var(--alerta); border-color: var(--alerta); color: #fff; }
 button.perigo:hover:not(:disabled) { filter: brightness(1.1); }
 button.secundario.perigo-texto { color: var(--alerta); }
+/* Envio da nota por e-mail para a franquia (tela do pedido). */
+button.botao-email { background: var(--celeste-fundo); border-color: var(--celeste); color: var(--celeste); }
+button.botao-email:hover:not(:disabled) { filter: brightness(1.2); }
 button.secundario.perigo-texto:hover:not(:disabled) { background: var(--alerta-fundo); border-color: var(--alerta); }
 /* <label> com <input type="file"> escondido, com cara de button.secundario. */
 .texto-quebra { white-space: pre-line; }
