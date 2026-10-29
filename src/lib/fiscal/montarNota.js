@@ -53,7 +53,7 @@ function enderecoDosAtributos(customAttributes, prefixo) {
   };
 }
 
-const BAIRRO_PADRAO = 'Centro';
+export const BAIRRO_PADRAO = 'Centro';
 
 /**
  * Bairro do cliente, lido dos customAttributes do checkout

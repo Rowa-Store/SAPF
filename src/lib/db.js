@@ -390,6 +390,19 @@ export async function listarFranquias() {
   };
 }
 
+/** Cadastro da franquia deste CNPJ, ativa ou não, ou `franquia: null`. */
+export async function franquiaPorCnpj(cnpj) {
+  const db = obterCliente();
+  if (!db) return { ok: false, erro: SEM_CONFIG.erro, franquia: null };
+
+  // Mesmo motivo de listarCnpjsFranquia: o cadastro pode ter vindo com
+  // máscara, então a comparação é feita em dígitos, do lado de cá.
+  const { data, error } = await db.from(TABELA_FRANQUIAS).select('*');
+  if (error) return { ok: false, erro: error.message, franquia: null };
+  const chave = somenteDigitos(cnpj);
+  return { ok: true, franquia: (data ?? []).find((f) => somenteDigitos(f.cnpj) === chave) ?? null };
+}
+
 /** Inclui o cliente na lista de franquias. Quem valida o conteúdo é a rota. */
 export async function criarFranquia({ cnpj, ...dados }) {
   const db = obterCliente();

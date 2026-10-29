@@ -1,8 +1,10 @@
 // franquias.js — leitura e validação do cadastro de clientes franqueados,
-// usada por /api/franquias. Fica fora do db.js porque é regra de negócio,
-// não acesso a dados.
+// usada por /api/franquias, e o que a nota emitida completa nesse cadastro
+// (rota de emissão). Fica fora do db.js porque é regra de negócio, não
+// acesso a dados.
 
 import { lerMarkup, MARKUP_MAXIMO, MARKUP_MINIMO } from './markup.js';
+import { BAIRRO_PADRAO } from './montarNota.js';
 import { UFS } from './transportadoras.js';
 import { somenteDigitos } from '../utils.js';
 
@@ -68,4 +70,39 @@ export function lerFranquia(corpo) {
   }
 
   return resultado;
+}
+
+// Campo do cliente na nota (payload do Tiny) → coluna de client_exce.
+const DA_NOTA = [
+  ['nome', 'razao_social'],
+  ['endereco', 'logradouro'],
+  ['numero', 'numero'],
+  ['complemento', 'complemento'],
+  ['bairro', 'bairro'],
+  ['cep', 'cep'],
+  ['cidade', 'cidade'],
+  ['uf', 'uf'],
+  ['fone', 'telefone'],
+  ['email', 'email'],
+];
+
+/**
+ * O que a nota emitida tem e o cadastro da franquia ainda não: só os campos
+ * vazios no cadastro são preenchidos — o que alguém digitou na tela manda.
+ * O bairro padrão que a nota usa quando o pedido não tem bairro (ver
+ * montarNota.js) não conta como dado do cliente.
+ *
+ * @returns {object} colunas a gravar ({} quando não falta nada)
+ */
+export function faltantesDaNota(franquia, clienteNota) {
+  const faltantes = {};
+  for (const [daNota, coluna] of DA_NOTA) {
+    const valor = String(clienteNota?.[daNota] ?? '').trim();
+    if (!valor || String(franquia?.[coluna] ?? '').trim()) continue;
+    if (coluna === 'bairro' && valor === BAIRRO_PADRAO) continue;
+    if (coluna === 'cep' && somenteDigitos(valor).length !== 8) continue;
+    if (coluna === 'uf' && !UFS.has(valor.toUpperCase())) continue;
+    faltantes[coluna] = valor;
+  }
+  return faltantes;
 }

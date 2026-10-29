@@ -3,16 +3,20 @@
 // ESTE ENDPOINT É IRREVERSÍVEL — a tela de atacado pede confirmação antes.
 // Antes de emitir, garante o cliente como Contribuinte ICMS no cadastro do
 // Tiny (ver tiny.js) — sem isso a nota do atacado não sai. Depois de emitir,
-// lê o número da NF da nota autorizada e grava no Supabase.
+// lê o número da NF da nota autorizada e grava no Supabase e, se o cliente é
+// franquia, completa o cadastro dele com o que a nota tem e ele não.
 
 import { emitirNota, garantirContribuinteIcms, obterSituacaoNota } from '@/lib/integrations/tiny';
 import {
   anotarErro,
   obterRascunhoCriado,
   atualizarNotaEmitida,
+  atualizarFranquia,
+  franquiaPorCnpj,
   registrarNumeroNf,
   statusPorPedido,
 } from '@/lib/db';
+import { faltantesDaNota } from '@/lib/fiscal/franquias';
 import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -81,10 +85,28 @@ export async function POST(request, { params }) {
     console.error(`[emitir] Nota ${tinyNotaId} emitida, mas não foi possível ler o número no Tiny:`, erro);
   }
 
+  await completarCadastroFranquia(cliente);
+
   return Response.json({
     ok: true,
     tinyNotaId,
     numeroNf,
     mensagem: 'Nota emitida no Tiny.',
   });
+}
+
+/** Preenche os campos vazios do cadastro da franquia (/pedidos/clientes) com
+ *  os dados do cliente na nota. A nota já foi emitida: falha aqui só loga. */
+async function completarCadastroFranquia(clienteNota) {
+  try {
+    const { ok, erro, franquia } = await franquiaPorCnpj(clienteNota.cpf_cnpj);
+    if (!ok) throw new Error(erro);
+    if (!franquia) return;
+    const faltantes = faltantesDaNota(franquia, clienteNota);
+    if (!Object.keys(faltantes).length) return;
+    const gravacao = await atualizarFranquia(franquia.cnpj, faltantes);
+    if (!gravacao.ok) throw new Error(gravacao.erro);
+  } catch (erro) {
+    console.error(`[emitir] Nota emitida, mas não foi possível completar o cadastro da franquia ${clienteNota.cpf_cnpj}:`, erro);
+  }
 }

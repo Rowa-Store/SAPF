@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lerFranquia } from './franquias.js';
+import { faltantesDaNota, lerFranquia } from './franquias.js';
 
 test('normaliza o cadastro: markup com vírgula, UF maiúscula, IE em dígitos, Correios = null', () => {
   const lido = lerFranquia({ apelido: ' Loja BH ', markup: '2,6', uf: 'mg', cep: '30140-071', ie: '062.307.904/0081', transportadoraId: '' });
@@ -27,4 +27,19 @@ test('recusa markup, UF, CEP, e-mail e IE inválidos', () => {
   assert.match(lerFranquia({ cep: '123' }).erro, /CEP/);
   assert.match(lerFranquia({ email: 'sem-arroba' }).erro, /e-mail/);
   assert.match(lerFranquia({ ie: 'ISENTO' }).erro, /inscrição/);
+});
+
+test('nota emitida completa só o que falta no cadastro', () => {
+  const cadastro = { razao_social: 'ROWA BH LTDA', cidade: null, telefone: '' };
+  const nota = {
+    nome: 'Outro Nome', endereco: 'Rua A', numero: '10', bairro: 'Savassi', cep: '30140071',
+    cidade: 'Belo Horizonte', uf: 'MG', ie: '123', pais: 'BRASIL',
+  };
+  assert.deepEqual(faltantesDaNota(cadastro, nota), {
+    logradouro: 'Rua A', numero: '10', bairro: 'Savassi', cep: '30140071', cidade: 'Belo Horizonte', uf: 'MG',
+  });
+});
+
+test('bairro padrão da nota e CEP/UF inválidos não entram no cadastro', () => {
+  assert.deepEqual(faltantesDaNota({}, { bairro: 'Centro', cep: '123', uf: 'ZZ' }), {});
 });
