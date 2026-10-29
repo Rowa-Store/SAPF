@@ -17,7 +17,7 @@
 insert into notas_processadas
   (shopify_order_id, shopify_order_name, classificacao, status, tiny_nota_id, nota_emitida, numero_nf)
 values
-  ('gid://shopify/Order/ID_DO_PEDIDO', '#NUMERO', 'franquia', 'rascunho_criado', 'ID_NOTA_TINY', true, 'NUMERO_NF')
+  ('gid://shopify/Order/ID_DO_PEDIDO', '#80816', 'franquia', 'rascunho_criado', 'ID_NOTA_TINY', true, '024888')
 on conflict (shopify_order_id) do update set
   status = 'rascunho_criado',
   tiny_nota_id = excluded.tiny_nota_id,
@@ -30,4 +30,4 @@ on conflict (shopify_order_id) do update set
 
 -- Confira (deve vir uma linha só, com o gid certo):
 select id, shopify_order_id, shopify_order_name, status, tiny_nota_id, numero_nf, nota_emitida
-  from notas_processadas where shopify_order_name = '#NUMERO';
+  from notas_processadas where shopify_order_name = '#80816';
