@@ -7,7 +7,7 @@ import SiteHeader from '@/components/layouts/SiteHeader';
 const inter = Inter({ subsets: ['latin'], variable: '--fonte-sans', display: 'swap' });
 
 export const metadata = {
-  title: 'SAP',
+  title: 'S.a.p',
   description: 'Protótipo de automação fiscal: pedidos do Shopify viram rascunhos de nota no Tiny.',
 };
 
