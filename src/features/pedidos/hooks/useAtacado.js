@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { somarDias } from '@/lib/datas';
+import { textoEmailFranquia } from '@/lib/format';
 
 export const FILTROS_VAZIOS = {
   naoEmitidas: false,
@@ -236,15 +237,20 @@ export function useAtacado() {
         await enviarRascunho(p, dados);
         return enviarEmissao(p);
       },
-      (corpo) => setAviso(`Nota do pedido ${p.name} emitida${corpo.numeroNf ? ` — NF nº ${corpo.numeroNf}` : ''}.`)
+      (corpo) => setAviso(avisoDeEmissao(p, corpo))
     );
+  }
+
+  function avisoDeEmissao(p, corpo) {
+    const nota = `Nota do pedido ${p.name} emitida${corpo.numeroNf ? ` — NF nº ${corpo.numeroNf}` : ''}.`;
+    return [nota, textoEmailFranquia(corpo.emailFranquia)].filter(Boolean).join(' ');
   }
 
   function emitir(p) {
     return executarNaLinha(
       p,
       () => enviarEmissao(p),
-      (corpo) => setAviso(`Nota do pedido ${p.name} emitida${corpo.numeroNf ? ` — NF nº ${corpo.numeroNf}` : ''}.`)
+      (corpo) => setAviso(avisoDeEmissao(p, corpo))
     );
   }
 
@@ -257,6 +263,8 @@ export function useAtacado() {
         notaEmitida: corpo.notaEmitida || p.notaEmitida,
         numeroNf: corpo.numeroNf ?? p.numeroNf,
       });
+      const email = textoEmailFranquia(corpo.emailFranquia);
+      if (email) setAviso(`Pedido ${p.name}: ${email}`);
     } catch (e) {
       definirAcao(p.id, { fase: 'erro', erro: e.message });
     }

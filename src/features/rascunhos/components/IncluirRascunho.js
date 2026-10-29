@@ -33,7 +33,7 @@ function descreverMarkup(markup) {
   return `${um(markup.acessorio)} nos acessórios + ${um(markup.vestuario)} no vestuário`;
 }
 import { OBS_PARCELA_FRETE_PIX, rotuloFormaPagamento } from '@/lib/fiscal/pagamento';
-import { formatarMoeda } from '@/lib/format';
+import { formatarMoeda, textoEmailFranquia } from '@/lib/format';
 import { resumoDoTransporte } from '@/lib/fiscal/transporte';
 import { useIncluirRascunho } from '../hooks/useIncluirRascunho';
 import TrocarTransportadora from './TrocarTransportadora';
@@ -89,6 +89,9 @@ export default function IncluirRascunho({ params }) {
     erroEmissao,
     emissao,
     confirmarEmissao,
+    enviandoEmail,
+    envioEmail,
+    enviarEmailNota,
   } = useIncluirRascunho(id);
 
   const [saindoIndices, setSaindoIndices] = useState(() => new Set());
@@ -193,6 +196,17 @@ export default function IncluirRascunho({ params }) {
         <div className="aviso">
           <strong>A nota deste pedido já foi emitida.</strong>
           <p>Nota {dados.tinyNotaId ?? 'sem id retornado'} já tem valor fiscal — não dá para enviar outro rascunho.</p>
+          {dados.classificacao === 'franquia' && (
+            <>
+              <p>
+                <button className="secundario" onClick={enviarEmailNota} disabled={enviandoEmail}>
+                  {enviandoEmail ? 'Enviando…' : 'Enviar nota por e-mail'}
+                </button>{' '}
+                <span className="fraco">DANFE e XML para o e-mail do cadastro da franquia.</span>
+              </p>
+              {envioEmail && <p className={envioEmail.ok ? 'fraco' : undefined}>{envioEmail.texto}</p>}
+            </>
+          )}
         </div>
       ) : (
         dados.jaProcessado && (
@@ -239,6 +253,7 @@ export default function IncluirRascunho({ params }) {
           {!emissao.numeroNf && (
             <p>A SEFAZ ainda não devolveu o número — a tela B2B confere de novo depois.</p>
           )}
+          {textoEmailFranquia(emissao.emailFranquia) && <p>{textoEmailFranquia(emissao.emailFranquia)}</p>}
           <p>
             <a href="/pedidos">Voltar para a tela B2B</a>
           </p>

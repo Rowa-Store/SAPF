@@ -4,7 +4,8 @@
 // Antes de emitir, garante o cliente como Contribuinte ICMS no cadastro do
 // Tiny (ver tiny.js) — sem isso a nota do atacado não sai. Depois de emitir,
 // lê o número da NF da nota autorizada e grava no Supabase e, se o cliente é
-// franquia, completa o cadastro dele com o que a nota tem e ele não.
+// franquia, completa o cadastro dele com o que a nota tem e ele não e manda a
+// nota (XML + link do DANFE) para o e-mail do cadastro.
 
 import { emitirNota, garantirContribuinteIcms, obterSituacaoNota } from '@/lib/integrations/tiny';
 import {
@@ -17,6 +18,7 @@ import {
   statusPorPedido,
 } from '@/lib/db';
 import { faltantesDaNota } from '@/lib/fiscal/franquias';
+import { enviarNotaParaFranquia } from '@/lib/fiscal/emailNotaFranquia';
 import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -85,28 +87,39 @@ export async function POST(request, { params }) {
     console.error(`[emitir] Nota ${tinyNotaId} emitida, mas não foi possível ler o número no Tiny:`, erro);
   }
 
-  await completarCadastroFranquia(cliente);
+  const franquia = await completarCadastroFranquia(cliente);
+  // Sem número, a nota ainda não foi autorizada: quem manda o e-mail é a
+  // conferência da tela B2B, quando o número chegar.
+  let emailFranquia = null;
+  if (franquia && numeroNf) emailFranquia = await enviarNotaParaFranquia({ orderId: gid, tinyNotaId, franquia });
+  else if (franquia) emailFranquia = { aviso: 'O e-mail com a nota vai para a franquia quando a SEFAZ autorizar.' };
 
   return Response.json({
     ok: true,
     tinyNotaId,
     numeroNf,
+    emailFranquia,
     mensagem: 'Nota emitida no Tiny.',
   });
 }
 
 /** Preenche os campos vazios do cadastro da franquia (/pedidos/clientes) com
- *  os dados do cliente na nota. A nota já foi emitida: falha aqui só loga. */
+ *  os dados do cliente na nota e devolve o cadastro já completo — null quando
+ *  o cliente não é franquia ativa. A nota já foi emitida: falha aqui só loga. */
 async function completarCadastroFranquia(clienteNota) {
+  let franquia = null;
   try {
-    const { ok, erro, franquia } = await franquiaPorCnpj(clienteNota.cpf_cnpj);
-    if (!ok) throw new Error(erro);
-    if (!franquia) return;
+    const consulta = await franquiaPorCnpj(clienteNota.cpf_cnpj);
+    if (!consulta.ok) throw new Error(consulta.erro);
+    if (!consulta.franquia || consulta.franquia.ativo === false) return null;
+    franquia = consulta.franquia;
     const faltantes = faltantesDaNota(franquia, clienteNota);
-    if (!Object.keys(faltantes).length) return;
+    if (!Object.keys(faltantes).length) return franquia;
     const gravacao = await atualizarFranquia(franquia.cnpj, faltantes);
     if (!gravacao.ok) throw new Error(gravacao.erro);
+    return { ...franquia, ...faltantes };
   } catch (erro) {
     console.error(`[emitir] Nota emitida, mas não foi possível completar o cadastro da franquia ${clienteNota.cpf_cnpj}:`, erro);
+    return franquia;
   }
 }

@@ -481,6 +481,51 @@ export async function registrarNumeroNf({ orderId, numeroNf }) {
   return error ? { ok: false, erro: error.message } : { ok: true };
 }
 
+/**
+ * Reserva o envio do e-mail da nota à franquia: marca email_nf_enviado_em só
+ * se ainda estiver vazio, numa única escrita — de duas chamadas ao mesmo
+ * tempo (emissão e conferência da tela), só uma recebe `reservado: true`.
+ */
+export async function reservarEmailNf(orderId) {
+  const db = obterCliente();
+  if (!db) return { ...SEM_CONFIG, reservado: false };
+
+  const { data, error } = await db
+    .from('notas_processadas')
+    .update({ email_nf_enviado_em: new Date().toISOString() })
+    .eq('shopify_order_id', orderId)
+    .is('email_nf_enviado_em', null)
+    .select('shopify_order_id');
+
+  return error ? { ok: false, erro: error.message, reservado: false } : { ok: true, reservado: data.length > 0 };
+}
+
+/** Registra um envio feito à mão (botão da tela do pedido), que não reserva antes. */
+export async function registrarEmailNf(orderId) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { error } = await db
+    .from('notas_processadas')
+    .update({ email_nf_enviado_em: new Date().toISOString() })
+    .eq('shopify_order_id', orderId);
+
+  return error ? { ok: false, erro: error.message } : { ok: true };
+}
+
+/** Desfaz a reserva quando o envio falha, para a próxima conferência tentar de novo. */
+export async function liberarEmailNf(orderId) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { error } = await db
+    .from('notas_processadas')
+    .update({ email_nf_enviado_em: null })
+    .eq('shopify_order_id', orderId);
+
+  return error ? { ok: false, erro: error.message } : { ok: true };
+}
+
 /** Cadastro fiscal das lojas, indexado pelo gid do local no Shopify. */
 export async function lojasFiscaisPorLocal(locationIds) {
   const db = obterCliente();

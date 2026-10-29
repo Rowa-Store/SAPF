@@ -58,6 +58,11 @@ export function useIncluirRascunho(id) {
   const [erroEmissao, setErroEmissao] = useState(null);
   const [emissao, setEmissao] = useState(null);
 
+  // Reenvio da nota emitida para o e-mail da franquia (botão do aviso de
+  // nota já emitida). `envioEmail`: { ok, texto } do último clique.
+  const [enviandoEmail, setEnviandoEmail] = useState(false);
+  const [envioEmail, setEnvioEmail] = useState(null);
+
   useEffect(() => {
     fetch(`/api/pedidos/${id}/preview`)
       .then(async (r) => {
@@ -218,6 +223,21 @@ export function useIncluirRascunho(id) {
     }
   }
 
+  async function enviarEmailNota() {
+    setEnviandoEmail(true);
+    setEnvioEmail(null);
+    try {
+      const resposta = await fetch(`/api/pedidos/${id}/email`, { method: 'POST' });
+      const corpo = await resposta.json();
+      if (!resposta.ok) throw new Error(corpo.erro ?? 'A nota não foi enviada.');
+      setEnvioEmail({ ok: true, texto: `DANFE e XML enviados para ${corpo.para}.` });
+    } catch (e) {
+      setEnvioEmail({ ok: false, texto: e.message });
+    } finally {
+      setEnviandoEmail(false);
+    }
+  }
+
   const carregado = Boolean(dados && itensEditados);
   const totalPaginas = carregado ? Math.max(1, Math.ceil(itensEditados.length / ITENS_POR_PAGINA)) : 1;
   const inicioPagina = (pagina - 1) * ITENS_POR_PAGINA;
@@ -292,5 +312,8 @@ export function useIncluirRascunho(id) {
     erroEmissao,
     emissao,
     confirmarEmissao,
+    enviandoEmail,
+    envioEmail,
+    enviarEmailNota,
   };
 }

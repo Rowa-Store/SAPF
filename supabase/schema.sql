@@ -278,3 +278,7 @@ create table if not exists boletos_caixa (
 alter table boletos_caixa alter column parcela drop not null;
 create index if not exists boletos_caixa_nf_idx on boletos_caixa (nf_numero, parcela);
 alter table boletos_caixa enable row level security;
+
+-- Quando o e-mail da nota (DANFE + XML) foi para a franquia — ver
+-- supabase/email-nf-franquia.sql.
+alter table notas_processadas add column if not exists email_nf_enviado_em timestamptz;

@@ -39,3 +39,10 @@ export function formatarCnpj(valor) {
   if (d.length !== 14) return String(valor ?? '');
   return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
 }
+
+/** O que a tela diz sobre o e-mail da nota para a franquia (`emailFranquia`
+ *  das rotas de emissão e de situação); '' quando não há o que dizer. */
+export function textoEmailFranquia(emailFranquia) {
+  if (emailFranquia?.enviado) return `DANFE e XML enviados para ${emailFranquia.para}.`;
+  return emailFranquia?.aviso ?? '';
+}

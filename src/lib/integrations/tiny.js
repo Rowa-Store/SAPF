@@ -88,12 +88,10 @@ export function variavelTokenDaLoja(nomeLoja) {
 }
 
 /**
- * POST no formato que a API 2.0 espera, já desembrulhando `retorno`.
+ * POST no formato que a API 2.0 espera; devolve o corpo cru da resposta.
  * `conta` ({ token, variavel }) escolhe a conta do Tiny; sem ela, a da matriz.
- * `comRegistros`: o erro que vem por registro (envio em lote) volta no
- * `retorno` em vez de virar exceção — quem chama confere cada registro.
  */
-async function chamarTiny(endpoint, params = {}, conta = null, { comRegistros = false } = {}) {
+async function postarTiny(endpoint, params, conta) {
   const variavel = conta?.variavel ?? 'TINY_API_TOKEN';
   const token = conta ? conta.token : process.env.TINY_API_TOKEN;
   if (!token) {
@@ -123,7 +121,17 @@ async function chamarTiny(endpoint, params = {}, conta = null, { comRegistros = 
     throw new Error(`Tiny respondeu ${resposta.status} em ${endpoint}.`);
   }
 
-  const texto = await resposta.text();
+  return resposta.text();
+}
+
+/**
+ * Chamada JSON da API 2.0, já desembrulhando `retorno`.
+ * `comRegistros`: o erro que vem por registro (envio em lote) volta no
+ * `retorno` em vez de virar exceção — quem chama confere cada registro.
+ */
+async function chamarTiny(endpoint, params = {}, conta = null, { comRegistros = false } = {}) {
+  const variavel = conta?.variavel ?? 'TINY_API_TOKEN';
+  const texto = await postarTiny(endpoint, params, conta);
   let dados;
   try {
     dados = JSON.parse(texto);
@@ -234,6 +242,22 @@ export async function obterLinkDanfe(id, conta = null) {
     throw new Error('Tiny não devolveu o link do DANFE — confira se a nota já foi emitida.');
   }
   return retorno.link_nfe;
+}
+
+/**
+ * XML da NF-e autorizada (nfeProc, com o protocolo da SEFAZ). Este endpoint
+ * responde sempre em XML, mesmo pedindo JSON. Nota ainda não autorizada não
+ * tem nfeProc: aí volta null, e quem chama tenta de novo depois.
+ * https://tiny.com.br/api-docs/api2-notas-fiscais-obter-xml
+ */
+export async function obterXmlNota(id, conta = null) {
+  const texto = await postarTiny('nota.fiscal.obter.xml.php', { formato: 'XML', id: String(id) }, conta);
+  if (!/<status>\s*OK\s*<\/status>/.test(texto)) {
+    const erros = [...texto.matchAll(/<erro>([\s\S]*?)<\/erro>/g)].map((m) => m[1].trim());
+    throw new Error(`Tiny recusou a chamada nota.fiscal.obter.xml.php: ${erros.join('; ') || 'erro não detalhado'}`);
+  }
+  const xml = texto.match(/<nfeProc[\s\S]*<\/nfeProc>/)?.[0];
+  return xml?.includes('<protNFe') ? xml : null;
 }
 
 /** Emissão fiscal — dá valor tributário à nota, de forma irreversível. */
