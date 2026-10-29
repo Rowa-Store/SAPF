@@ -271,15 +271,20 @@ export async function GET(request, { params }) {
       );
     }
 
-    // 6. Histórico (não bloqueia se o Supabase não estiver configurado).
-    const registro = await registrarPreview({
-      orderId: pedido.id,
-      orderName: pedido.name,
-      classificacao,
-      payload,
-    });
-    if (!registro.ok) {
-      console.error(`[preview] Falha ao registrar o preview do pedido ${pedido.id} no Supabase:`, registro.erro);
+    // 6. Histórico (não bloqueia se o Supabase não estiver configurado). Só
+    // para pedido sem rascunho: gravar por cima de um já enviado trocava o
+    // status para "preview" — a lista perdia o DANFE, a emissão recusava o
+    // pedido — e o payload que foi para o Tiny pelo recalculado.
+    if (!processado.processado && !processado.notaEmitida) {
+      const registro = await registrarPreview({
+        orderId: pedido.id,
+        orderName: pedido.name,
+        classificacao,
+        payload,
+      });
+      if (!registro.ok) {
+        console.error(`[preview] Falha ao registrar o preview do pedido ${pedido.id} no Supabase:`, registro.erro);
+      }
     }
 
     return Response.json({
