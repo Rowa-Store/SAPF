@@ -1,7 +1,8 @@
 // /boletos — pedidos pagos com boleto: status do boleto (emitido/pendente,
 // marcado à mão ou ao subir PDF), os PDFs do boleto e o nº da NF de cada um,
 // editável. Os boletos registrados na CAIXA para a NF aparecem sozinhos, um
-// botão por parcela, com o status calculado a partir deles.
+// botão por parcela, com o status calculado a partir deles. Pedido que acabou
+// pago com cartão ou PIX troca de forma na tela e recebe os comprovantes.
 
 'use client';
 
@@ -215,13 +216,39 @@ function CampoNumeroNf({ b, salvarNumeroNf }) {
   );
 }
 
+const ARQUIVOS = {
+  boleto: {
+    lista: 'pdfs',
+    classe: 'botao-pdf-boleto',
+    rotulo: 'Boleto',
+    accept: 'application/pdf,.pdf',
+    enviar: 'Enviar boleto',
+    tituloEnviar: 'Enviar os PDFs do boleto (pode escolher vários) — marca como emitido',
+    adicionar: '+ adicionar PDF',
+    tituloAdicionar: 'Enviar mais PDFs para este boleto (pode escolher vários)',
+  },
+  comprovante: {
+    lista: 'comprovantes',
+    classe: 'botao-pdf-comprovante',
+    rotulo: 'Comprovante',
+    accept: 'application/pdf,.pdf,image/png,image/jpeg,.png,.jpg,.jpeg',
+    enviar: 'Enviar comprovante',
+    tituloEnviar: 'Enviar o comprovante do pagamento — PDF, PNG ou JPG (pode escolher vários)',
+    adicionar: '+ adicionar comprovante',
+    tituloAdicionar: 'Enviar mais comprovantes (pode escolher vários)',
+  },
+};
+
 /**
- * PDFs do boleto, no formato do botão do DANFE, em azul. Um pedido pode ter
- * vários (um por parcela, por exemplo): cada um abre o seu PDF e tem um ✕
- * para remover; "Enviar boleto" / "+ adicionar PDF" escolhe um ou mais
- * arquivos de uma vez. Subir PDF marca o boleto como emitido (no servidor).
+ * PDFs do boleto (em azul) ou comprovantes do pagamento com cartão/PIX (em
+ * verde, `tipo` 'comprovante'), no formato do botão do DANFE. Um pedido pode
+ * ter vários (um por parcela, por exemplo): cada um abre o seu arquivo e tem
+ * um ✕ para remover; "Enviar …" / "+ adicionar …" escolhe um ou mais arquivos
+ * de uma vez. Subir PDF de boleto marca o boleto como emitido (no servidor).
  */
-function PdfsBoleto({ b, enviarPdfs, removerPdf }) {
+function PdfsBoleto({ b, enviarPdfs, removerPdf, tipo = 'boleto' }) {
+  const config = ARQUIVOS[tipo];
+  const arquivosDaLinha = b[config.lista];
   const [enviando, setEnviando] = useState(0);
   const [removendo, setRemovendo] = useState(null);
 
@@ -231,14 +258,14 @@ function PdfsBoleto({ b, enviarPdfs, removerPdf }) {
     if (arquivos.length === 0) return;
     setEnviando(arquivos.length);
     try {
-      await enviarPdfs(b, arquivos);
+      await enviarPdfs(b, arquivos, tipo);
     } finally {
       setEnviando(0);
     }
   }
 
   async function remover(pdf) {
-    if (!window.confirm(`Remover "${pdf.nome}" deste boleto?`)) return;
+    if (!window.confirm(`Remover "${pdf.nome}" deste pedido?`)) return;
     setRemovendo(pdf.id);
     try {
       await removerPdf(b, pdf);
@@ -250,7 +277,7 @@ function PdfsBoleto({ b, enviarPdfs, removerPdf }) {
   const input = (
     <input
       type="file"
-      accept="application/pdf,.pdf"
+      accept={config.accept}
       multiple
       className="input-arquivo-oculto"
       onChange={escolher}
@@ -260,16 +287,16 @@ function PdfsBoleto({ b, enviarPdfs, removerPdf }) {
 
   return (
     <div className="pilha">
-      {b.pdfs.map((pdf, i) => (
+      {arquivosDaLinha.map((pdf, i) => (
         <div key={pdf.id} className="pdf-boleto">
           <a
-            className={`botao-pdf botao-pdf-boleto ${removendo === pdf.id ? 'carregando' : ''}`}
+            className={`botao-pdf ${config.classe} ${removendo === pdf.id ? 'carregando' : ''}`}
             href={`/api/boletos/${b.id}/pdf?pdf=${pdf.id}`}
             target="_blank"
             rel="noopener noreferrer"
             title={`Abrir ${pdf.nome}`}
           >
-            <IconePdf /> {b.pdfs.length > 1 ? `Boleto ${i + 1}` : 'Boleto'}
+            <IconePdf /> {arquivosDaLinha.length > 1 ? `${config.rotulo} ${i + 1}` : config.rotulo}
           </a>
           <button
             type="button"
@@ -284,19 +311,90 @@ function PdfsBoleto({ b, enviarPdfs, removerPdf }) {
         </div>
       ))}
       {enviando > 0 ? (
-        <span className="botao-pdf botao-pdf-boleto carregando">
-          <IconePdf /> Enviando {enviando > 1 ? `${enviando} PDFs` : 'PDF'}…
+        <span className={`botao-pdf ${config.classe} carregando`}>
+          <IconePdf /> Enviando {enviando > 1 ? `${enviando} arquivos` : 'arquivo'}…
         </span>
-      ) : b.pdfs.length === 0 ? (
-        <label className="botao-pdf botao-pdf-boleto" title="Enviar os PDFs do boleto (pode escolher vários) — marca como emitido">
+      ) : arquivosDaLinha.length === 0 ? (
+        <label className={`botao-pdf ${config.classe}`} title={config.tituloEnviar}>
           {input}
-          <IconePdf /> Enviar boleto
+          <IconePdf /> {config.enviar}
         </label>
       ) : (
-        <label className="botao-pdf-trocar" title="Enviar mais PDFs para este boleto (pode escolher vários)">
-          {input}+ adicionar PDF
+        <label className="botao-pdf-trocar" title={config.tituloAdicionar}>
+          {input}
+          {config.adicionar}
         </label>
       )}
+    </div>
+  );
+}
+
+const PAGO_COM = { cartao: 'Pago no cartão', pix: 'Pago com PIX' };
+
+/**
+ * Status da linha. Boleto: o menu de status e um link para trocar a forma —
+ * pedido que acabou pago com cartão ou PIX. Trocado: a marca da forma, os
+ * comprovantes do pagamento e o link para voltar a boleto. A troca vale só
+ * no SAPF (o Shopify e a nota ficam como estão).
+ */
+function StatusPagamento({ b, alterarStatus, alterarPagoCom, enviarPdfs, removerPdf }) {
+  const [escolhendo, setEscolhendo] = useState(false);
+
+  function trocar(pagoCom) {
+    setEscolhendo(false);
+    alterarPagoCom(b, pagoCom);
+  }
+
+  function voltarParaBoleto() {
+    if (window.confirm(`Voltar ${b.name} para boleto? Os comprovantes enviados continuam guardados.`)) {
+      alterarPagoCom(b, null);
+    }
+  }
+
+  if (!b.pagoCom) {
+    return (
+      <div className="pilha">
+        <StatusBoleto b={b} alterarStatus={alterarStatus} />
+        {escolhendo ? (
+          <div className="grupo-botoes">
+            <button type="button" className="secundario pequeno" onClick={() => trocar('cartao')}>
+              Cartão
+            </button>
+            <button type="button" className="secundario pequeno" onClick={() => trocar('pix')}>
+              PIX
+            </button>
+            <button type="button" className="link" onClick={() => setEscolhendo(false)}>
+              cancelar
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="botao-pdf-trocar"
+            onClick={() => setEscolhendo(true)}
+            title="O cliente pagou este pedido com cartão ou PIX em vez de boleto"
+          >
+            Trocar para cartão/PIX
+          </button>
+        )}
+        {b.comprovantes.length > 0 && (
+          <PdfsBoleto b={b} enviarPdfs={enviarPdfs} removerPdf={removerPdf} tipo="comprovante" />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="pilha">
+      <span className="marca marca-ok">{PAGO_COM[b.pagoCom]}</span>
+      <PdfsBoleto b={b} enviarPdfs={enviarPdfs} removerPdf={removerPdf} tipo="comprovante" />
+      <button
+        type="button"
+        className="botao-pdf-trocar"
+        onClick={voltarParaBoleto}
+      >
+        Voltar para boleto
+      </button>
     </div>
   );
 }
@@ -327,6 +425,7 @@ export default function ControleBoletos() {
     paginaAnterior,
     alterarStatus,
     salvarNumeroNf,
+    alterarPagoCom,
     enviarPdfs,
     removerPdf,
     consultandoCaixa,
@@ -480,7 +579,7 @@ export default function ControleBoletos() {
                   <th>Classificação</th>
                   <th>Boleto</th>
                   <th>Nº da NF</th>
-                  <th>Status do boleto</th>
+                  <th>Status / pagamento</th>
                 </tr>
               </thead>
               <tbody>
@@ -527,7 +626,13 @@ export default function ControleBoletos() {
                       </div>
                     </td>
                     <td>
-                      <StatusBoleto b={b} alterarStatus={alterarStatus} />
+                      <StatusPagamento
+                        b={b}
+                        alterarStatus={alterarStatus}
+                        alterarPagoCom={alterarPagoCom}
+                        enviarPdfs={enviarPdfs}
+                        removerPdf={removerPdf}
+                      />
                     </td>
                   </tr>,
                   errosLinha[b.id] && (

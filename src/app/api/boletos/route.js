@@ -160,6 +160,10 @@ export async function GET(request) {
         emitido: boleto?.emitido ?? false,
         pdfs: boleto?.pdfs ?? [],
         temPdf: (boleto?.pdfs.length ?? 0) > 0,
+        // Pedido de boleto pago com cartão ou PIX, trocado na tela ('cartao',
+        // 'pix' ou null), e os comprovantes desse pagamento.
+        pagoCom: boleto?.pago_com ?? null,
+        comprovantes: boleto?.comprovantes ?? [],
         // Parcelas de boleto da nota (franquia com boleto leva 3; atacado vai
         // sem; o PIX do frete não conta) e os títulos da CAIXA achados para a
         // NF — o status sai de statusTitulos.js.

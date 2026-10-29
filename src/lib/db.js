@@ -597,14 +597,28 @@ export async function gravarIeDoCliente({ cnpj, ie, uf, origem }) {
 }
 
 // ---------------------------------------------------------------------------
-// Boletos (tela /boletos): status emitido/pendente marcado à mão e o nº da NF
-// quando corrigido na tela. Sem linha, o boleto está pendente e o nº é o da
-// nota em notas_processadas.
+// Boletos (tela /boletos): status emitido/pendente marcado à mão, o nº da NF
+// quando corrigido na tela e, se o pedido acabou pago com cartão ou PIX, a
+// forma (pago_com). Sem linha, o boleto está pendente e o nº é o da nota em
+// notas_processadas.
 // ---------------------------------------------------------------------------
 
-/** Mapa orderId -> { emitido, numero_nf, pdfs: [{ id, nome }] }, PDFs na ordem
- *  de envio. Lança erro se o Supabase falhar, pelo mesmo motivo de
- *  statusPorPedido: {} faria todo boleto parecer pendente. */
+const COLUNAS_BOLETO = 'shopify_order_id, emitido, numero_nf, pago_com';
+
+/** Formas aceitas em boletos.pago_com (null = boleto). */
+export const FORMAS_PAGO_COM = ['cartao', 'pix'];
+
+/** [{ id, nome, tipo }] -> { pdfs, comprovantes }, sem o tipo. */
+function separarArquivos(lista) {
+  const separados = { pdfs: [], comprovantes: [] };
+  for (const { id, nome, tipo } of lista) separados[tipo === 'comprovante' ? 'comprovantes' : 'pdfs'].push({ id, nome });
+  return separados;
+}
+
+/** Mapa orderId -> { emitido, numero_nf, pago_com, pdfs, comprovantes }, os
+ *  dois últimos [{ id, nome }] na ordem de envio. Lança erro se o Supabase
+ *  falhar, pelo mesmo motivo de statusPorPedido: {} faria todo boleto parecer
+ *  pendente. */
 export async function boletosPorPedido(orderIds) {
   const db = obterCliente();
   if (!db || orderIds.length === 0) return {};
@@ -617,28 +631,30 @@ export async function boletosPorPedido(orderIds) {
       return data ?? [];
     });
   const [linhas, pdfs] = await Promise.all([
-    Promise.all(
-      lotes.map((ids) => db.from('boletos').select('shopify_order_id, emitido, numero_nf').in('shopify_order_id', ids))
-    ).then(lerTudo),
+    Promise.all(lotes.map((ids) => db.from('boletos').select(COLUNAS_BOLETO).in('shopify_order_id', ids))).then(lerTudo),
     Promise.all(
       lotes.map((ids) =>
         db
           .from('boletos_pdfs')
-          .select('id, shopify_order_id, nome')
+          .select('id, shopify_order_id, nome, tipo')
           .in('shopify_order_id', ids)
           .order('criado_em', { ascending: true })
       )
     ).then(lerTudo),
   ]);
 
-  const mapa = Object.fromEntries(linhas.map((r) => [r.shopify_order_id, { ...r, pdfs: [] }]));
-  for (const p of pdfs) mapa[p.shopify_order_id]?.pdfs.push({ id: p.id, nome: p.nome });
-  return mapa;
+  return Object.fromEntries(
+    linhas.map((r) => [
+      r.shopify_order_id,
+      { ...r, ...separarArquivos(pdfs.filter((p) => p.shopify_order_id === r.shopify_order_id)) },
+    ])
+  );
 }
 
-/** Grava o status e/ou o nº da NF do boleto. Campo ausente fica como está;
+/** Grava o status, o nº da NF e/ou a forma em que foi pago (`pagoCom`:
+ *  'cartao', 'pix' ou null = boleto). Campo ausente fica como está;
  *  `numeroNf` vazio volta a valer o nº da nota no Tiny. */
-export async function salvarBoleto({ orderId, orderName, emitido, numeroNf }) {
+export async function salvarBoleto({ orderId, orderName, emitido, numeroNf, pagoCom }) {
   const db = obterCliente();
   if (!db) return SEM_CONFIG;
 
@@ -647,50 +663,61 @@ export async function salvarBoleto({ orderId, orderName, emitido, numeroNf }) {
     ...(orderName ? { shopify_order_name: orderName } : {}),
     ...(emitido !== undefined ? { emitido: !!emitido } : {}),
     ...(numeroNf !== undefined ? { numero_nf: String(numeroNf ?? '').trim() || null } : {}),
+    ...(pagoCom !== undefined ? { pago_com: pagoCom || null } : {}),
     atualizado_em: new Date().toISOString(),
   };
   const { data, error } = await db
     .from('boletos')
     .upsert(linha, { onConflict: 'shopify_order_id' })
-    .select('shopify_order_id, emitido, numero_nf')
+    .select(COLUNAS_BOLETO)
     .single();
   return error ? { ok: false, erro: error.message } : { ok: true, boleto: data };
 }
 
-// PDFs do boleto: um pedido pode ter vários (um por parcela, por exemplo).
-// Ficam no bucket privado BUCKET_BOLETOS do Supabase Storage, em
-// <id numérico do pedido>/<uuid>.pdf, com uma linha em boletos_pdfs cada.
+// Arquivos do boleto: um pedido pode ter vários PDFs de boleto (um por
+// parcela, por exemplo) e, se foi pago com cartão/PIX, os comprovantes (PDF
+// ou imagem). Ficam no bucket privado BUCKET_BOLETOS do Supabase Storage, em
+// <id numérico do pedido>/<uuid>.<extensão>, com uma linha em boletos_pdfs
+// cada; `tipo` diz se é boleto ou comprovante.
 const BUCKET_BOLETOS = 'boletos';
 
-/** Sobe mais um PDF do boleto e marca o boleto como emitido. */
-export async function salvarPdfBoleto({ orderId, orderName, nome, bytes }) {
+/** Sobe mais um arquivo do boleto. PDF de boleto marca o boleto como
+ *  emitido; comprovante (`tipo: 'comprovante'`) não mexe no status. */
+export async function salvarPdfBoleto({
+  orderId,
+  orderName,
+  nome,
+  bytes,
+  tipo = 'boleto',
+  contentType = 'application/pdf',
+  extensao = 'pdf',
+}) {
   const db = obterCliente();
   if (!db) return SEM_CONFIG;
 
-  const caminho = `${orderId.split('/').pop()}/${crypto.randomUUID()}.pdf`;
-  const { error: erroUpload } = await db.storage
-    .from(BUCKET_BOLETOS)
-    .upload(caminho, bytes, { contentType: 'application/pdf' });
-  if (erroUpload) return { ok: false, erro: `upload do PDF: ${erroUpload.message}` };
+  const caminho = `${orderId.split('/').pop()}/${crypto.randomUUID()}.${extensao}`;
+  const { error: erroUpload } = await db.storage.from(BUCKET_BOLETOS).upload(caminho, bytes, { contentType });
+  if (erroUpload) return { ok: false, erro: `upload do arquivo: ${erroUpload.message}` };
 
+  // A linha em boletos precisa existir (chave estrangeira de boletos_pdfs).
   const { data: boleto, error } = await db
     .from('boletos')
     .upsert(
       {
         shopify_order_id: orderId,
         ...(orderName ? { shopify_order_name: orderName } : {}),
-        emitido: true,
+        ...(tipo === 'boleto' ? { emitido: true } : {}),
         atualizado_em: new Date().toISOString(),
       },
       { onConflict: 'shopify_order_id' }
     )
-    .select('shopify_order_id, emitido, numero_nf')
+    .select(COLUNAS_BOLETO)
     .single();
   const { data: pdf, error: erroPdf } = error
     ? { data: null, error }
     : await db
         .from('boletos_pdfs')
-        .insert({ shopify_order_id: orderId, nome, path: caminho })
+        .insert({ shopify_order_id: orderId, nome, path: caminho, tipo })
         .select('id, nome')
         .single();
   if (erroPdf) {
@@ -701,26 +728,28 @@ export async function salvarPdfBoleto({ orderId, orderName, nome, bytes }) {
   return { ok: true, boleto, pdf };
 }
 
-/** PDFs do boleto, na ordem de envio: [{ id, nome }]. */
+/** Arquivos do boleto, na ordem de envio: { pdfs, comprovantes }, cada um
+ *  [{ id, nome }]. */
 export async function listarPdfsBoleto(orderId) {
   const db = obterCliente();
   if (!db) return SEM_CONFIG;
 
   const { data, error } = await db
     .from('boletos_pdfs')
-    .select('id, nome')
+    .select('id, nome, tipo')
     .eq('shopify_order_id', orderId)
     .order('criado_em', { ascending: true });
-  return error ? { ok: false, erro: error.message } : { ok: true, pdfs: data ?? [] };
+  return error ? { ok: false, erro: error.message } : { ok: true, ...separarArquivos(data ?? []) };
 }
 
-/** Link temporário (5 min) para abrir um PDF do boleto — `pdfId`, ou o
- *  primeiro enviado se ele faltar. */
+/** Link temporário (5 min) para abrir um arquivo do boleto (PDF ou
+ *  comprovante) — `pdfId`, ou o primeiro PDF de boleto se ele faltar. */
 export async function linkPdfBoleto(orderId, pdfId) {
   const db = obterCliente();
   if (!db) return SEM_CONFIG;
 
   let consulta = db.from('boletos_pdfs').select('path, nome').eq('shopify_order_id', orderId);
+  if (!pdfId) consulta = consulta.eq('tipo', 'boleto');
   consulta = pdfId ? consulta.eq('id', pdfId) : consulta.order('criado_em', { ascending: true }).limit(1);
   const { data: linha, error } = await consulta.maybeSingle();
   if (error) return { ok: false, erro: error.message };
@@ -730,7 +759,7 @@ export async function linkPdfBoleto(orderId, pdfId) {
   return erroLink ? { ok: false, erro: erroLink.message } : { ok: true, url: data.signedUrl, nome: linha.nome };
 }
 
-/** Remove um PDF do boleto (linha e arquivo). O status fica como está. */
+/** Remove um arquivo do boleto (linha e arquivo). O status fica como está. */
 export async function removerPdfBoleto(orderId, pdfId) {
   const db = obterCliente();
   if (!db) return SEM_CONFIG;

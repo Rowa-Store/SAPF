@@ -254,9 +254,13 @@ a.botao-link:hover { background: var(--realce); border-color: var(--tinta-fraca)
 .botao-pdf-destaque { border-color: var(--ok); color: var(--ok); background: var(--ok-fundo); }
 .botao-pdf-boleto { border-color: var(--celeste); color: var(--celeste); background: var(--celeste-fundo); cursor: pointer; }
 .botao-pdf-boleto:hover { background: var(--celeste-fundo); filter: brightness(1.2); }
-.botao-pdf-boleto.carregando { opacity: 0.6; cursor: progress; }
+.botao-pdf-boleto.carregando,
+.botao-pdf-comprovante.carregando { opacity: 0.6; cursor: progress; }
+.botao-pdf-comprovante { border-color: var(--ok); color: var(--ok); background: var(--ok-fundo); cursor: pointer; }
+.botao-pdf-comprovante:hover { filter: brightness(1.2); }
 .botao-pdf-trocar { font-size: 0.72rem; color: var(--tinta-fraca); cursor: pointer; }
 .botao-pdf-trocar:hover { color: var(--celeste); text-decoration: underline; }
+button.botao-pdf-trocar { background: none; border: none; padding: 0; font-weight: normal; }
 .input-arquivo-oculto { display: none; }
 .pdf-boleto { display: inline-flex; align-items: center; gap: 0.2rem; }
 .grupo-botoes { display: flex; gap: 0.6rem; flex-wrap: wrap; align-items: center; }

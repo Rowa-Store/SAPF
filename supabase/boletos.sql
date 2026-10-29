@@ -36,3 +36,11 @@ select shopify_order_id, coalesce(shopify_order_name, 'boleto') || '.pdf', pdf_p
 from boletos
 where pdf_path is not null
 on conflict (path) do nothing;
+
+-- Pedido de boleto que acabou pago com cartão ou PIX (botão "Trocar para
+-- cartão/PIX" da tela /boletos): pago_com null = boleto. O metafield do
+-- Shopify e a nota não mudam. Os comprovantes desse pagamento (PDF ou imagem)
+-- ficam em boletos_pdfs com tipo 'comprovante' e não marcam emitido.
+alter table boletos add column if not exists pago_com text check (pago_com in ('cartao', 'pix'));
+alter table boletos_pdfs add column if not exists tipo text not null default 'boleto'
+  check (tipo in ('boleto', 'comprovante'));

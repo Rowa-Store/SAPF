@@ -289,7 +289,7 @@ export function useBoletos() {
       }),
       'Não foi possível salvar o boleto.'
     );
-    atualizarLinha(b.id, { emitido: corpo.emitido, numeroNfEditado: corpo.numeroNfEditado });
+    atualizarLinha(b.id, { emitido: corpo.emitido, numeroNfEditado: corpo.numeroNfEditado, pagoCom: corpo.pagoCom });
     if (campos.numeroNf !== undefined) {
       // NF trocada: os títulos da NF antiga não valem mais; os da nova vêm no
       // próximo "Consultar boletos" (ou recarregando a lista).
@@ -309,6 +309,22 @@ export function useBoletos() {
     }
   }
 
+  /**
+   * Troca a forma em que o pedido foi pago: 'cartao', 'pix' ou null (volta a
+   * boleto). Só no SAPF — o Shopify e a nota ficam como estão. Troca já na
+   * tela e volta atrás se o servidor recusar.
+   */
+  async function alterarPagoCom(b, pagoCom) {
+    if (b.pagoCom === pagoCom) return;
+    atualizarLinha(b.id, { pagoCom });
+    try {
+      await gravar(b, { pagoCom });
+    } catch (e) {
+      atualizarLinha(b.id, { pagoCom: b.pagoCom });
+      definirErroLinha(b.id, e.message);
+    }
+  }
+
   /** Grava o nº digitado; lança o erro para a edição continuar aberta. */
   async function salvarNumeroNf(b, numeroNf) {
     try {
@@ -320,16 +336,18 @@ export function useBoletos() {
   }
 
   /**
-   * Sobe os PDFs do boleto, um por requisição (limite de corpo da Vercel); o
-   * servidor já marca como emitido. A linha é atualizada a cada arquivo, então
-   * um erro no meio não perde os que já subiram.
+   * Sobe os PDFs do boleto (ou, com `tipo` 'comprovante', os comprovantes do
+   * pagamento com cartão/PIX), um por requisição (limite de corpo da Vercel);
+   * PDF de boleto o servidor já marca como emitido. A linha é atualizada a
+   * cada arquivo, então um erro no meio não perde os que já subiram.
    */
-  async function enviarPdfs(b, arquivos) {
+  async function enviarPdfs(b, arquivos, tipo = 'boleto') {
     definirErroLinha(b.id, null);
     for (const arquivo of arquivos) {
       const form = new FormData();
       form.append('arquivo', arquivo);
       form.append('orderName', b.name);
+      form.append('tipo', tipo);
       try {
         const corpo = await lerJson(
           await fetch(`/api/boletos/${b.id}/pdf`, { method: 'POST', body: form }),
@@ -338,8 +356,10 @@ export function useBoletos() {
         atualizarLinha(b.id, {
           emitido: corpo.emitido,
           numeroNfEditado: corpo.numeroNfEditado,
+          pagoCom: corpo.pagoCom,
           pdfs: corpo.pdfs,
           temPdf: corpo.temPdf,
+          comprovantes: corpo.comprovantes,
         });
       } catch (e) {
         definirErroLinha(b.id, e.message);
@@ -348,7 +368,7 @@ export function useBoletos() {
     }
   }
 
-  /** Remove um PDF do boleto; o status fica como está. */
+  /** Remove um PDF do boleto ou um comprovante; o status fica como está. */
   async function removerPdf(b, pdf) {
     definirErroLinha(b.id, null);
     try {
@@ -356,14 +376,17 @@ export function useBoletos() {
         await fetch(`/api/boletos/${b.id}/pdf?pdf=${pdf.id}`, { method: 'DELETE' }),
         `Não foi possível remover "${pdf.nome}".`
       );
-      atualizarLinha(b.id, { pdfs: corpo.pdfs, temPdf: corpo.temPdf });
+      atualizarLinha(b.id, { pdfs: corpo.pdfs, temPdf: corpo.temPdf, comprovantes: corpo.comprovantes });
     } catch (e) {
       definirErroLinha(b.id, e.message);
     }
   }
 
-  // Pendente: nem marcado à mão, nem com título achado na CAIXA.
-  const visiveis = (boletos ?? []).filter((b) => !filtros.soPendentes || (!b.emitido && b.titulosCaixa.length === 0));
+  // Pendente: nem marcado à mão, nem com título achado na CAIXA, nem pago com
+  // cartão/PIX.
+  const visiveis = (boletos ?? []).filter(
+    (b) => !filtros.soPendentes || (!b.emitido && b.titulosCaixa.length === 0 && !b.pagoCom)
+  );
 
   return {
     boletos,
@@ -390,6 +413,7 @@ export function useBoletos() {
     paginaAnterior,
     alterarStatus,
     salvarNumeroNf,
+    alterarPagoCom,
     enviarPdfs,
     removerPdf,
     consultandoCaixa,
