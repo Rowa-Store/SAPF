@@ -333,9 +333,9 @@ const PAGO_COM = { cartao: 'Pago no cartão', pix: 'Pago com PIX' };
 
 /**
  * Status da linha. Boleto: o menu de status e um link para trocar a forma —
- * pedido que acabou pago com cartão ou PIX. Trocado: a marca da forma, os
- * comprovantes do pagamento e o link para voltar a boleto. A troca vale só
- * no SAPF (o Shopify e a nota ficam como estão).
+ * pedido que acabou pago com cartão ou PIX. Trocado: a marca da forma e o link
+ * para voltar a boleto; os comprovantes ocupam a coluna do boleto. A troca vale
+ * só no SAPF (o Shopify e a nota ficam como estão).
  */
 function StatusPagamento({ b, alterarStatus, alterarPagoCom, enviarPdfs, removerPdf }) {
   const [escolhendo, setEscolhendo] = useState(false);
@@ -387,7 +387,6 @@ function StatusPagamento({ b, alterarStatus, alterarPagoCom, enviarPdfs, remover
   return (
     <div className="pilha">
       <span className="marca marca-ok">{PAGO_COM[b.pagoCom]}</span>
-      <PdfsBoleto b={b} enviarPdfs={enviarPdfs} removerPdf={removerPdf} tipo="comprovante" />
       <button
         type="button"
         className="botao-pdf-trocar"
@@ -600,10 +599,14 @@ export default function ControleBoletos() {
                       <span className={`marca marca-${b.classificacao}`}>{b.classificacao}</span>
                     </td>
                     <td>
-                      <div className="pilha">
-                        <TitulosCaixa titulos={b.titulosCaixa} />
-                        <PdfsBoleto b={b} enviarPdfs={enviarPdfs} removerPdf={removerPdf} />
-                      </div>
+                      {b.pagoCom ? (
+                        <PdfsBoleto b={b} enviarPdfs={enviarPdfs} removerPdf={removerPdf} tipo="comprovante" />
+                      ) : (
+                        <div className="pilha">
+                          <TitulosCaixa titulos={b.titulosCaixa} />
+                          <PdfsBoleto b={b} enviarPdfs={enviarPdfs} removerPdf={removerPdf} />
+                        </div>
+                      )}
                     </td>
                     <td>
                       <div className="pilha">
