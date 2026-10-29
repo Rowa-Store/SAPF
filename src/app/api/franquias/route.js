@@ -3,6 +3,8 @@
 //   - GET  lista todos, ativos ou não, com a transportadora e a IE de cada um.
 //   - POST inclui um cliente.
 //   - PUT  edita um cliente: { cnpjOriginal, ...campos }. O CNPJ não muda.
+//   - DELETE exclui um cliente: { cnpj } (como está gravado). Os pedidos dele
+//          voltam a ser atacado; a IE e a transportadora do CNPJ ficam.
 //
 // POST e PUT aceitam também `ie` (gravada em clientes_ie, a que a nota usa) e
 // `transportadoraId` (anexo em clientes_transportadora; null = Correios).
@@ -15,6 +17,7 @@ import {
   atualizarFranquia,
   criarFranquia,
   desanexarClienteTransportadora,
+  excluirFranquia,
   gravarIeDoCliente,
   ieDoCliente,
   listarFranquias,
@@ -60,6 +63,15 @@ export async function PUT(request) {
   const resultado = await atualizarFranquia(corpo.cnpjOriginal, lido.dados);
   if (!resultado.ok) return erroJson(`Não foi possível salvar: ${resultado.erro}`, resultado.naoEncontrada ? 404 : 502);
   return responderComVinculos(resultado.franquia, lido, 200);
+}
+
+export async function DELETE(request) {
+  const corpo = await request.json().catch(() => null);
+  if (!corpo?.cnpj) return erroJson('Informe qual cliente excluir (cnpj).', 400);
+
+  const resultado = await excluirFranquia(corpo.cnpj);
+  if (!resultado.ok) return erroJson(`Não foi possível excluir: ${resultado.erro}`, resultado.naoEncontrada ? 404 : 502);
+  return Response.json({ ok: true });
 }
 
 /** Grava a IE e a transportadora depois do cadastro. Se uma delas falhar, o

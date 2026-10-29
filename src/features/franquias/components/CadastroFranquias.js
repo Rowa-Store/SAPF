@@ -68,8 +68,8 @@ function CampoTexto({ dados, atualizarCampo, campo, rotulo, dica, largo, tipo, i
   );
 }
 
-function FormularioFranquia({ formulario, transportadoras, atualizarCampo, salvar, fechar }) {
-  const { dados, salvando, erro, cnpjOriginal, transportadoraAtual } = formulario;
+function FormularioFranquia({ formulario, transportadoras, atualizarCampo, salvar, pedirExclusao, excluir, fechar }) {
+  const { dados, salvando, erro, cnpjOriginal, transportadoraAtual, confirmandoExclusao, excluindo } = formulario;
   const editando = !!cnpjOriginal;
 
   // Ativas para escolher. A atual entra sempre — mesmo inativa ou se a lista
@@ -174,11 +174,33 @@ function FormularioFranquia({ formulario, transportadoras, atualizarCampo, salva
           <p style={{ margin: 0 }}>{erro}</p>
         </div>
       )}
+      {confirmandoExclusao && (
+        <div className="aviso">
+          <p style={{ margin: 0 }}>
+            <strong>Excluir o cadastro de {dados.apelido || dados.razao_social || formatarCnpj(cnpjOriginal)}?</strong>{' '}
+            Os próximos pedidos deste CNPJ passam a ser tratados como atacado, e os dados cadastrais e o markup se
+            perdem. A IE e a transportadora do CNPJ continuam valendo. Os rascunhos já enviados ao Tiny não mudam.
+          </p>
+          <div className="grupo-botoes" style={{ marginTop: '0.6rem' }}>
+            <button type="button" className="perigo pequeno" onClick={excluir} disabled={excluindo}>
+              {excluindo ? 'Excluindo…' : 'Excluir de vez'}
+            </button>
+            <button type="button" className="secundario pequeno" onClick={() => pedirExclusao(false)} disabled={excluindo}>
+              Manter o cadastro
+            </button>
+          </div>
+        </div>
+      )}
       <div className="rodape-modal">
+        {editando && !confirmandoExclusao && (
+          <button type="button" className="secundario perigo-texto" style={{ marginRight: 'auto' }} onClick={() => pedirExclusao(true)}>
+            Excluir cadastro
+          </button>
+        )}
         <button type="button" className="secundario" onClick={fechar}>
           Cancelar
         </button>
-        <button type="submit" disabled={salvando || (!editando && !dados.cnpj.trim())}>
+        <button type="submit" disabled={salvando || excluindo || confirmandoExclusao || (!editando && !dados.cnpj.trim())}>
           {salvando ? 'Salvando…' : editando ? 'Salvar alterações' : 'Cadastrar'}
         </button>
       </div>
@@ -211,6 +233,8 @@ export default function CadastroFranquias() {
     abrirEdicao,
     atualizarCampo,
     salvar,
+    pedirExclusao,
+    excluir,
     fecharFormulario,
   } = useFranquias();
 
@@ -346,6 +370,8 @@ export default function CadastroFranquias() {
             transportadoras={transportadoras}
             atualizarCampo={atualizarCampo}
             salvar={salvar}
+            pedirExclusao={pedirExclusao}
+            excluir={excluir}
             fechar={fecharFormulario}
           />
         )}

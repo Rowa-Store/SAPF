@@ -52,7 +52,8 @@ export function useFranquias() {
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
   const [busca, setBusca] = useState('');
-  // { dados, cnpjOriginal e transportadoraAtual (só na edição), salvando, erro }
+  // { dados, cnpjOriginal e transportadoraAtual (só na edição), salvando,
+  //   confirmandoExclusao, excluindo, erro }
   const [formulario, setFormulario] = useState(null);
 
   const carregar = useCallback(async () => {
@@ -140,6 +141,29 @@ export function useFranquias() {
     }
   }
 
+  function pedirExclusao(confirmando) {
+    setFormulario((atual) => ({ ...atual, confirmandoExclusao: confirmando, erro: null }));
+  }
+
+  async function excluir() {
+    const { cnpjOriginal, dados } = formulario;
+    setFormulario((atual) => ({ ...atual, excluindo: true, erro: null }));
+    try {
+      const resposta = await fetch('/api/franquias', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cnpj: cnpjOriginal }),
+      });
+      const corpo = await resposta.json().catch(() => ({}));
+      if (!resposta.ok) throw new Error(corpo.erro ?? 'Falha ao excluir');
+      setFormulario(null);
+      setFranquias((atual) => (atual ?? []).filter((f) => f.cnpj !== cnpjOriginal));
+      setAviso(`Cadastro de ${dados.apelido || dados.razao_social || cnpjOriginal} excluído — os pedidos dele voltam a ser atacado.`);
+    } catch (e) {
+      setFormulario((atual) => ({ ...atual, excluindo: false, erro: e.message }));
+    }
+  }
+
   return {
     franquias,
     filtradas,
@@ -154,6 +178,8 @@ export function useFranquias() {
     abrirEdicao,
     atualizarCampo,
     salvar,
+    pedirExclusao,
+    excluir,
     fecharFormulario: () => setFormulario(null),
   };
 }

@@ -434,6 +434,20 @@ export async function atualizarFranquia(cnpj, dados) {
   return { ok: true, franquia: data };
 }
 
+/** Tira o cliente da lista de franquias: os próximos pedidos dele voltam a
+ *  ser atacado. `cnpj` é a chave exatamente como está gravada. A IE
+ *  (clientes_ie) e a transportadora (clientes_transportadora) ficam — são do
+ *  CNPJ, e valem para o atacado também. */
+export async function excluirFranquia(cnpj) {
+  const db = obterCliente();
+  if (!db) return SEM_CONFIG;
+
+  const { data, error } = await db.from(TABELA_FRANQUIAS).delete().eq('cnpj', cnpj).select('cnpj');
+  if (error) return { ok: false, erro: error.message };
+  if (!data?.length) return { ok: false, erro: 'Cliente não encontrado.', naoEncontrada: true };
+  return { ok: true };
+}
+
 /** Ping usado pelo /api/saude. */
 export async function verificarSupabase() {
   const db = obterCliente();

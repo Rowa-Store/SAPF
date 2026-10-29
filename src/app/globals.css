@@ -188,6 +188,10 @@ button {
 button:disabled { background: var(--papel-alt); border-color: var(--linha); color: var(--tinta-fraca); cursor: not-allowed; font-weight: 500; }
 button.secundario { background: transparent; border-color: var(--linha); color: var(--tinta); font-weight: 500; }
 button.secundario:hover:not(:disabled) { background: var(--realce); border-color: var(--tinta-fraca); }
+button.perigo { background: var(--alerta); border-color: var(--alerta); color: #fff; }
+button.perigo:hover:not(:disabled) { filter: brightness(1.1); }
+button.secundario.perigo-texto { color: var(--alerta); }
+button.secundario.perigo-texto:hover:not(:disabled) { background: var(--alerta-fundo); border-color: var(--alerta); }
 /* <label> com <input type="file"> escondido, com cara de button.secundario. */
 .texto-quebra { white-space: pre-line; }
 .ajuda-extensao { margin: 0 0 1rem; font-size: 0.85rem; color: var(--tinta-fraca); }
