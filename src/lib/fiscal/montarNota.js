@@ -7,7 +7,7 @@
 
 import { dataBr, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
 import { extrairCnpj } from './classificacao.js';
-import { CAMPO_DESCONTO_TINY, montarDesconto } from './desconto.js';
+import { CAMPO_DESCONTO_TINY, comDesconto, descontoComMeiaNota, ehMeiaNota, montarDesconto } from './desconto.js';
 import { ehAcessorio, markupDoItem, markupPadrao, valorComMarkup } from './markup.js';
 import { montarPagamento } from './pagamento.js';
 import { TRANSPORTE_PADRAO, quantidadeDeVolumes } from './transporte.js';
@@ -23,11 +23,12 @@ import { TRANSPORTE_PADRAO, quantidadeDeVolumes } from './transporte.js';
  *   vestuário (ver markup.js). `transporte` troca o bloco de transporte
  *   padrão (Correios) — é o da transportadora anexada ao cliente, lido pela
  *   rota do preview (ver transporteDaTransportadora em transporte.js).
- * @returns {{ payload: object, alertas: string[], markup: number|object, precosVarejo: number[], acessorios: boolean[] }}
+ * @returns {{ payload: object, alertas: string[], markup: number|object, precosVarejo: number[], acessorios: boolean[], meiaNota: boolean, descontoPedido: number }}
  *   `precosVarejo` é o preço do Shopify de cada item e `acessorios` diz se ele
  *   é acessório, na mesma ordem de `itens` — ficam FORA do payload (o Tiny não
  *   conhece os campos) e servem para a tela recalcular os itens quando alguém
- *   troca o markup.
+ *   troca o markup. `meiaNota` e `descontoPedido` (o desconto do Shopify, sem
+ *   a metade) servem para a tela refazer o desconto da meia nota.
  */
 
 /**
@@ -179,11 +180,10 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
   // Desconto em dinheiro do pedido (metafield `desconto`) — abate o total da
   // nota, por isso vem antes do pagamento: as parcelas da franquia têm que
   // somar o que o cliente realmente vai pagar, não o total cheio dos itens.
-  const {
-    desconto,
-    valor: valorDesconto,
-    alertas: alertasDesconto,
-  } = montarDesconto({ desconto: opcoes.desconto, total: totalItens });
+  const { valor: descontoPedido, alertas: alertasDesconto } = montarDesconto({
+    desconto: opcoes.desconto,
+    total: totalItens,
+  });
   alertas.push(...alertasDesconto);
 
   // Frete: o que o cliente pagou de frete no Shopify. `valor_frete` é do mesmo
@@ -192,6 +192,16 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
   // Vem antes do pagamento: as parcelas fecham no total da nota, com frete.
   const valorFrete = Number(pedidoShopify.currentShippingPriceSet?.shopMoney?.amount ?? 0);
   const frete = valorFrete > 0 ? { valor_frete: valorMonetario(valorFrete) } : {};
+
+  // Cliente de meia nota: metade do líquido entra como desconto a mais (ver
+  // desconto.js). As parcelas, logo abaixo, fecham na metade que sobra.
+  const meiaNota = ehMeiaNota(cnpj);
+  const valorDesconto = descontoComMeiaNota({
+    desconto: descontoPedido,
+    totalItens,
+    frete: valorFrete,
+    meiaNota,
+  });
 
   const { pagamento, alertas: alertasPagamento } = montarPagamento({
     classificacao,
@@ -219,7 +229,7 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
       data_emissao: dataBr(pedidoShopify.createdAt),
       numero_pedido_ecommerce: String(pedidoShopify.name ?? '').replace('#', ''),
       // valor_desconto: só aparece quando há desconto — ver desconto.js.
-      ...desconto,
+      ...comDesconto({}, valorDesconto),
       // forma_pagamento só existe quando o pagamento é boleto ou PIX (+ parcelas,
       // quando é franquia); nos demais casos não entra nada aqui.
       ...pagamento,
@@ -247,7 +257,7 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
     },
   };
 
-  return { payload, alertas, markup, precosVarejo, acessorios };
+  return { payload, alertas, markup, precosVarejo, acessorios, meiaNota, descontoPedido };
 }
 
 /** Soma dos itens da nota, para conferência visual na tela do rascunho. */

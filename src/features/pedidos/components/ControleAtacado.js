@@ -291,6 +291,7 @@ export default function ControleAtacado() {
                           <div className="pilha">
                             <span className={`marca marca-${p.classificacao}`}>{p.classificacao}</span>
                             {p.acessorio && <span className="marca marca-acessorio">acessórios</span>}
+                            {p.meiaNota && <span className="marca marca-meia-nota">meia nota</span>}
                           </div>
                         </td>
                         <td>

@@ -20,6 +20,9 @@
   --ok-fundo: rgba(52, 211, 153, 0.14);
   --amarelo: #f5c84c;
   --amarelo-fundo: rgba(245, 200, 76, 0.14);
+  /* Laranja vivo, distinto do --alerta (salmão dos erros). */
+  --laranja: #ff9f1c;
+  --laranja-fundo: rgba(255, 159, 28, 0.14);
   /* Azul de verdade — o --azul acima é o acento verde-menta. */
   --celeste: #6cb4ff;
   --celeste-fundo: rgba(108, 180, 255, 0.14);
@@ -134,6 +137,7 @@ tbody tr.linha-saindo { opacity: 0; background: var(--alerta-fundo); transition:
 .marca-franquia { border-color: var(--roxo); color: var(--roxo); background: rgba(181, 146, 246, 0.14); }
 .marca-outro { border-color: var(--linha); color: var(--tinta-fraca); }
 .marca-acessorio { border-color: var(--amarelo); color: var(--amarelo); background: var(--amarelo-fundo); }
+.marca-meia-nota { border-color: var(--laranja); color: var(--laranja); background: var(--laranja-fundo); }
 .marca-erro { border-color: var(--alerta); color: var(--alerta); background: var(--alerta-fundo); }
 .marca-ok { border-color: var(--ok); color: var(--ok); background: var(--ok-fundo); }
 /* Marca que abre um detalhe (ex.: "erro no Tiny" abre o erro guardado). */

@@ -62,6 +62,10 @@ export default function IncluirRascunho({ params }) {
     itensDaPagina,
     totalNota,
     totalComDesconto,
+    totalCheio,
+    descontoPedido,
+    valorDesconto,
+    meiaNota,
     totalShopify,
     totalDivergente,
     itensForamEditados,
@@ -189,7 +193,8 @@ export default function IncluirRascunho({ params }) {
         <span className={`marca marca-${dados.classificacao}`}>{dados.classificacao}</span>{' '}
         {ORIGENS_COM_ACESSORIO.includes(dados.markupOrigem) && (
           <span className="marca marca-acessorio">acessórios</span>
-        )}
+        )}{' '}
+        {meiaNota && <span className="marca marca-meia-nota">meia nota</span>}
       </h2>
 
       {dados.notaEmitida ? (
@@ -588,9 +593,14 @@ export default function IncluirRascunho({ params }) {
         {/* Desconto do metafield `desconto` do Shopify, já convertido em
             número e abatido do total pelo Tiny — ver desconto.js. */}
         <div>
-          Desconto: {formatarMoeda(dados.pedido.valorDesconto ?? 0)}
+          Desconto: {formatarMoeda(valorDesconto)}
+          {meiaNota && (
+            <span style={{ color: 'var(--laranja)', marginLeft: '0.5rem' }}>
+              ({formatarMoeda(descontoPedido)} do Shopify + {formatarMoeda(valorDesconto - descontoPedido)} da meia nota)
+            </span>
+          )}
           <span style={{ color: 'var(--tinta-fraca)', marginLeft: '0.75rem' }}>
-            (total com desconto: {formatarMoeda(totalNota - Number(dados.pedido.valorDesconto ?? 0))})
+            (total final, com frete: {formatarMoeda(totalComDesconto)})
           </span>
         </div>
         <div>Método de pagamento (Shopify): {dados.pedido.metodoPagamento}</div>
@@ -649,10 +659,11 @@ export default function IncluirRascunho({ params }) {
         <ComparacaoTotais
           nota={{
             subtotal: totalNota,
-            desconto: Number(dados.pedido.valorDesconto ?? 0),
+            // Sem a metade da meia nota: o Shopify tem o pedido cheio.
+            desconto: descontoPedido,
             frete: Number(dados.pedido.valorFrete ?? 0),
             formaFrete: notaFiscalNaTela?.forma_frete ?? '',
-            total: totalComDesconto,
+            total: totalCheio,
           }}
           shopify={dados.pedido.resumoShopify}
         />

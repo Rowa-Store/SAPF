@@ -244,7 +244,7 @@ export async function GET(request, { params }) {
     }
 
     // 4. Nota montada a partir do pedido.
-    const { payload, alertas: alertasNota, markup, precosVarejo, acessorios } = montarNotaAtacado(pedido, classificacao, {
+    const { payload, alertas: alertasNota, markup, precosVarejo, acessorios, meiaNota, descontoPedido: valorDescontoPedido } = montarNotaAtacado(pedido, classificacao, {
       volumes: volumePedido,
       metodoPagamento: metodoPagamento,
       desconto: descontoPedido,
@@ -307,6 +307,8 @@ export async function GET(request, { params }) {
         volumePedido: volumePedido,
         // O que a tela mostra é o desconto que entrou na nota, não o texto cru.
         valorDesconto: descontoDaNota(payload),
+        // Desconto do Shopify sozinho, sem a metade da meia nota.
+        descontoPedido: valorDescontoPedido,
         resumoShopify: resumoDoShopify(pedido),
       },
       classificacao,
@@ -322,6 +324,9 @@ export async function GET(request, { params }) {
       // (acessórios + vestuário com o padrão de franquia / com o do cadastro)
       // ou 'classificacao' — a tela usa para dizer de quem é o padrão.
       markupOrigem,
+      // Cliente de meia nota: metade do líquido vai como desconto (ver
+      // desconto.js) — a tela refaz essa metade quando os itens mudam.
+      meiaNota,
       precosVarejo,
       acessorios,
       // Transportadora que entrou na nota (do metafield ou anexada ao

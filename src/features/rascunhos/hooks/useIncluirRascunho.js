@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
+import { comDesconto, descontoComMeiaNota } from '@/lib/fiscal/desconto';
 import { ehMarkupHibrido, lerDescontoExtra, lerMarkup, markupDoItem, valorComMarkup } from '@/lib/fiscal/markup';
 import { recalcularParcelas } from '@/lib/fiscal/pagamento';
 import { trocarTransporte } from '@/lib/fiscal/transporte';
@@ -163,10 +164,12 @@ export function useIncluirRascunho(id) {
       const notaFiscal = transporte
         ? trocarTransporte(dados.payload.nota_fiscal, transporte.bloco)
         : dados.payload.nota_fiscal;
+      // Meia nota: a metade depende do total dos itens, então o desconto
+      // também é refeito (ver desconto.js).
       const payload = {
         nota_fiscal: recalcularParcelas(
           {
-            ...notaFiscal,
+            ...comDesconto(notaFiscal, valorDesconto),
             cliente: clienteEditado,
             itens: itensEditados.map((it) => ({
               item: {
@@ -247,14 +250,17 @@ export function useIncluirRascunho(id) {
   const totalNota = carregado
     ? itensEditados.reduce((soma, it) => soma + Number(it.valor_unitario || 0) * Number(it.quantidade || 0), 0)
     : 0;
-  // O Tiny fecha a nota em itens + frete − desconto; é esse valor que precisa
-  // bater com o total do pedido no Shopify. Diferença de até 1 centavo é
-  // arredondamento e não conta.
+  // O Tiny fecha a nota em itens + frete − desconto; antes da metade da meia
+  // nota, é esse valor que precisa bater com o total do pedido no Shopify.
+  // Diferença de até 1 centavo é arredondamento e não conta.
   const totalShopify = dados?.pedido?.resumoShopify?.total;
-  const totalComDesconto = carregado
-    ? totalNota + Number(dados.pedido.valorFrete ?? 0) - Number(dados.pedido.valorDesconto ?? 0)
-    : 0;
-  const totalDivergente = carregado && totalShopify != null && Math.abs(totalComDesconto - totalShopify) > 0.01;
+  const meiaNota = Boolean(dados?.meiaNota);
+  const frete = carregado ? Number(dados.pedido.valorFrete ?? 0) : 0;
+  const descontoPedido = carregado ? Number(dados.pedido.descontoPedido ?? dados.pedido.valorDesconto ?? 0) : 0;
+  const valorDesconto = descontoComMeiaNota({ desconto: descontoPedido, totalItens: totalNota, frete, meiaNota });
+  const totalCheio = totalNota + frete - descontoPedido;
+  const totalComDesconto = carregado ? totalNota + frete - valorDesconto : 0;
+  const totalDivergente = carregado && totalShopify != null && Math.abs(totalCheio - totalShopify) > 0.01;
   // Escolher o transporte à mão resolve o metafield que não casou com o cadastro.
   const transporteBloqueado = transporte ? null : (dados?.transporteBloqueado ?? null);
   const notaFiscalNaTela =
@@ -285,6 +291,10 @@ export function useIncluirRascunho(id) {
     itensDaPagina,
     totalNota,
     totalComDesconto,
+    totalCheio,
+    descontoPedido,
+    valorDesconto,
+    meiaNota,
     totalShopify,
     totalDivergente,
     itensForamEditados,

@@ -13,6 +13,7 @@ import { listarPedidosDoDia, listarPedidosRecentes, tiposDosItens } from '@/lib/
 import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
 import { classificarComListaFranquia, extrairCnpj } from '@/lib/fiscal/classificacao';
 import { ehAcessorio } from '@/lib/fiscal/markup';
+import { ehMeiaNota } from '@/lib/fiscal/desconto';
 import { statusPorPedido, listarCnpjsFranquia, pedidosPorNfOuCnpj, listarTransportadoras } from '@/lib/db';
 import { problemaDoTransporte, resolverTransporte } from '@/lib/fiscal/transporte';
 import { ITENS_POR_PAGINA } from '@/lib/constants';
@@ -141,6 +142,8 @@ export async function GET(request) {
         // Franquia com acessório em algum item: esses itens saem com markup
         // 2,0 (ver markup.js) — a lista marca esses pedidos.
         acessorio: classificacao === 'franquia' && temAcessorio(p),
+        // Cliente que sai com meia nota (ver desconto.js).
+        meiaNota: ehMeiaNota(cnpj),
         cnpj: cnpj,
         origemCnpj: origem,
         status: situacao?.status ?? null,

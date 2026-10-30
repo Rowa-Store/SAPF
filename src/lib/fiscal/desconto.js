@@ -100,3 +100,39 @@ export function montarDesconto({ desconto, total = 0 }) {
     alertas,
   };
 }
+
+// ── Meia nota ────────────────────────────────────────────────────────────────
+// Clientes combinados para sair com MEIA NOTA: o total líquido da nota (itens
+// + frete − desconto do Shopify) é dividido por 2, e uma das metades entra
+// como desconto a mais no Tiny — a nota fecha na outra metade. Lista fixa
+// porque é acordo com um cliente específico, não cadastro.
+const CNPJS_MEIA_NOTA = new Set([
+  '60617401000206', // PARAIBA COMERCIO LTDA
+]);
+
+/** O cliente deste CNPJ (só dígitos) sai com meia nota? */
+export function ehMeiaNota(cnpj) {
+  return CNPJS_MEIA_NOTA.has(String(cnpj ?? ''));
+}
+
+/**
+ * Desconto total da nota, já com a metade da meia nota quando é o caso.
+ *
+ * @param {object} opcoes
+ * @param {number} opcoes.desconto desconto do Shopify, já em número
+ * @param {number} opcoes.totalItens soma dos itens da nota
+ * @param {number} [opcoes.frete]
+ * @param {boolean} opcoes.meiaNota
+ * @returns {number}
+ */
+export function descontoComMeiaNota({ desconto, totalItens, frete = 0, meiaNota }) {
+  if (!meiaNota) return desconto;
+  const liquido = Math.max(0, totalItens + frete - desconto);
+  return Number((desconto + liquido / 2).toFixed(2));
+}
+
+/** Grava o desconto em `nota_fiscal` no formato do Tiny — zero tira o campo. */
+export function comDesconto(notaFiscal, valor) {
+  const { [CAMPO_DESCONTO_TINY]: _anterior, ...resto } = notaFiscal;
+  return valor > 0 ? { ...resto, [CAMPO_DESCONTO_TINY]: valorMonetario(valor) } : resto;
+}
