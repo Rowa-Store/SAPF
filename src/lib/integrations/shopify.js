@@ -107,6 +107,7 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
     pageInfo { hasNextPage endCursor }
     nodes {
       id name createdAt tags
+      events(first: 5, sortKey: CREATED_AT) { nodes { message ... on BasicEvent { action } } }
       currentTotalPriceSet { shopMoney { amount } }
       note
       customAttributes { key value }
@@ -123,9 +124,27 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
 }`;
 
 // Mesma regra do alerta de atacado (hub-rowa, webhook shopify/atacado): só
-// entra pedido criado a partir de pedido rascunho. Compra da loja online com
-// CNPJ no checkout não é atacado.
+// entra pedido criado a partir de pedido rascunho e convertido por alguém da
+// staff de atacado. Compra da loja online com CNPJ no checkout não é atacado,
+// nem rascunho virado por outra equipe (troca do SAC, por exemplo).
 const FILTRO_BASE = 'financial_status:paid AND source_name:shopify_draft_order';
+
+/** Usuários do Shopify que viram pedido de atacado — manter igual a STAFF_ATACADO do hub-rowa. */
+const STAFF_ATACADO = ['Michelle Kimura', 'Nicole Schneider', 'Joadson Nascimento Santos'].map((n) => n.toLowerCase());
+
+/**
+ * Quem converteu o rascunho em pedido, lido do evento "placed" da timeline
+ * ("Fulano created this order for X from draft order #D123."). O campo
+ * staffMember exige escopo read_users + plano Plus/Advanced.
+ */
+function convertidoPor(pedido) {
+  const placed = (pedido.events?.nodes ?? []).find((e) => e.action === 'placed');
+  return placed?.message.match(/^(.+?) created this order\b/)?.[1]?.trim() ?? null;
+}
+
+function viradoPeloAtacado(pedido) {
+  return STAFF_ATACADO.includes(convertidoPor(pedido._bruto)?.toLowerCase());
+}
 
 /** Aspas para a sintaxe de busca do Shopify (termos com espaço, "#", etc.). */
 function entreAspas(termo) {
@@ -156,8 +175,16 @@ function montarBusca({ termos = [], nomes = [], periodo = null }) {
  * Uma página da lista de pedidos da tela de atacado, mais recentes primeiro.
  * Paginada por cursor no próprio Shopify: pedir tudo de uma vez (com os
  * metafields de cada cliente) deixava a consulta pesada e a tela lenta.
+ * O filtro da staff de atacado é aplicado aqui — o Shopify não busca por quem
+ * converteu —, então uma página pode vir com menos pedidos que o `limite`.
  */
-export async function listarPedidosRecentes({ limite = 50, cursor = null, termos, nomes, periodo } = {}) {
+export async function listarPedidosRecentes(opcoes) {
+  const pagina = await paginaDePedidos(opcoes);
+  return { ...pagina, pedidos: pagina.pedidos.filter(viradoPeloAtacado) };
+}
+
+/** Página do Shopify sem o filtro da staff de atacado. */
+async function paginaDePedidos({ limite = 50, cursor = null, termos, nomes, periodo } = {}) {
   const dados = await shopifyGraphQL(QUERY_PEDIDOS_RECENTES, {
     limite,
     cursor,
@@ -276,9 +303,13 @@ export async function listarPedidosDoDia({ periodo, limitePorPagina = 50 }) {
   const pedidos = [];
   let cursor = null;
   for (let pagina = 0; pagina < MAXIMO_PAGINAS_DO_DIA; pagina += 1) {
-    const resultado = await listarPedidosRecentes({ limite: limitePorPagina, cursor, periodo });
+    // Página sem o filtro da staff: o fim do dia se acha pelo último pedido
+    // da página, seja de quem for.
+    const resultado = await paginaDePedidos({ limite: limitePorPagina, cursor, periodo });
     const criados = resultado.pedidos.map((p) => ({ p, em: Date.parse(p.createdAt) }));
-    pedidos.push(...criados.filter(({ em }) => em >= inicio && em < fim).map(({ p }) => p));
+    pedidos.push(
+      ...criados.filter(({ p, em }) => em >= inicio && em < fim && viradoPeloAtacado(p)).map(({ p }) => p)
+    );
 
     const passouDoDia = criados.length > 0 && criados[criados.length - 1].em < inicio;
     if (!resultado.pageInfo.hasNextPage || passouDoDia) return { pedidos, completo: true };
