@@ -51,3 +51,8 @@ test('recalcularParcelas sem PIX soma o frete nos boletos', () => {
   const nota = recalcularParcelas({ ...pagamento, valor_frete: '50.00' }, 850);
   assert.equal(soma(nota.parcelas), 90000);
 });
+
+test('cliente que paga só por PIX: nota como PIX, sem parcelas, mesmo com boleto no Shopify', () => {
+  const { pagamento } = montarPagamento({ ...base, classificacao: 'franquia', metodoPagamento: 'Boleto', total: 31159.7, frete: 0, cnpj: '58354360000171' });
+  assert.deepEqual(pagamento, { forma_pagamento: 'pix' });
+});

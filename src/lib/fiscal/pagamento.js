@@ -87,6 +87,19 @@ export const ATACADO_PRAZO_BOLETO = 30;
 /** `obs` da parcela do frete pago por PIX — é por ela que se sabe que não é boleto. */
 export const OBS_PARCELA_FRETE_PIX = 'Frete via PIX';
 
+// Clientes que pagam sempre por PIX, seja qual for o metafield do Shopify
+// (que chega como "Boleto" para eles): a nota vai como `pix`, sem parcelas, e
+// o pedido não entra na tela de boletos. Lista fixa porque é acordo com um
+// cliente específico, não cadastro — como a meia nota em desconto.js.
+const CNPJS_SO_PIX = new Set([
+  '58354360000171', // MVLNX LTDA
+]);
+
+/** O cliente deste CNPJ (só dígitos) paga sempre por PIX? */
+export function pagaSoPix(cnpj) {
+  return CNPJS_SO_PIX.has(String(cnpj ?? ''));
+}
+
 /** A parcela é a do frete pago por PIX (não vira boleto). */
 export function ehParcelaDoFretePix(item) {
   return item?.parcela?.obs === OBS_PARCELA_FRETE_PIX;
@@ -221,12 +234,17 @@ function pagamentoParcelado(parcelas) {
  * @param {string} [opcoes.dataBaseIso] data de emissão (createdAt do pedido)
  * @param {number} [opcoes.total] total dos itens da nota, já sem o desconto
  * @param {number} [opcoes.frete] valor do frete da nota
+ * @param {string} [opcoes.cnpj] CNPJ do cliente (só dígitos) — ver CNPJS_SO_PIX
  * @returns {{ pagamento: object, alertas: string[] }} `pagamento` já pronto
  *   para entrar em `nota_fiscal` — vem vazio sempre que o pagamento não é
  *   boleto nem PIX, porque só esses dois são enviados ao Tiny.
  */
-export function montarPagamento({ classificacao, metodoPagamento, dataBaseIso, total = 0, frete = 0 }) {
+export function montarPagamento({ classificacao, metodoPagamento, dataBaseIso, total = 0, frete = 0, cnpj }) {
   const alertas = [];
+  if (pagaSoPix(cnpj)) {
+    alertas.push('Cliente paga sempre por PIX: a nota vai como PIX, sem parcelas.');
+    return { pagamento: { forma_pagamento: FORMA_PIX }, alertas };
+  }
   const forma = formaDePagamentoTiny(metodoPagamento);
   const fretePix = forma === FORMA_BOLETO && boletoComPix(metodoPagamento) && frete > 0 ? frete : 0;
 

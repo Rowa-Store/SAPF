@@ -17,7 +17,7 @@
 import { listarPedidosDoDia, listarPedidosRecentes, metodosDePagamento } from '@/lib/integrations/shopify';
 import { diaValido, hoje, intervaloDoDia } from '@/lib/datas';
 import { classificarComListaFranquia, extrairCnpj } from '@/lib/fiscal/classificacao';
-import { FORMA_BOLETO, ehParcelaDoFretePix, formaDePagamentoTiny } from '@/lib/fiscal/pagamento';
+import { FORMA_BOLETO, ehParcelaDoFretePix, formaDePagamentoTiny, pagaSoPix } from '@/lib/fiscal/pagamento';
 import { obterSituacaoNota } from '@/lib/integrations/tiny';
 import {
   atualizarNotaEmitida,
@@ -109,7 +109,9 @@ export async function GET(request) {
       pedidos.map((p) => p.id),
       Object.fromEntries(pedidos.map((p) => [p.id, p._bruto.customAttributes]))
     );
-    const ehBoleto = (p) => formaDePagamentoTiny(metodos[p.id]) === FORMA_BOLETO;
+    // Cliente que paga sempre por PIX não tem boleto, mesmo com "Boleto" no Shopify.
+    const ehBoleto = (p) =>
+      formaDePagamentoTiny(metodos[p.id]) === FORMA_BOLETO && !pagaSoPix(extrairCnpj(p._bruto).cnpj);
     const comBoleto = todasAsFormas ? pedidos : pedidos.filter(ehBoleto);
 
     const ids = comBoleto.map((p) => p.id);

@@ -209,6 +209,7 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
     dataBaseIso: pedidoShopify.createdAt,
     total: Math.max(0, totalItens - valorDesconto),
     frete: valorFrete,
+    cnpj,
   });
   alertas.push(...alertasPagamento);
 
