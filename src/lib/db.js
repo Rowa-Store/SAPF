@@ -751,10 +751,11 @@ export async function removerIeDoCliente(cnpj) {
 // Boletos (tela /boletos): status emitido/pendente marcado à mão, o nº da NF
 // quando corrigido na tela e, se o pedido acabou pago com cartão ou PIX, a
 // forma (pago_com). Sem linha, o boleto está pendente e o nº é o da nota em
-// notas_processadas.
+// notas_processadas. `marcado_boleto` põe na tela um pedido que o metafield
+// do Shopify não diz ser de boleto (marcado na tela do pedido).
 // ---------------------------------------------------------------------------
 
-const COLUNAS_BOLETO = 'shopify_order_id, emitido, numero_nf, pago_com';
+const COLUNAS_BOLETO = 'shopify_order_id, emitido, numero_nf, pago_com, marcado_boleto';
 
 /** Formas aceitas em boletos.pago_com (null = boleto). */
 export const FORMAS_PAGO_COM = ['cartao', 'pix'];
@@ -766,7 +767,7 @@ function separarArquivos(lista) {
   return separados;
 }
 
-/** Mapa orderId -> { emitido, numero_nf, pago_com, pdfs, comprovantes }, os
+/** Mapa orderId -> { emitido, numero_nf, pago_com, marcado_boleto, pdfs, comprovantes }, os
  *  dois últimos [{ id, nome }] na ordem de envio. Lança erro se o Supabase
  *  falhar, pelo mesmo motivo de statusPorPedido: {} faria todo boleto parecer
  *  pendente. */
@@ -802,10 +803,11 @@ export async function boletosPorPedido(orderIds) {
   );
 }
 
-/** Grava o status, o nº da NF e/ou a forma em que foi pago (`pagoCom`:
- *  'cartao', 'pix' ou null = boleto). Campo ausente fica como está;
- *  `numeroNf` vazio volta a valer o nº da nota no Tiny. */
-export async function salvarBoleto({ orderId, orderName, emitido, numeroNf, pagoCom }) {
+/** Grava o status, o nº da NF, a forma em que foi pago (`pagoCom`:
+ *  'cartao', 'pix' ou null = boleto) e/ou se o pedido foi marcado como boleto
+ *  à mão (`marcadoBoleto`). Campo ausente fica como está; `numeroNf` vazio
+ *  volta a valer o nº da nota no Tiny. */
+export async function salvarBoleto({ orderId, orderName, emitido, numeroNf, pagoCom, marcadoBoleto }) {
   const db = obterCliente();
   if (!db) return SEM_CONFIG;
 
@@ -815,6 +817,7 @@ export async function salvarBoleto({ orderId, orderName, emitido, numeroNf, pago
     ...(emitido !== undefined ? { emitido: !!emitido } : {}),
     ...(numeroNf !== undefined ? { numero_nf: String(numeroNf ?? '').trim() || null } : {}),
     ...(pagoCom !== undefined ? { pago_com: pagoCom || null } : {}),
+    ...(marcadoBoleto !== undefined ? { marcado_boleto: !!marcadoBoleto } : {}),
     atualizado_em: new Date().toISOString(),
   };
   const { data, error } = await db

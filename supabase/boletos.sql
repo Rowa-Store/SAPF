@@ -44,3 +44,8 @@ on conflict (path) do nothing;
 alter table boletos add column if not exists pago_com text check (pago_com in ('cartao', 'pix'));
 alter table boletos_pdfs add column if not exists tipo text not null default 'boleto'
   check (tipo in ('boleto', 'comprovante'));
+
+-- Pedido cuja nota já foi emitida e que vai ser pago com boleto, embora o
+-- metafield do Shopify diga outra forma (botão "Marcar como boleto" da tela do
+-- pedido): entra na tela /boletos como os outros. O metafield e a nota não mudam.
+alter table boletos add column if not exists marcado_boleto boolean not null default false;

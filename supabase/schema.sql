@@ -259,6 +259,11 @@ alter table boletos add column if not exists pago_com text check (pago_com in ('
 alter table boletos_pdfs add column if not exists tipo text not null default 'boleto'
   check (tipo in ('boleto', 'comprovante'));
 
+-- Pedido marcado como boleto à mão (botão "Marcar como boleto" da tela do
+-- pedido, com a nota já emitida): entra na tela /boletos mesmo sem "boleto"
+-- no metafield. Ver supabase/boletos.sql.
+alter table boletos add column if not exists marcado_boleto boolean not null default false;
+
 -- Títulos da CAIXA (e-Cobrança) por NF — ver supabase/boletos-caixa.sql.
 create table if not exists boletos_caixa (
   nosso_numero text primary key,           -- 17 dígitos, sem o DV

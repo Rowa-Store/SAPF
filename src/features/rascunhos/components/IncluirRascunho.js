@@ -96,6 +96,11 @@ export default function IncluirRascunho({ params }) {
     enviandoEmail,
     envioEmail,
     enviarEmailNota,
+    podeMarcarBoleto,
+    marcadoBoleto,
+    marcandoBoleto,
+    erroMarcarBoleto,
+    alternarBoleto,
   } = useIncluirRascunho(id);
 
   const [saindoIndices, setSaindoIndices] = useState(() => new Set());
@@ -670,11 +675,12 @@ export default function IncluirRascunho({ params }) {
       </Modal>
 
       {/* Incluir à esquerda, emitir à direita. Emitir aparece sempre, mas só
-          libera com um rascunho no Tiny. */}
-      {!emissao && (
+          libera com um rascunho no Tiny; com a nota emitida, "Marcar como
+          boleto" fica logo à esquerda dele. */}
+      {(!emissao || podeMarcarBoleto) && (
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginTop: '1.5rem' }}>
           <div>
-            {!resultado && (
+            {!resultado && !emissao && (
               <button
                 onClick={() => setPedindoConfirmacao(true)}
                 disabled={!podeIncluir || pedindoConfirmacao || !!transporteBloqueado}
@@ -684,20 +690,43 @@ export default function IncluirRascunho({ params }) {
               </button>
             )}
           </div>
-          <button
-            onClick={() => setPedindoConfirmacaoEmissao(true)}
-            disabled={!podeEmitir || pedindoConfirmacaoEmissao || emitindo || enviando || pedindoConfirmacao}
-            title={
-              podeEmitir
-                ? undefined
-                : dados.notaEmitida
-                  ? 'A nota deste pedido já foi emitida'
-                  : 'Inclua o rascunho no Tiny antes de emitir'
-            }
-          >
-            Emitir nota
-          </button>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            {podeMarcarBoleto && (
+              <button
+                className="secundario"
+                onClick={alternarBoleto}
+                disabled={marcandoBoleto}
+                title={
+                  marcadoBoleto
+                    ? 'O pedido está na tela de boletos — clique para tirar'
+                    : 'Põe o pedido na tela de boletos (o Shopify e a nota não mudam)'
+                }
+              >
+                {marcandoBoleto ? 'Salvando…' : marcadoBoleto ? 'Desmarcar boleto' : 'Marcar como boleto'}
+              </button>
+            )}
+            {!emissao && (
+              <button
+                onClick={() => setPedindoConfirmacaoEmissao(true)}
+                disabled={!podeEmitir || pedindoConfirmacaoEmissao || emitindo || enviando || pedindoConfirmacao}
+                title={
+                  podeEmitir
+                    ? undefined
+                    : dados.notaEmitida
+                      ? 'A nota deste pedido já foi emitida'
+                      : 'Inclua o rascunho no Tiny antes de emitir'
+                }
+              >
+                Emitir nota
+              </button>
+            )}
+          </div>
         </div>
+      )}
+      {podeMarcarBoleto && (marcadoBoleto || erroMarcarBoleto) && (
+        <p className={erroMarcarBoleto ? 'texto-erro' : 'fraco'} style={{ textAlign: 'right' }}>
+          {erroMarcarBoleto ?? 'Pedido marcado como boleto — aparece na tela de boletos.'}
+        </p>
       )}
 
       {!resultado && !emissao && (

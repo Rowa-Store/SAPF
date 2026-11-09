@@ -64,6 +64,12 @@ export function useIncluirRascunho(id) {
   const [enviandoEmail, setEnviandoEmail] = useState(false);
   const [envioEmail, setEnvioEmail] = useState(null);
 
+  // "Marcar como boleto" (nota emitida, metafield sem boleto): põe o pedido
+  // na tela /boletos. `marcadoBoleto` começa no que o preview leu.
+  const [marcadoBoleto, setMarcadoBoleto] = useState(false);
+  const [marcandoBoleto, setMarcandoBoleto] = useState(false);
+  const [erroMarcarBoleto, setErroMarcarBoleto] = useState(null);
+
   useEffect(() => {
     fetch(`/api/pedidos/${id}/preview`)
       .then(async (r) => {
@@ -86,6 +92,7 @@ export function useIncluirRascunho(id) {
         setItensOriginais(itens);
         setMarkup(corpo.markup);
         setMarkupOriginal(corpo.markup);
+        setMarcadoBoleto(Boolean(corpo.boleto?.marcado));
       })
       .catch((e) => setErroCarregamento(e.message));
   }, [id]);
@@ -241,6 +248,26 @@ export function useIncluirRascunho(id) {
     }
   }
 
+  /** Marca (ou desmarca) o pedido como boleto — ver api/boletos/[id]. */
+  async function alternarBoleto() {
+    setMarcandoBoleto(true);
+    setErroMarcarBoleto(null);
+    try {
+      const resposta = await fetch(`/api/boletos/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderName: dados.pedido.name, marcadoBoleto: !marcadoBoleto }),
+      });
+      const corpo = await resposta.json();
+      if (!resposta.ok) throw new Error(corpo.erro ?? 'Não foi possível marcar como boleto.');
+      setMarcadoBoleto(corpo.marcadoBoleto);
+    } catch (e) {
+      setErroMarcarBoleto(e.message);
+    } finally {
+      setMarcandoBoleto(false);
+    }
+  }
+
   const carregado = Boolean(dados && itensEditados);
   const totalPaginas = carregado ? Math.max(1, Math.ceil(itensEditados.length / ITENS_POR_PAGINA)) : 1;
   const inicioPagina = (pagina - 1) * ITENS_POR_PAGINA;
@@ -273,6 +300,9 @@ export function useIncluirRascunho(id) {
   // Emitir pede um rascunho já gravado no Tiny: o que acabou de ser incluído
   // aqui ou o que o pedido já tinha.
   const podeEmitir = carregado && !dados.notaEmitida && !emissao && Boolean(resultado || dados.jaProcessado);
+  // Só nota emitida, e só quando o metafield já não põe o pedido nos boletos.
+  const podeMarcarBoleto =
+    carregado && Boolean(dados.notaEmitida || emissao) && Boolean(dados.boleto) && !dados.boleto.pelaForma;
 
   return {
     dados,
@@ -325,5 +355,10 @@ export function useIncluirRascunho(id) {
     enviandoEmail,
     envioEmail,
     enviarEmailNota,
+    podeMarcarBoleto,
+    marcadoBoleto,
+    marcandoBoleto,
+    erroMarcarBoleto,
+    alternarBoleto,
   };
 }

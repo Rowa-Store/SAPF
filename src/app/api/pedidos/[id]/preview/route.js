@@ -6,7 +6,7 @@ import { obterPedidoCompleto } from '@/lib/integrations/shopify';
 import { classificarPedido, extrairCnpj } from '@/lib/fiscal/classificacao';
 import { descontoDaNota, montarNotaAtacado, totalDaNota } from '@/lib/fiscal/montarNota';
 import { resolverIe } from '@/lib/fiscal/inscricaoEstadual';
-import { registrarPreview, jaProcessado, markupDaFranquia, transportadoraDoCliente, listarTransportadoras } from '@/lib/db';
+import { boletosPorPedido, registrarPreview, jaProcessado, markupDaFranquia, transportadoraDoCliente, listarTransportadoras } from '@/lib/db';
 import { lerMarkup, ehAcessorio, formatarMarkup, markupPadrao, MARKUP_FRANQUIA_ACESSORIO } from '@/lib/fiscal/markup';
 import {
   blocoDoTransporte,
@@ -14,6 +14,7 @@ import {
   resolverTransporte,
   transporteDaTransportadora,
 } from '@/lib/fiscal/transporte';
+import { FORMA_BOLETO, formaDePagamentoTiny, pagaSoPix } from '@/lib/fiscal/pagamento';
 import { erroJson, paraGid } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -271,6 +272,22 @@ export async function GET(request, { params }) {
       );
     }
 
+    // 5b. Boleto: pelo metafield (como na tela /boletos) ou marcado à mão
+    // depois da emissão — a tela só oferece "Marcar como boleto" com a nota
+    // emitida e quando o metafield não basta. Lido mesmo sem nota emitida
+    // porque a emissão pode acontecer na própria tela. Falha no Supabase não
+    // derruba a tela: só esconde o botão.
+    let boleto = null;
+    try {
+      const registro = (await boletosPorPedido([pedido.id]))[pedido.id];
+      boleto = {
+        pelaForma: formaDePagamentoTiny(metodoPagamento) === FORMA_BOLETO && !pagaSoPix(cnpj),
+        marcado: Boolean(registro?.marcado_boleto),
+      };
+    } catch (erro) {
+      console.error(`[preview] Falha ao ler o boleto do pedido ${pedido.id}:`, erro.message);
+    }
+
     // 6. Histórico (não bloqueia se o Supabase não estiver configurado). Só
     // para pedido sem rascunho: gravar por cima de um já enviado trocava o
     // status para "preview" — a lista perdia o DANFE, a emissão recusava o
@@ -313,6 +330,8 @@ export async function GET(request, { params }) {
       },
       classificacao,
       payload,
+      // { pelaForma, marcado } — ver 5b. null esconde o botão "Marcar como boleto".
+      boleto,
       // Markup padrão (da franquia, se ela tem um cadastrado, ou da
       // classificação; híbrido quando a franquia mistura acessório e
       // vestuário), o preço do Shopify de cada item e se ele é acessório (na

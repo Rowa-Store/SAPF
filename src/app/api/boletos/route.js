@@ -1,6 +1,7 @@
 // GET /api/boletos — pedidos pagos com boleto (metafield
-// `custom.metodo_pagamento` com "boleto"), com o status do boleto e o nº da
-// NF de cada um, mais os títulos da CAIXA já achados para a NF.
+// `custom.metodo_pagamento` com "boleto", ou marcados como boleto na tela do
+// pedido), com o status do boleto e o nº da NF de cada um, mais os títulos da
+// CAIXA já achados para a NF.
 //
 // Mesma navegação da tela de atacado (ver api/pedidos/route.js): sem busca, a
 // lista é POR DIA; com busca, não se prende a dia e vem paginada por cursor.
@@ -109,17 +110,18 @@ export async function GET(request) {
       pedidos.map((p) => p.id),
       Object.fromEntries(pedidos.map((p) => [p.id, p._bruto.customAttributes]))
     );
-    // Cliente que paga sempre por PIX não tem boleto, mesmo com "Boleto" no Shopify.
+    // Os boletos são lidos para todos os pedidos: é a linha em `boletos` que
+    // diz se um pedido foi marcado como boleto à mão.
+    const boletos = await boletosPorPedido(pedidos.map((p) => p.id));
+    // Cliente que paga sempre por PIX não tem boleto, mesmo com "Boleto" no
+    // Shopify — a não ser que alguém tenha marcado o pedido como boleto.
     const ehBoleto = (p) =>
-      formaDePagamentoTiny(metodos[p.id]) === FORMA_BOLETO && !pagaSoPix(extrairCnpj(p._bruto).cnpj);
+      Boolean(boletos[p.id]?.marcado_boleto) ||
+      (formaDePagamentoTiny(metodos[p.id]) === FORMA_BOLETO && !pagaSoPix(extrairCnpj(p._bruto).cnpj));
     const comBoleto = todasAsFormas ? pedidos : pedidos.filter(ehBoleto);
 
     const ids = comBoleto.map((p) => p.id);
-    const [situacoes, boletos, cnpjsFranquiaResp] = await Promise.all([
-      statusPorPedido(ids),
-      boletosPorPedido(ids),
-      cnpjsFranquiaPromessa,
-    ]);
+    const [situacoes, cnpjsFranquiaResp] = await Promise.all([statusPorPedido(ids), cnpjsFranquiaPromessa]);
     await completarNumerosNf(situacoes);
     if (!cnpjsFranquiaResp.ok) {
       console.error('[boletos] Falha ao buscar os CNPJs de franquia no Supabase:', cnpjsFranquiaResp.erro);
@@ -153,6 +155,7 @@ export async function GET(request) {
         total: p.total,
         metodoPagamento: metodos[p.id],
         ehBoleto: ehBoleto(p),
+        marcadoBoleto: boleto?.marcado_boleto ?? false,
         classificacao: classificarComListaFranquia(p._bruto, cnpjsFranquia),
         tinyNotaId: situacao?.status === 'rascunho_criado' ? situacao.tiny_nota_id : null,
         notaEmitida: situacao?.nota_emitida ?? false,
