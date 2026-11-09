@@ -206,7 +206,6 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
   const { pagamento, alertas: alertasPagamento } = montarPagamento({
     classificacao,
     metodoPagamento: opcoes.metodoPagamento,
-    dataBaseIso: pedidoShopify.createdAt,
     total: Math.max(0, totalItens - valorDesconto),
     frete: valorFrete,
     cnpj,
@@ -227,7 +226,8 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
       // ao cliente — ver transporte.js.
       ...(opcoes.transporte ?? TRANSPORTE_PADRAO),
       quantidade_volumes: volumes ?? 1,
-      data_emissao: dataBr(pedidoShopify.createdAt),
+      // A nota sai com o dia em que é emitida, não o dia do pedido.
+      data_emissao: dataBr(),
       numero_pedido_ecommerce: String(pedidoShopify.name ?? '').replace('#', ''),
       // valor_desconto: só aparece quando há desconto — ver desconto.js.
       ...comDesconto({}, valorDesconto),

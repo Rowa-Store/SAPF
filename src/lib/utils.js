@@ -1,6 +1,8 @@
 // utils.js — funções pequenas e sem efeito colateral, usadas em vários módulos.
 // Ficam separadas para poderem ser testadas isoladamente.
 
+import { diaBr, diaEmSaoPaulo } from './datas.js';
+
 /** Mantém apenas os dígitos de uma string (CNPJ, CPF, CEP). */
 export function somenteDigitos(valor) {
   return String(valor ?? '').replace(/\D+/g, '');
@@ -42,10 +44,20 @@ export function valorMonetario(valor) {
 
 /** Converte uma data ISO (Shopify) para dd/mm/aaaa (Tiny). */
 export function dataBr(iso) {
-  const d = iso ? new Date(iso) : new Date();
-  const dia = String(d.getDate()).padStart(2, '0');
-  const mes = String(d.getMonth() + 1).padStart(2, '0');
-  return `${dia}/${mes}/${d.getFullYear()}`;
+  // No dia de São Paulo, não no do servidor (Vercel roda em UTC).
+  return diaBr(diaEmSaoPaulo(iso ?? new Date()));
+}
+
+/** Mensagem de recusa quando o rascunho foi montado com data de emissão de
+ *  outro dia: o Tiny emite com a data do rascunho, e a nota tem de sair com o
+ *  dia em que de fato é emitida. null quando a data é a de hoje. */
+export function recusaPorDataDeEmissao(notaFiscal) {
+  const data = notaFiscal?.data_emissao;
+  if (data === dataBr()) return null;
+  return (
+    `O rascunho está com data de emissão ${data || '(não informada)'}, mas a nota tem de sair com a data de hoje (${dataBr()}). ` +
+    'Refaça o rascunho e emita de novo. A nota não foi emitida.'
+  );
 }
 
 /** Tenta separar "Rua das Flores 120" em { logradouro, numero }.

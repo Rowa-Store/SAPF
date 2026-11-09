@@ -21,7 +21,7 @@ import {
   registrarNumeroNf,
   statusPorPedido,
 } from '@/lib/db';
-import { erroJson } from '@/lib/utils';
+import { erroJson, recusaPorDataDeEmissao } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -56,6 +56,8 @@ export async function POST(request, { params }) {
   if (!esperada?.trim()) {
     return falhou(gid, 'O rascunho registrado não tem natureza de operação — refaça o rascunho antes de emitir.', 422);
   }
+  const recusaData = recusaPorDataDeEmissao(rascunho.rascunho?.payload_enviado?.nota_fiscal);
+  if (recusaData) return falhou(gid, recusaData, 422);
   let natureza;
   try {
     natureza = conferirNatureza(await obterNota(tinyNotaId, conta), esperada);

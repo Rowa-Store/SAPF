@@ -61,6 +61,7 @@
 // fiscal.
 
 import { valorMonetario } from '../utils.js';
+import { diaBr, diaEmSaoPaulo, somarDias } from '../datas.js';
 import { CAMPO_DESCONTO_TINY } from './desconto.js';
 
 /** Código do Tiny para "múltiplas formas de pagamento". */
@@ -164,13 +165,10 @@ function boletoComPix(textoShopify) {
   return /boleto/.test(texto) && /\bpix\b/.test(texto);
 }
 
-/** dd/mm/aaaa de `dias` dias depois da data base (ISO do pedido, ou hoje). */
+/** dd/mm/aaaa de `dias` dias depois da data base (ISO), ou de hoje — o dia
+ *  contado em São Paulo, não no fuso do servidor. */
 function vencimento(baseIso, dias) {
-  const data = baseIso ? new Date(baseIso) : new Date();
-  data.setDate(data.getDate() + dias);
-  const dia = String(data.getDate()).padStart(2, '0');
-  const mes = String(data.getMonth() + 1).padStart(2, '0');
-  return `${dia}/${mes}/${data.getFullYear()}`;
+  return diaBr(somarDias(diaEmSaoPaulo(baseIso ?? new Date()), dias));
 }
 
 /**
@@ -231,7 +229,7 @@ function pagamentoParcelado(parcelas) {
  * @param {object} opcoes
  * @param {"atacado"|"franquia"|"outro"} opcoes.classificacao
  * @param {string} opcoes.metodoPagamento texto cru do metafield do Shopify
- * @param {string} [opcoes.dataBaseIso] data de emissão (createdAt do pedido)
+ * @param {string} [opcoes.dataBaseIso] data de emissão (ISO); sem ela, hoje
  * @param {number} [opcoes.total] total dos itens da nota, já sem o desconto
  * @param {number} [opcoes.frete] valor do frete da nota
  * @param {string} [opcoes.cnpj] CNPJ do cliente (só dígitos) — ver CNPJS_SO_PIX

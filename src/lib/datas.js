@@ -8,15 +8,26 @@
 export const FUSO_LOJA = 'America/Sao_Paulo';
 const DESLOCAMENTO = '-03:00';
 
-/** Hoje em São Paulo, como AAAA-MM-DD. */
-export function hoje() {
+/** O dia, em São Paulo, de um instante (ISO, Date ou agora), como AAAA-MM-DD. */
+export function diaEmSaoPaulo(instante = new Date()) {
   // en-CA formata como AAAA-MM-DD.
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: FUSO_LOJA,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date());
+  }).format(new Date(instante));
+}
+
+/** Hoje em São Paulo, como AAAA-MM-DD. */
+export function hoje() {
+  return diaEmSaoPaulo();
+}
+
+/** AAAA-MM-DD → dd/mm/aaaa, o formato de data do Tiny. */
+export function diaBr(dia) {
+  const [ano, mes, d] = dia.split('-');
+  return `${d}/${mes}/${ano}`;
 }
 
 /** true para um AAAA-MM-DD que existe no calendário (recusa 2026-02-30). */

@@ -19,7 +19,7 @@ import {
 } from '@/lib/db';
 import { faltantesDaNota } from '@/lib/fiscal/franquias';
 import { enviarNotaParaFranquia } from '@/lib/fiscal/emailNotaFranquia';
-import { erroJson, paraGid } from '@/lib/utils';
+import { erroJson, paraGid, recusaPorDataDeEmissao } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -57,6 +57,8 @@ export async function POST(request, { params }) {
       502
     );
   }
+  const recusaData = recusaPorDataDeEmissao(rascunho.rascunho?.payload_enviado?.nota_fiscal);
+  if (recusaData) return falhou(gid, recusaData, 422);
   const contribuinte = await garantirContribuinteIcms(cliente.cpf_cnpj, { clienteNota: cliente });
   if (!contribuinte.ok) {
     return falhou(
