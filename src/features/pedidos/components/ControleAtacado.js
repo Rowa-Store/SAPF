@@ -130,10 +130,14 @@ function ResumoPreview({ preview }) {
   );
 }
 
-export default function ControleAtacado({ canal = 'b2b' }) {
+/**
+ * `somenteLeitura`: a lista e o DANFE, sem criar rascunho nem emitir — é o
+ * B2C do gerente (ver lib/acessos.js, que também barra as rotas de escrita).
+ */
+export default function ControleAtacado({ canal = 'b2b', somenteLeitura = false }) {
   const config = CANAIS[canal];
   const b2b = canal === 'b2b';
-  const colunas = b2b ? 6 : 5;
+  const colunas = (b2b ? 6 : 5) - (somenteLeitura ? 1 : 0);
   const {
     pedidos,
     erro,
@@ -277,7 +281,7 @@ export default function ControleAtacado({ canal = 'b2b' }) {
                   <th className="num">Total</th>
                   {b2b && <th>Classificação</th>}
                   <th>Nota fiscal</th>
-                  <th>Ações</th>
+                  {!somenteLeitura && <th>Ações</th>}
                 </tr>
               </thead>
               <tbody>
@@ -343,62 +347,64 @@ export default function ControleAtacado({ canal = 'b2b' }) {
                             )}
                           </div>
                         </td>
-                        <td>
-                          <div className="acoes-linha">
-                            {enviando && <span className="fraco">Enviando…</span>}
+                        {!somenteLeitura && (
+                          <td>
+                            <div className="acoes-linha">
+                              {enviando && <span className="fraco">Enviando…</span>}
 
-                            {podeCriar && (
-                              <>
+                              {podeCriar && (
+                                <>
+                                  <button
+                                    className="pequeno"
+                                    onClick={() => pedirCriacao(p, 'confirmar-emissao-direta')}
+                                    disabled={enviando || acao?.fase === 'confirmar-emissao-direta' || !!transporteBloqueado}
+                                    title={transporteBloqueado ?? 'Cria o rascunho no Tiny e emite em seguida'}
+                                  >
+                                    Criar e emitir
+                                  </button>
+                                  <button
+                                    className="pequeno secundario"
+                                    onClick={() => pedirCriacao(p, 'confirmar-rascunho')}
+                                    disabled={enviando || acao?.fase === 'confirmar-rascunho' || !!transporteBloqueado}
+                                    title={transporteBloqueado ?? 'Cria só o rascunho no Tiny, para emitir depois'}
+                                  >
+                                    Só rascunho
+                                  </button>
+                                  {config.conferencia && (
+                                    <a
+                                      className="botao-link"
+                                      href={`/pedidos/${p.id}/rascunho`}
+                                      title="Confere item a item e ajusta cliente e itens antes de criar o rascunho"
+                                    >
+                                      Conferir itens
+                                    </a>
+                                  )}
+                                </>
+                              )}
+
+                              {/* Rascunho já enviado: emitir (sempre o último — o id vem do
+                                  Supabase) ou mandar um novo pela conferência. */}
+                              {config.conferencia && temRascunho && !p.notaEmitida && (
+                                <a
+                                  className="botao-link"
+                                  href={`/pedidos/${p.id}/rascunho`}
+                                  title="Envia um rascunho novo no lugar deste (ex.: Tiny acusou duplicidade) — o antigo precisa ser removido à mão no Tiny"
+                                >
+                                  Novo rascunho
+                                </a>
+                              )}
+                              {temRascunho && !p.notaEmitida && (
                                 <button
                                   className="pequeno"
-                                  onClick={() => pedirCriacao(p, 'confirmar-emissao-direta')}
-                                  disabled={enviando || acao?.fase === 'confirmar-emissao-direta' || !!transporteBloqueado}
-                                  title={transporteBloqueado ?? 'Cria o rascunho no Tiny e emite em seguida'}
+                                  onClick={() => definirAcao(p.id, { fase: 'confirmar-emissao' })}
+                                  disabled={enviando || acao?.fase === 'confirmar-emissao'}
                                 >
-                                  Criar e emitir
+                                  Emitir nota
                                 </button>
-                                <button
-                                  className="pequeno secundario"
-                                  onClick={() => pedirCriacao(p, 'confirmar-rascunho')}
-                                  disabled={enviando || acao?.fase === 'confirmar-rascunho' || !!transporteBloqueado}
-                                  title={transporteBloqueado ?? 'Cria só o rascunho no Tiny, para emitir depois'}
-                                >
-                                  Só rascunho
-                                </button>
-                                {config.conferencia && (
-                                  <a
-                                    className="botao-link"
-                                    href={`/pedidos/${p.id}/rascunho`}
-                                    title="Confere item a item e ajusta cliente e itens antes de criar o rascunho"
-                                  >
-                                    Conferir itens
-                                  </a>
-                                )}
-                              </>
-                            )}
-
-                            {/* Rascunho já enviado: emitir (sempre o último — o id vem do
-                                Supabase) ou mandar um novo pela conferência. */}
-                            {config.conferencia && temRascunho && !p.notaEmitida && (
-                              <a
-                                className="botao-link"
-                                href={`/pedidos/${p.id}/rascunho`}
-                                title="Envia um rascunho novo no lugar deste (ex.: Tiny acusou duplicidade) — o antigo precisa ser removido à mão no Tiny"
-                              >
-                                Novo rascunho
-                              </a>
-                            )}
-                            {temRascunho && !p.notaEmitida && (
-                              <button
-                                className="pequeno"
-                                onClick={() => definirAcao(p.id, { fase: 'confirmar-emissao' })}
-                                disabled={enviando || acao?.fase === 'confirmar-emissao'}
-                              >
-                                Emitir nota
-                              </button>
-                            )}
-                          </div>
-                        </td>
+                              )}
+                            </div>
+                          </td>
+                        )}
                       </tr>
 
                       {acao?.fase === 'confirmar-emissao-direta' && (

@@ -11,12 +11,13 @@
 --   admin       — tudo
 --   financeiro  — B2B, Boletos e Transferências
 --   varejo      — B2C
+--   gerente     — B2C e a contagem de emissões, só para ver (sem emitir)
 -- Quem não está na tabela entra, mas não vê nenhuma área. Trocar o papel ou
 -- apagar a linha vale na próxima página que a pessoa abrir.
 
 create table if not exists acessos (
   email text primary key check (email = lower(email)),
-  papel text not null check (papel in ('admin', 'financeiro', 'varejo')),
+  papel text not null check (papel in ('admin', 'financeiro', 'varejo', 'gerente')),
   criado_em timestamptz default now()
 );
 

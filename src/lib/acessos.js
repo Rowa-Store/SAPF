@@ -10,9 +10,10 @@ import { AREAS } from './navegacao.js';
 /** Rotas que qualquer usuário logado abre, seja qual for o papel. */
 const LIVRES = ['/'];
 
-/** Só o admin abre, mesmo dentro de uma área de outro papel (ex.: a
- *  contagem de emissões fica no B2C, mas o papel varejo não a vê). */
-const SO_ADMIN = ['/varejo/emissoes', '/api/varejo/emissoes'];
+/** Rotas que só alguns papéis abrem (além do admin), mesmo dentro da área
+ *  de outro papel: a contagem de emissões fica no B2C, mas o papel varejo
+ *  não a vê. Vale antes de REGRAS. */
+const RESTRITAS = [{ rotas: ['/varejo/emissoes', '/api/varejo/emissoes'], papeis: ['gerente'] }];
 
 // Cada regra é um prefixo de caminho (vale ele e tudo abaixo) ou uma RegExp.
 const REGRAS = {
@@ -34,12 +35,21 @@ const REGRAS = {
     // pelas rotas de /api/pedidos/[id] — só essas, não a lista B2B.
     /^\/api\/pedidos\/[^/]+\/(rascunho|emitir|situacao|danfe)$/,
   ],
+  // Gerente só VÊ o B2C e a contagem de emissões: a lista, a situação da
+  // nota (que a lista confere sozinha) e o DANFE — sem preview, rascunho
+  // nem emissão.
+  gerente: [
+    '/varejo',
+    /^\/api\/varejo(\/emissoes)?$/,
+    /^\/api\/pedidos\/[^/]+\/(situacao|danfe)$/,
+  ],
 };
 
 export const PAPEIS = {
   admin: 'Administração',
   financeiro: 'Financeiro',
   varejo: 'Varejo',
+  gerente: 'Gerente',
 };
 
 function casa(regra, caminho) {
@@ -51,7 +61,8 @@ function casa(regra, caminho) {
 export function podeAcessar(papel, caminho) {
   if (LIVRES.includes(caminho)) return true;
   if (papel === 'admin') return true;
-  if (SO_ADMIN.some((r) => casa(r, caminho))) return false;
+  const restrita = RESTRITAS.find(({ rotas }) => rotas.some((r) => casa(r, caminho)));
+  if (restrita) return restrita.papeis.includes(papel);
   return (REGRAS[papel] ?? []).some((r) => casa(r, caminho));
 }
 
@@ -63,6 +74,11 @@ export function podeAcessar(papel, caminho) {
 export async function buscarPapel(supabase) {
   const { data, error } = await supabase.from('acessos').select('papel').maybeSingle();
   return error ? null : (data?.papel ?? null);
+}
+
+/** O papel só vê o B2C, sem criar rascunho nem emitir? */
+export function somenteLeituraNoVarejo(papel) {
+  return papel !== 'admin' && !podeAcessar(papel, '/api/pedidos/0/emitir');
 }
 
 /** Áreas do menu que o papel abre, na ordem de AREAS. */

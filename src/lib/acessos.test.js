@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { podeAcessar, areasDoPapel, buscarPapel } from './acessos.js';
+import { podeAcessar, areasDoPapel, buscarPapel, somenteLeituraNoVarejo } from './acessos.js';
 
 function supabaseFalso(resultado) {
   return { from: () => ({ select: () => ({ maybeSingle: async () => resultado }) }) };
@@ -70,4 +70,34 @@ test('menu segue o papel', () => {
   assert.deepEqual(areasDoPapel('varejo').map((a) => a.href), ['/varejo']);
   assert.deepEqual(areasDoPapel('financeiro').map((a) => a.href), ['/pedidos', '/boletos', '/transferencias']);
   assert.equal(areasDoPapel(undefined).length, 0);
+});
+
+test('gerente vê o B2C e a contagem de emissões, sem escrever nada', () => {
+  for (const c of [
+    '/varejo',
+    '/varejo/emissoes',
+    '/api/varejo',
+    '/api/varejo/emissoes',
+    '/api/pedidos/123/situacao',
+    '/api/pedidos/123/danfe',
+  ]) {
+    assert.ok(podeAcessar('gerente', c), c);
+  }
+  for (const c of [
+    '/api/varejo/123/preview',
+    '/api/pedidos/123/rascunho',
+    '/api/pedidos/123/emitir',
+    '/api/pedidos',
+    '/pedidos',
+    '/boletos',
+  ]) {
+    assert.ok(!podeAcessar('gerente', c), c);
+  }
+  assert.deepEqual(areasDoPapel('gerente').map((a) => a.href), ['/varejo']);
+});
+
+test('só o B2C do gerente é somente leitura', () => {
+  assert.ok(somenteLeituraNoVarejo('gerente'));
+  assert.ok(!somenteLeituraNoVarejo('varejo'));
+  assert.ok(!somenteLeituraNoVarejo('admin'));
 });
