@@ -4,7 +4,7 @@
 
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
-import { podeAcessar } from '@/lib/acessos';
+import { buscarPapel, podeAcessar } from '@/lib/acessos';
 
 const PUBLICAS = ['/login'];
 
@@ -52,7 +52,7 @@ export async function middleware(req) {
     return negar(req, 401, 'Faça login para continuar.', login);
   }
 
-  if (!podeAcessar(usuario.app_metadata?.papel, caminho)) {
+  if (!podeAcessar(await buscarPapel(supabase), caminho)) {
     return negar(req, 403, 'Seu usuário não tem acesso a esta área.', new URL('/', req.url));
   }
 

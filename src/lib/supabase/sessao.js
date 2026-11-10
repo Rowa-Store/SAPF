@@ -5,6 +5,7 @@
 import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
+import { buscarPapel } from '@/lib/acessos';
 
 export function credenciaisAuth() {
   const url = process.env.SUPABASE_URL;
@@ -36,7 +37,8 @@ export const usuarioAtual = cache(async () => {
   // requisição. Sem isso, um build sem as variáveis congelaria o cabeçalho deslogado.
   cookies();
   if (!credenciaisAuth()) return null;
-  const { data } = await clienteAuth().auth.getUser();
+  const supabase = clienteAuth();
+  const { data } = await supabase.auth.getUser();
   const u = data?.user;
-  return u ? { email: u.email, papel: u.app_metadata?.papel ?? null } : null;
+  return u ? { email: u.email, papel: await buscarPapel(supabase) } : null;
 });

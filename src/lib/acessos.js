@@ -2,8 +2,8 @@
 // middleware (que barra) e para o menu/tela inicial (que só mostram o que o
 // papel abre).
 //
-// O papel fica em app_metadata.papel do usuário no Supabase Auth: vai dentro
-// do token e o próprio usuário não consegue alterar (ver supabase/acessos.sql).
+// O papel de cada e-mail fica na tabela "acessos" do Supabase, editada pelo
+// Table Editor (ver supabase/acessos.sql).
 
 import { AREAS } from './navegacao.js';
 
@@ -48,6 +48,16 @@ export function podeAcessar(papel, caminho) {
   if (LIVRES.includes(caminho)) return true;
   if (papel === 'admin') return true;
   return (REGRAS[papel] ?? []).some((r) => casa(r, caminho));
+}
+
+/**
+ * Papel do usuário logado, lido da tabela "acessos" com a sessão dele. A
+ * política de RLS só devolve a linha do próprio e-mail. Sem linha (ou erro
+ * na consulta) → null, que não abre nada.
+ */
+export async function buscarPapel(supabase) {
+  const { data, error } = await supabase.from('acessos').select('papel').maybeSingle();
+  return error ? null : (data?.papel ?? null);
 }
 
 /** Áreas do menu que o papel abre, na ordem de AREAS. */

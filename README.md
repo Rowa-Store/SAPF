@@ -92,9 +92,13 @@ responde 403). Menu e tela inicial mostram só as áreas do papel.
 | `varejo` | B2C |
 
 As regras (inclusive quais APIs cada papel chama) ficam em
-`src/lib/acessos.js`. Para dar acesso a alguém: crie o usuário em
-**Authentication > Users > Add user** (marque "Auto Confirm User") e rode
-`supabase/acessos.sql` com o e-mail e o papel. Em **Authentication > Sign In
+`src/lib/acessos.js`; o papel de cada e-mail fica na tabela `acessos`.
+Uma vez só, rode `supabase/acessos.sql` no SQL Editor (cria a tabela).
+Para dar acesso a alguém: crie o usuário em **Authentication > Users > Add
+user** (marque "Auto Confirm User") e, no **Table Editor**, insira uma linha
+em `acessos` com o e-mail (em minúsculas) e o papel. Quem não está na
+tabela entra, mas não vê nenhuma área; trocar o papel ou apagar a linha vale
+na próxima página que a pessoa abrir. Em **Authentication > Sign In
 / Providers**, desligue "Allow new users to sign up" — usuário só entra se
 foi criado no painel.
 

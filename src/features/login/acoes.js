@@ -1,7 +1,7 @@
 'use server';
 
 // Entrar e sair. Os usuários são criados no painel do Supabase
-// (Authentication > Users), com o papel em app_metadata — ver supabase/acessos.sql.
+// (Authentication > Users), e o papel na tabela acessos — ver supabase/acessos.sql.
 
 import { redirect } from 'next/navigation';
 import { clienteAuth } from '@/lib/supabase/sessao';

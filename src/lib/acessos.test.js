@@ -1,6 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { podeAcessar, areasDoPapel } from './acessos.js';
+import { podeAcessar, areasDoPapel, buscarPapel } from './acessos.js';
+
+function supabaseFalso(resultado) {
+  return { from: () => ({ select: () => ({ maybeSingle: async () => resultado }) }) };
+}
+
+test('papel vem da tabela acessos; sem linha ou com erro, nenhum', async () => {
+  assert.equal(await buscarPapel(supabaseFalso({ data: { papel: 'varejo' }, error: null })), 'varejo');
+  assert.equal(await buscarPapel(supabaseFalso({ data: null, error: null })), null);
+  assert.equal(await buscarPapel(supabaseFalso({ data: { papel: 'admin' }, error: { message: 'x' } })), null);
+});
 
 test('varejo abre só o B2C e as rotas de nota que ele usa', () => {
   assert.ok(podeAcessar('varejo', '/varejo'));
