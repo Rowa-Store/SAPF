@@ -10,6 +10,10 @@ import { AREAS } from './navegacao.js';
 /** Rotas que qualquer usuário logado abre, seja qual for o papel. */
 const LIVRES = ['/'];
 
+/** Só o admin abre, mesmo dentro de uma área de outro papel (ex.: a
+ *  contagem de emissões fica no B2C, mas o papel varejo não a vê). */
+const SO_ADMIN = ['/varejo/emissoes', '/api/varejo/emissoes'];
+
 // Cada regra é um prefixo de caminho (vale ele e tudo abaixo) ou uma RegExp.
 const REGRAS = {
   financeiro: [
@@ -47,6 +51,7 @@ function casa(regra, caminho) {
 export function podeAcessar(papel, caminho) {
   if (LIVRES.includes(caminho)) return true;
   if (papel === 'admin') return true;
+  if (SO_ADMIN.some((r) => casa(r, caminho))) return false;
   return (REGRAS[papel] ?? []).some((r) => casa(r, caminho));
 }
 

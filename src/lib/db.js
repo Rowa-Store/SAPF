@@ -188,17 +188,49 @@ export async function jaProcessado(orderId) {
 }
 
 /** Atualiza só a flag de emissão fiscal, sem mexer no restante do registro. */
-export async function atualizarNotaEmitida(orderId, emitida) {
+export async function atualizarNotaEmitida(orderId, emitida, { emitidaPor = null } = {}) {
   const db = obterCliente();
   if (!db) return SEM_CONFIG;
 
-  const { error } = await db
-    .from('notas_processadas')
-    // Emitiu: o erro de uma tentativa anterior não vale mais.
-    .update({ nota_emitida: emitida, ...(emitida ? { erro: null } : {}), atualizado_em: new Date().toISOString() })
-    .eq('shopify_order_id', orderId);
+  const agora = new Date().toISOString();
+  // Emitiu: o erro de uma tentativa anterior não vale mais.
+  const base = { nota_emitida: emitida, ...(emitida ? { erro: null } : {}), atualizado_em: agora };
+  const atualizar = (campos) => db.from('notas_processadas').update(campos).eq('shopify_order_id', orderId);
+
+  // Quem emitiu (ver supabase/emissoes-por-usuario.sql). Se a coluna ainda
+  // não existe, a emissão é gravada mesmo assim: perder o "emitida" faria a
+  // tela oferecer emitir de novo uma nota já emitida.
+  let { error } = await atualizar(emitida && emitidaPor ? { ...base, emitida_por: emitidaPor, emitida_em: agora } : base);
+  if (error && emitidaPor) {
+    console.error(`[db] Não foi possível gravar quem emitiu a nota de ${orderId}, gravando só a emissão:`, error.message);
+    ({ error } = await atualizar(base));
+  }
 
   return error ? { ok: false, erro: error.message } : { ok: true };
+}
+
+/**
+ * Notas emitidas por usuário (ver supabase/emissoes-por-usuario.sql): o total
+ * de cada um por tipo de nota, da view, e as emitidas a partir de `desde`
+ * (ISO) — o "hoje" da tela. Lança se o Supabase falhar.
+ */
+export async function emissoesPorUsuario({ desde }) {
+  const db = obterCliente();
+  if (!db) throw new Error(SEM_CONFIG.erro);
+
+  const [totais, recentes] = await Promise.all([
+    db.from('notas_emitidas_por_usuario').select('emitida_por, classificacao, notas, ultima_emissao'),
+    db
+      .from('notas_processadas')
+      .select('emitida_por, classificacao')
+      .eq('nota_emitida', true)
+      .not('emitida_por', 'is', null)
+      .gte('emitida_em', desde),
+  ]);
+  for (const { error } of [totais, recentes]) {
+    if (error) throw new Error(`Falha ao ler as emissões por usuário no Supabase: ${error.message}`);
+  }
+  return { totais: totais.data ?? [], recentes: recentes.data ?? [] };
 }
 
 /** Registra os SKUs que precisam de cadastro ou correção no Tiny. */

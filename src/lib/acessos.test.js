@@ -26,6 +26,10 @@ test('varejo abre só o B2C e as rotas de nota que ele usa', () => {
   assert.ok(!podeAcessar('varejo', '/boletos'));
   assert.ok(!podeAcessar('varejo', '/api/boletos'));
   assert.ok(!podeAcessar('varejo', '/olist'));
+  // a contagem de emissões fica no B2C, mas é só do admin
+  assert.ok(!podeAcessar('varejo', '/varejo/emissoes'));
+  assert.ok(!podeAcessar('varejo', '/api/varejo/emissoes'));
+  assert.ok(podeAcessar('admin', '/varejo/emissoes'));
 });
 
 test('financeiro abre B2B, boletos e transferências, e não o B2C', () => {

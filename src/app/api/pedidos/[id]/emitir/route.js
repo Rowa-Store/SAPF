@@ -21,6 +21,7 @@ import {
 import { faltantesDaNota } from '@/lib/fiscal/franquias';
 import { enviarNotaParaFranquia } from '@/lib/fiscal/emailNotaFranquia';
 import { erroJson, paraGid, recusaPorDataDeEmissao } from '@/lib/utils';
+import { usuarioAtual } from '@/lib/supabase/sessao';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -96,7 +97,13 @@ export async function POST(request, { params }) {
     return falhou(gid, erro.message, 502);
   }
 
-  const registro = await atualizarNotaEmitida(gid, true);
+  // Quem emitiu, para a contagem de notas por usuário. Sem sessão legível
+  // (não deveria acontecer: o middleware exige login), grava sem o usuário.
+  const usuario = await usuarioAtual().catch((erro) => {
+    console.error(`[emitir] Nota ${tinyNotaId} emitida, mas não foi possível ler o usuário logado:`, erro);
+    return null;
+  });
+  const registro = await atualizarNotaEmitida(gid, true, { emitidaPor: usuario?.email ?? null });
   if (!registro.ok) {
     console.error(`[emitir] Nota ${tinyNotaId} emitida no Tiny, mas falhou ao registrar no Supabase:`, registro.erro);
   }
