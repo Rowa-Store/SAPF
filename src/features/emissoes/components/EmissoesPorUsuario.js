@@ -1,5 +1,5 @@
-// /varejo/emissoes — quantas notas cada usuário emitiu pelo SAP, atualizado
-// sozinho a cada poucos segundos. Só o admin abre.
+// /varejo/emissoes — quantas notas do B2C cada usuário emitiu pelo SAP, no
+// dia e no mês, atualizado sozinho a cada poucos segundos. Admin e gerente.
 
 'use client';
 
@@ -8,12 +8,11 @@ import { INTERVALO_MS, useEmissoes } from '../hooks/useEmissoes';
 
 export default function EmissoesPorUsuario() {
   const { dados, erro } = useEmissoes();
-  const b2b = (u) => (u.porTipo.atacado ?? 0) + (u.porTipo.franquia ?? 0);
 
   return (
     <>
       <div className="cabecalho-pagina">
-        <h2>Notas emitidas por usuário</h2>
+        <h2>Notas B2C emitidas por usuário</h2>
         {dados && (
           <span className="fraco">
             Atualiza a cada {INTERVALO_MS / 1000} s · última leitura{' '}
@@ -32,7 +31,7 @@ export default function EmissoesPorUsuario() {
       {!dados ? (
         !erro && <p className="fraco">Carregando…</p>
       ) : dados.usuarios.length === 0 ? (
-        <div className="vazio">Nenhuma nota emitida com usuário registrado ainda.</div>
+        <div className="vazio">Nenhuma nota B2C emitida com usuário registrado neste mês.</div>
       ) : (
         <div className="tabela-rolavel">
           <table>
@@ -40,9 +39,7 @@ export default function EmissoesPorUsuario() {
               <tr>
                 <th>Usuário</th>
                 <th className="num">Hoje</th>
-                <th className="num">Total</th>
-                <th className="num">B2C</th>
-                <th className="num">B2B</th>
+                <th className="num">No mês</th>
                 <th>Última emissão</th>
               </tr>
             </thead>
@@ -51,9 +48,7 @@ export default function EmissoesPorUsuario() {
                 <tr key={u.email}>
                   <td>{u.email}</td>
                   <td className="num forte">{u.hoje}</td>
-                  <td className="num">{u.total}</td>
-                  <td className="num">{u.porTipo.varejo ?? 0}</td>
-                  <td className="num">{b2b(u)}</td>
+                  <td className="num">{u.mes}</td>
                   <td className="fraco">{formatarDataHoraCurta(u.ultimaEmissao)}</td>
                 </tr>
               ))}

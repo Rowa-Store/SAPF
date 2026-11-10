@@ -1,9 +1,9 @@
-// GET /api/varejo/emissoes — quantas notas cada usuário emitiu pelo SAP:
-// hoje (dia de São Paulo), no total e por tipo de nota. Só o admin abre (ver
-// SO_ADMIN em lib/acessos.js). A tela /varejo/emissoes consulta de tempos
-// em tempos.
+// GET /api/varejo/emissoes — quantas notas do B2C cada usuário emitiu pelo
+// SAP, acumulado do dia e do mês (fuso de São Paulo). Só admin e gerente
+// abrem (ver RESTRITAS em lib/acessos.js). A tela /varejo/emissoes consulta
+// de tempos em tempos.
 
-import { emissoesPorUsuario } from '@/lib/db';
+import { emissoesDoVarejoDesde } from '@/lib/db';
 import { hoje, intervaloDoDia } from '@/lib/datas';
 import { erroJson } from '@/lib/utils';
 
@@ -12,25 +12,20 @@ export const runtime = 'nodejs';
 
 export async function GET() {
   try {
-    const { totais, recentes } = await emissoesPorUsuario({ desde: intervaloDoDia(hoje()).inicio });
+    const dia = hoje();
+    const inicioDoDia = Date.parse(intervaloDoDia(dia).inicio);
+    const notas = await emissoesDoVarejoDesde(intervaloDoDia(`${dia.slice(0, 7)}-01`).inicio);
 
     const porUsuario = new Map();
-    const linha = (email) => {
-      if (!porUsuario.has(email)) {
-        porUsuario.set(email, { email, hoje: 0, total: 0, porTipo: {}, ultimaEmissao: null });
-      }
-      return porUsuario.get(email);
-    };
-    for (const t of totais) {
-      const u = linha(t.emitida_por);
-      const notas = Number(t.notas);
-      u.total += notas;
-      u.porTipo[t.classificacao] = (u.porTipo[t.classificacao] ?? 0) + notas;
-      if (!u.ultimaEmissao || t.ultima_emissao > u.ultimaEmissao) u.ultimaEmissao = t.ultima_emissao;
+    for (const { emitida_por: email, emitida_em: em } of notas) {
+      const u = porUsuario.get(email) ?? { email, hoje: 0, mes: 0, ultimaEmissao: null };
+      u.mes += 1;
+      if (Date.parse(em) >= inicioDoDia) u.hoje += 1;
+      if (!u.ultimaEmissao || em > u.ultimaEmissao) u.ultimaEmissao = em;
+      porUsuario.set(email, u);
     }
-    for (const r of recentes) linha(r.emitida_por).hoje += 1;
 
-    const usuarios = [...porUsuario.values()].sort((a, b) => b.hoje - a.hoje || b.total - a.total);
+    const usuarios = [...porUsuario.values()].sort((a, b) => b.hoje - a.hoje || b.mes - a.mes);
     return Response.json({ usuarios, atualizadoEm: new Date().toISOString() });
   } catch (erro) {
     return erroJson(`Não foi possível ler as emissões por usuário: ${erro.message}`);

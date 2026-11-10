@@ -209,28 +209,33 @@ export async function atualizarNotaEmitida(orderId, emitida, { emitidaPor = null
   return error ? { ok: false, erro: error.message } : { ok: true };
 }
 
+// Linhas por consulta: o Supabase devolve no máximo 1000 de uma vez.
+const LINHAS_POR_PAGINA = 1000;
+
 /**
- * Notas emitidas por usuário (ver supabase/emissoes-por-usuario.sql): o total
- * de cada um por tipo de nota, da view, e as emitidas a partir de `desde`
- * (ISO) — o "hoje" da tela. Lança se o Supabase falhar.
+ * Notas do varejo (B2C) emitidas pelo SAP com usuário registrado a partir de
+ * `desde` (ISO): `{ emitida_por, emitida_em }` de cada uma. Lê em páginas,
+ * porque um mês passa de 1000 notas. Lança se o Supabase falhar.
  */
-export async function emissoesPorUsuario({ desde }) {
+export async function emissoesDoVarejoDesde(desde) {
   const db = obterCliente();
   if (!db) throw new Error(SEM_CONFIG.erro);
 
-  const [totais, recentes] = await Promise.all([
-    db.from('notas_emitidas_por_usuario').select('emitida_por, classificacao, notas, ultima_emissao'),
-    db
+  const linhas = [];
+  for (let de = 0; ; de += LINHAS_POR_PAGINA) {
+    const { data, error } = await db
       .from('notas_processadas')
-      .select('emitida_por, classificacao')
+      .select('emitida_por, emitida_em')
+      .eq('classificacao', 'varejo')
       .eq('nota_emitida', true)
       .not('emitida_por', 'is', null)
-      .gte('emitida_em', desde),
-  ]);
-  for (const { error } of [totais, recentes]) {
-    if (error) throw new Error(`Falha ao ler as emissões por usuário no Supabase: ${error.message}`);
+      .gte('emitida_em', desde)
+      .order('id')
+      .range(de, de + LINHAS_POR_PAGINA - 1);
+    if (error) throw new Error(`Falha ao ler as emissões do varejo no Supabase: ${error.message}`);
+    linhas.push(...(data ?? []));
+    if ((data ?? []).length < LINHAS_POR_PAGINA) return linhas;
   }
-  return { totais: totais.data ?? [], recentes: recentes.data ?? [] };
 }
 
 /** Registra os SKUs que precisam de cadastro ou correção no Tiny. */
