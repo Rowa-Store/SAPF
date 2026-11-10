@@ -1,9 +1,13 @@
-// Página inicial: atalhos para cada área do app, com uma linha sobre o que
-// cada uma faz.
+// Página inicial: atalhos para as áreas que o papel do usuário abre, com uma
+// linha sobre o que cada uma faz.
 
-import { AREAS } from '@/lib/navegacao';
+import { areasDoPapel } from '@/lib/acessos';
+import { usuarioAtual } from '@/lib/supabase/sessao';
 
-export default function Inicio() {
+export default async function Inicio() {
+  const usuario = await usuarioAtual();
+  const areas = areasDoPapel(usuario?.papel);
+
   return (
     <>
       <div className="boas-vindas">
@@ -14,8 +18,12 @@ export default function Inicio() {
         </p>
       </div>
 
+      {areas.length === 0 && (
+        <p className="aviso">Seu usuário ainda não tem acesso a nenhuma área. Peça a liberação ao administrador.</p>
+      )}
+
       <nav className="grade-atalhos" aria-label="Áreas do app">
-        {AREAS.map((a) => (
+        {areas.map((a) => (
           <a key={a.href} href={a.href} className="atalho">
             <span className="atalho-titulo">{a.rotulo}</span>
             <span className="atalho-descricao">{a.descricao}</span>

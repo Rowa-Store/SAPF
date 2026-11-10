@@ -70,12 +70,33 @@ commitada no repositório.
 | `SINTEGRAPI_API_KEY` | Chave do SintegrAPI (dashboard). Usada para buscar a IE do cliente de atacado pelo CNPJ quando ela ainda não está em `clientes_ie` — ver abaixo. |
 | `SUPABASE_URL` | Project Settings > API > Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings > API > `service_role`. Nunca exponha no navegador. |
+| `SUPABASE_ANON_KEY` | Project Settings > API > `anon` `public`. Usada no login (Supabase Auth). **Obrigatória**: sem ela o app não abre — ver "Login e acessos". |
 | `PERMITIR_EMISSAO` | Valor inicial da trava, só usado se a linha `permitir_emissao` ainda não existir no Supabase. Não mude sem alinhar com o time fiscal. |
 
 O sistema roda sem Supabase configurado, mas sem histórico, sem trava contra
 nota duplicada e sem a lista de CNPJs de franquia (todo CNPJ com pedido vira
 "atacado" nesse caso). A tela Sys Info (`/sysinfo`, que consulta `/api/saude`) avisa quando algum
 serviço não está configurado ou fora do ar.
+
+### Login e acessos
+
+Todo o app (páginas e APIs) pede login — e-mail e senha do Supabase Auth.
+O `src/middleware.js` barra quem não está logado (vai para `/login`; API
+responde 401) e quem não tem acesso à área (volta para a tela inicial; API
+responde 403). Menu e tela inicial mostram só as áreas do papel.
+
+| Papel | Áreas |
+|---|---|
+| `admin` | Tudo |
+| `financeiro` | B2B (com transportadoras e clientes), Boletos, Transferências |
+| `varejo` | B2C |
+
+As regras (inclusive quais APIs cada papel chama) ficam em
+`src/lib/acessos.js`. Para dar acesso a alguém: crie o usuário em
+**Authentication > Users > Add user** (marque "Auto Confirm User") e rode
+`supabase/acessos.sql` com o e-mail e o papel. Em **Authentication > Sign In
+/ Providers**, desligue "Allow new users to sign up" — usuário só entra se
+foi criado no painel.
 
 ### Criando as tabelas no Supabase
 

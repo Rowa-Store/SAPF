@@ -600,3 +600,14 @@ tbody tr.linha-clicavel { cursor: pointer; }
   .par-gtin .shopify-campos { grid-template-columns: 1fr 1fr; }
   .par-gtin .lado-shopify + .lado-shopify { border-left: 0; border-top: 1px solid var(--shopify-borda); }
 }
+
+/* ---- /login ---- */
+
+.login { max-width: 22rem; margin: 3rem auto; display: grid; gap: 0.9rem; }
+.login h2 { margin: 0; }
+.login label input { margin-top: 0.25rem; }
+.login .aviso { margin: 0; }
+
+/* Usuário logado e "Sair", no canto do cabeçalho. */
+.topo-usuario { display: flex; align-items: center; gap: 0.6rem; font-size: 0.85rem; }
+.topo-usuario form { margin: 0; }

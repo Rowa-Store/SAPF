@@ -1,0 +1,59 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { podeAcessar, areasDoPapel } from './acessos.js';
+
+test('varejo abre só o B2C e as rotas de nota que ele usa', () => {
+  assert.ok(podeAcessar('varejo', '/varejo'));
+  assert.ok(podeAcessar('varejo', '/api/varejo'));
+  assert.ok(podeAcessar('varejo', '/api/varejo/123/preview'));
+  for (const acao of ['rascunho', 'emitir', 'situacao', 'danfe']) {
+    assert.ok(podeAcessar('varejo', `/api/pedidos/123/${acao}`), acao);
+  }
+  assert.ok(!podeAcessar('varejo', '/api/pedidos'));
+  assert.ok(!podeAcessar('varejo', '/api/pedidos/123/preview'));
+  assert.ok(!podeAcessar('varejo', '/api/pedidos/123/email'));
+  assert.ok(!podeAcessar('varejo', '/pedidos'));
+  assert.ok(!podeAcessar('varejo', '/boletos'));
+  assert.ok(!podeAcessar('varejo', '/api/boletos'));
+  assert.ok(!podeAcessar('varejo', '/olist'));
+});
+
+test('financeiro abre B2B, boletos e transferências, e não o B2C', () => {
+  for (const c of [
+    '/pedidos',
+    '/pedidos/transportadoras',
+    '/pedidos/clientes',
+    '/pedidos/123/rascunho',
+    '/boletos',
+    '/transferencias',
+    '/transferencias/9/rascunho/editar',
+    '/api/pedidos',
+    '/api/pedidos/123/email',
+    '/api/boletos/caixa',
+    '/api/transferencias/9/emitir',
+    '/api/transportadoras/1/clientes',
+    '/api/franquias',
+  ]) {
+    assert.ok(podeAcessar('financeiro', c), c);
+  }
+  assert.ok(!podeAcessar('financeiro', '/varejo'));
+  assert.ok(!podeAcessar('financeiro', '/api/varejo'));
+  assert.ok(!podeAcessar('financeiro', '/olist'));
+  assert.ok(!podeAcessar('financeiro', '/sysinfo'));
+  // prefixo não vaza para nomes parecidos
+  assert.ok(!podeAcessar('financeiro', '/boletosx'));
+});
+
+test('admin abre tudo; sem papel só a tela inicial', () => {
+  assert.ok(podeAcessar('admin', '/olist/ncm'));
+  assert.ok(podeAcessar('admin', '/api/saude'));
+  assert.ok(podeAcessar(undefined, '/'));
+  assert.ok(!podeAcessar(undefined, '/varejo'));
+  assert.ok(!podeAcessar('qualquer', '/pedidos'));
+});
+
+test('menu segue o papel', () => {
+  assert.deepEqual(areasDoPapel('varejo').map((a) => a.href), ['/varejo']);
+  assert.deepEqual(areasDoPapel('financeiro').map((a) => a.href), ['/pedidos', '/boletos', '/transferencias']);
+  assert.equal(areasDoPapel(undefined).length, 0);
+});
