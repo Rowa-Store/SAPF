@@ -36,8 +36,12 @@ async function lerJson(resposta, mensagemPadrao) {
  * O nº da NF nunca é digitado: vem da nota autorizada no Tiny. Toda linha da
  * página aberta que tem nota no Tiny mas ainda não tem número é conferida
  * sozinha, uma por vez (a API do Tiny tem limite de chamadas por minuto).
+ *
+ * `api` é de onde vêm a lista e o preview: /api/pedidos (B2B) ou /api/varejo
+ * (B2C, /varejo). Rascunho, emissão e situação são sempre os de
+ * /api/pedidos/[id] — servem aos dois.
  */
-export function useAtacado() {
+export function useAtacado({ api = '/api/pedidos' } = {}) {
   const [pedidos, setPedidos] = useState(null);
   const [erro, setErro] = useState(null);
   const [aviso, setAviso] = useState(null);
@@ -69,7 +73,7 @@ export function useAtacado() {
       if (cursor) query.set('cursor', cursor);
       if (busca.trim()) query.set('busca', busca.trim());
       else if (diaPedido) query.set('dia', diaPedido);
-      const corpo = await lerJson(await fetch(`/api/pedidos?${query}`), 'Falha ao carregar');
+      const corpo = await lerJson(await fetch(`${api}?${query}`), 'Falha ao carregar');
       setPedidos(corpo.pedidos);
       setProximoCursor(corpo.proximoCursor);
       setDia(corpo.dia ?? null);
@@ -83,7 +87,7 @@ export function useAtacado() {
     } finally {
       setCarregando(false);
     }
-  }, []);
+  }, [api]);
 
   useEffect(() => {
     carregar();
@@ -155,7 +159,7 @@ export function useAtacado() {
   async function pedirCriacao(p, fase) {
     definirAcao(p.id, { fase, preview: { carregando: true } });
     try {
-      const dados = await lerJson(await fetch(`/api/pedidos/${p.id}/preview`), 'Falha ao montar o preview do pedido');
+      const dados = await lerJson(await fetch(`${api}/${p.id}/preview`), 'Falha ao montar o preview do pedido');
       setAcoes((atual) =>
         atual[p.id]?.fase === fase ? { ...atual, [p.id]: { fase, preview: { carregando: false, dados } } } : atual
       );

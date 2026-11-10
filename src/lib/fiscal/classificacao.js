@@ -17,8 +17,26 @@ import { listarCnpjsFranquia } from '../db.js';
 // usamos o primeiro que existir. A ordem vai do mais estruturado para o mais
 // improvisado, porque campo estruturado erra menos.
 export function extrairCnpj(pedido) {
-  if (!pedido) return { cnpj: '', origem: null };
+  // O "company" pode conter só a razão social, sem número nenhum — por isso
+  // só aceitamos o candidato cujo conteúdo realmente tem 14 dígitos.
+  const achado = candidatosDeDocumento(pedido).find((c) => pareceCnpj(c.valor));
+  return achado ? { cnpj: somenteDigitos(achado.valor), origem: achado.origem } : { cnpj: '', origem: null };
+}
 
+/**
+ * CPF ou CNPJ do cliente do varejo (loja online), só dígitos. O checkout grava
+ * o documento em `info_document` (e repete em `additional_cpf_cnpj`) — os
+ * mesmos candidatos do CNPJ, aceitando também os 11 dígitos do CPF.
+ */
+export function extrairDocumento(pedido) {
+  const achado = candidatosDeDocumento(pedido).find((c) => [11, 14].includes(somenteDigitos(c.valor).length));
+  return achado
+    ? { documento: somenteDigitos(achado.valor), origem: achado.origem }
+    : { documento: '', origem: null };
+}
+
+/** Onde o documento do cliente pode estar, do mais estruturado para o mais improvisado. */
+function candidatosDeDocumento(pedido) {
   const candidatos = [];
 
   // 1. Metafields do cliente (ex.: namespace "custom", key "cnpj").
@@ -53,15 +71,7 @@ export function extrairCnpj(pedido) {
     if (achado) candidatos.push({ valor: achado[0], origem: 'note' });
   }
 
-  // O "company" pode conter só a razão social, sem número nenhum — por isso
-  // só aceitamos o candidato cujo conteúdo realmente tem 14 dígitos.
-  for (const candidato of candidatos) {
-    if (pareceCnpj(candidato.valor)) {
-      return { cnpj: somenteDigitos(candidato.valor), origem: candidato.origem };
-    }
-  }
-
-  return { cnpj: '', origem: null };
+  return candidatos;
 }
 
 /** Igual a classificarPedido, mas recebe a lista de CNPJs de franquia já

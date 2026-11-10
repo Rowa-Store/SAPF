@@ -7,6 +7,11 @@ export const AREAS = [
     descricao: 'Pedidos B2B do Shopify (atacado e franquia): criar o rascunho, emitir a nota fiscal e baixar o DANFE.',
   },
   {
+    href: '/varejo',
+    rotulo: 'B2C',
+    descricao: 'Pedidos do varejo (loja online) do Shopify: criar o rascunho, emitir a nota fiscal e baixar o DANFE.',
+  },
+  {
     href: '/boletos',
     rotulo: 'Boletos',
     descricao: 'Pedidos pagos com boleto: o nº da NF de cada um e o status do boleto (emitido ou pendente).',

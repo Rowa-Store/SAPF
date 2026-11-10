@@ -6,10 +6,10 @@
 // para testar a transformação sozinha, com exemplos/pedido-exemplo.json.
 
 import { dataBr, separarLogradouro, somenteDigitos, valorMonetario } from '../utils.js';
-import { extrairCnpj } from './classificacao.js';
+import { extrairCnpj, extrairDocumento } from './classificacao.js';
 import { CAMPO_DESCONTO_TINY, comDesconto, descontoComMeiaNota, ehMeiaNota, montarDesconto } from './desconto.js';
 import { ehAcessorio, markupDoItem, markupPadrao, valorComMarkup } from './markup.js';
-import { montarPagamento } from './pagamento.js';
+import { FORMA_PIX, montarPagamento } from './pagamento.js';
 import { TRANSPORTE_PADRAO, quantidadeDeVolumes } from './transporte.js';
 
 /**
@@ -73,15 +73,13 @@ function extrairBairro(customAttributes, prefixos) {
   return null;
 }
 
-export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
+/**
+ * Endereço do cliente na nota — o de cobrança, ou o de entrega quando não há
+ * cobrança — e os alertas do que veio faltando. Comum às notas de atacado e
+ * de varejo.
+ */
+function enderecoDoCliente(pedidoShopify) {
   const alertas = [];
-
-  // O markup em uso aparece no quadro de markup da tela do rascunho, e não
-  // como alerta: lá ele muda junto quando a pessoa troca o valor.
-  const markup = opcoes.markup ?? markupPadrao(classificacao);
-  const precosVarejo = [];
-  const acessorios = [];
-
   const usaCobranca = !!pedidoShopify.billingAddress;
   const endereco = pedidoShopify.billingAddress ?? pedidoShopify.shippingAddress ?? {};
   if (!usaCobranca && pedidoShopify.shippingAddress) {
@@ -119,6 +117,34 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
     bairro = BAIRRO_PADRAO;
     alertas.push(`Bairro não informado no pedido — a nota vai com o bairro "${BAIRRO_PADRAO}".`);
   }
+
+  return {
+    alertas,
+    empresa: endereco.company,
+    campos: {
+      endereco: logradouro,
+      numero,
+      complemento,
+      bairro,
+      cep: somenteDigitos(endereco.zip),
+      cidade,
+      uf,
+      pais: 'BRASIL',
+    },
+  };
+}
+
+export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
+  const alertas = [];
+
+  // O markup em uso aparece no quadro de markup da tela do rascunho, e não
+  // como alerta: lá ele muda junto quando a pessoa troca o valor.
+  const markup = opcoes.markup ?? markupPadrao(classificacao);
+  const precosVarejo = [];
+  const acessorios = [];
+
+  const endereco = enderecoDoCliente(pedidoShopify);
+  alertas.push(...endereco.alertas);
 
   const { cnpj } = extrairCnpj(pedidoShopify); // isso aqui não é aqui nao ein
   if (!cnpj) {
@@ -237,20 +263,13 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
       obs: `Pedido vindo do Shopify: ${String(pedidoShopify.name ?? '').replace('#', '')}`,
       cliente: 
       {
-        nome: pedidoShopify.customer?.displayName ?? endereco.company ?? '',
-        tipo_pessoa: 'J', 
+        nome: pedidoShopify.customer?.displayName ?? endereco.empresa ?? '',
+        tipo_pessoa: 'J',
         cpf_cnpj: cnpj,
         // Preenchida depois pela rota do preview (ver inscricaoEstadual.js), que
         // precisa da UF já resolvida aqui e consulta Supabase/SintegrAPI.
         ie: '',
-        endereco: logradouro,
-        numero: numero,
-        complemento: complemento,
-        bairro: bairro,
-        cep: somenteDigitos(endereco.zip),
-        cidade: cidade,
-        uf: uf,
-        pais: 'BRASIL',
+        ...endereco.campos,
         atualizar_cliente: 'N',
       },
 
@@ -259,6 +278,99 @@ export function montarNotaAtacado(pedidoShopify, classificacao, opcoes = {}) {
   };
 
   return { payload, alertas, markup, precosVarejo, acessorios, meiaNota, descontoPedido };
+}
+
+/** Natureza da operação da nota de varejo (loja online, consumidor final). */
+export const NATUREZA_VAREJO = 'Venda de mercadorias - não contribuinte';
+
+/**
+ * Nota de um pedido de varejo da loja online (tela /varejo). Diferente do
+ * atacado:
+ *
+ *   - o cliente é consumidor final, quase sempre pessoa física: CPF (ou CNPJ)
+ *     do checkout, sem IE, e a natureza é NATUREZA_VAREJO;
+ *   - o item sai pelo preço que o cliente pagou (com o desconto da peça), sem
+ *     markup, e o desconto do pedido inteiro (cupom) vai em `valor_desconto`;
+ *   - todos os pedidos vão pelos Correios, SEDEX CONTRATO AG, frete por conta
+ *     do destinatário (FOB) — confirmado contra nota de varejo real; é o
+ *     mesmo TRANSPORTE_PADRAO do atacado. A nota não leva quantidade de
+ *     volumes;
+ *   - PIX vai como `pix`; cartão fica sem forma de pagamento, como no atacado
+ *     (ver pagamento.js). A forma vem do atributo `payment_type` do checkout.
+ *
+ * @returns {{ payload: object, alertas: string[] }}
+ */
+export function montarNotaVarejo(pedidoShopify) {
+  const valor = (set) => Number(set?.shopMoney?.amount ?? 0);
+  const endereco = enderecoDoCliente(pedidoShopify);
+  const alertas = [...endereco.alertas];
+
+  const { documento } = extrairDocumento(pedidoShopify);
+  if (!documento) {
+    alertas.push('CPF/CNPJ não localizado no pedido. A nota não pode ser criada sem ele.');
+  }
+
+  const itens = (pedidoShopify.lineItems ?? []).map((linha) => {
+    if (!linha.sku) alertas.push(`Item "${linha.title}" está sem SKU no Shopify.`);
+    return {
+      item: {
+        codigo: linha.sku ?? '',
+        descricao: linha.title ?? '',
+        unidade: 'UN',
+        quantidade: Number(linha.quantity ?? 0),
+        valor_unitario: valorMonetario(valor(linha.discountedUnitPriceSet ?? linha.originalUnitPriceSet)),
+        tipo: 'P',
+      },
+    };
+  });
+  if (itens.length === 0) {
+    alertas.push('Pedido sem itens. Verifique se a leitura do Shopify foi completa.');
+  }
+
+  const totalItens = itens.reduce((soma, { item }) => soma + Number(item.valor_unitario) * Number(item.quantidade), 0);
+  const desconto = valor(pedidoShopify.currentCartDiscountAmountSet);
+  const frete = valor(pedidoShopify.currentShippingPriceSet);
+
+  // A nota tem de fechar no que o cliente pagou: se não fechar, algum
+  // desconto ou ajuste do Shopify ficou de fora.
+  const totalNota = totalItens - desconto + frete;
+  const totalShopify = valor(pedidoShopify.currentTotalPriceSet);
+  if (Math.abs(totalNota - totalShopify) > 0.01) {
+    alertas.push(
+      `O total da nota (R$ ${valorMonetario(totalNota)}) não bate com o total do pedido no Shopify ` +
+        `(R$ ${valorMonetario(totalShopify)}). Confira antes de emitir.`
+    );
+  }
+
+  const tipoPagamento = (pedidoShopify.customAttributes ?? []).find((a) => a.key === 'payment_type')?.value ?? '';
+  const pagamento = tipoPagamento.toLowerCase() === 'pix' ? { forma_pagamento: FORMA_PIX } : {};
+  const numeroPedido = String(pedidoShopify.name ?? '').replace('#', '');
+
+  const payload = {
+    nota_fiscal: {
+      tipo: 'S',
+      natureza_operacao: NATUREZA_VAREJO,
+      frete_por_conta: 'D',
+      ...(frete > 0 ? { valor_frete: valorMonetario(frete) } : {}),
+      ...TRANSPORTE_PADRAO,
+      data_emissao: dataBr(),
+      numero_pedido_ecommerce: numeroPedido,
+      ...comDesconto({}, desconto),
+      ...pagamento,
+      obs: `Pedido vindo do Shopify: ${numeroPedido}`,
+      cliente: {
+        nome: pedidoShopify.customer?.displayName ?? endereco.empresa ?? '',
+        tipo_pessoa: documento.length === 14 ? 'J' : 'F',
+        cpf_cnpj: documento,
+        ie: '',
+        ...endereco.campos,
+        atualizar_cliente: 'N',
+      },
+      itens,
+    },
+  };
+
+  return { payload, alertas };
 }
 
 /** Soma dos itens da nota, para conferência visual na tela do rascunho. */

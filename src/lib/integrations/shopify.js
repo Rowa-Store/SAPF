@@ -62,7 +62,7 @@ export async function shopifyGraphQL(query, variables = {}) {
 export const QUERY_PEDIDO_COMPLETO = `
 query PedidoAtacado($id: ID!, $cursor: String) {
   order(id: $id) {
-    id name createdAt note
+    id name createdAt note sourceName
     customAttributes { key value }
     currentShippingPriceSet { shopMoney { amount } }
     currentSubtotalLineItemsQuantity
@@ -106,7 +106,7 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
   orders(first: $limite, after: $cursor, sortKey: CREATED_AT, reverse: true, query: $busca) {
     pageInfo { hasNextPage endCursor }
     nodes {
-      id name createdAt tags
+      id name createdAt tags sourceName
       events(first: 5, sortKey: CREATED_AT) { nodes { message ... on BasicEvent { action } } }
       currentTotalPriceSet { shopMoney { amount } }
       note
@@ -123,11 +123,6 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
   }
 }`;
 
-// Mesma regra do alerta de atacado (hub-rowa, webhook shopify/atacado): só
-// entra pedido criado a partir de pedido rascunho e convertido por alguém da
-// staff de atacado. Compra da loja online com CNPJ no checkout não é atacado,
-// nem rascunho virado por outra equipe (troca do SAC, por exemplo).
-const FILTRO_BASE = 'financial_status:paid AND source_name:shopify_draft_order';
 
 /** Usuários do Shopify que viram pedido de atacado — manter igual a STAFF_ATACADO do hub-rowa. */
 const STAFF_ATACADO = ['Michelle Kimura', 'Nicole Schneider', 'Joadson Nascimento Santos'].map((n) => n.toLowerCase());
@@ -146,6 +141,31 @@ function viradoPeloAtacado(pedido) {
   return STAFF_ATACADO.includes(convertidoPor(pedido._bruto)?.toLowerCase());
 }
 
+/**
+ * De onde vêm os pedidos de cada tela: `filtro` vai na busca do Shopify e
+ * `aceita` confere cada pedido depois, porque nem tudo dá para buscar.
+ *
+ *   - atacado (/pedidos): mesma regra do alerta de atacado (hub-rowa, webhook
+ *     shopify/atacado) — só pedido criado a partir de pedido rascunho e
+ *     convertido por alguém da staff de atacado. Compra da loja online com
+ *     CNPJ no checkout não é atacado, nem rascunho virado por outra equipe
+ *     (troca do SAC, por exemplo).
+ *   - varejo (/varejo): pedido da loja online (`sourceName` "web"). Ficam de
+ *     fora o PDV das lojas físicas (iGluPOS, que já emite NFC-e) e os
+ *     rascunhos. A busca do Shopify por `source_name:web` deixa passar
+ *     rascunho, por isso a conferência pelo `sourceName`.
+ */
+export const CANAIS = {
+  atacado: {
+    filtro: 'financial_status:paid AND source_name:shopify_draft_order',
+    aceita: viradoPeloAtacado,
+  },
+  varejo: {
+    filtro: 'financial_status:paid AND source_name:web',
+    aceita: (pedido) => pedido._bruto.sourceName === 'web',
+  },
+};
+
 /** Aspas para a sintaxe de busca do Shopify (termos com espaço, "#", etc.). */
 function entreAspas(termo) {
   return `"${String(termo).replace(/["\\]/g, '')}"`;
@@ -158,37 +178,37 @@ function entreAspas(termo) {
  * são nºs de pedido exatos (ex.: vindos de uma busca por nº da NF). Qualquer
  * um que casar entra (OR); sem nenhum, só os pagos.
  */
-function montarBusca({ termos = [], nomes = [], periodo = null }) {
+function montarBusca({ filtro, termos = [], nomes = [], periodo = null }) {
   const partes = [
     ...termos.map((t) => (/^#?\d{1,8}$/.test(t) ? `name:${entreAspas(t.startsWith('#') ? t : `#${t}`)}` : entreAspas(t))),
     ...nomes.map((n) => `name:${entreAspas(n)}`),
   ];
   // `periodo` (ISO em UTC) recorta por data de criação — ver listarPedidosDoDia.
   const base = periodo
-    ? `${FILTRO_BASE} AND created_at:>=${periodo.inicio} AND created_at:<${periodo.fim}`
-    : FILTRO_BASE;
+    ? `${filtro} AND created_at:>=${periodo.inicio} AND created_at:<${periodo.fim}`
+    : filtro;
   if (partes.length === 0) return base;
   return `${base} AND (${partes.join(' OR ')})`;
 }
 
 /**
- * Uma página da lista de pedidos da tela de atacado, mais recentes primeiro.
- * Paginada por cursor no próprio Shopify: pedir tudo de uma vez (com os
- * metafields de cada cliente) deixava a consulta pesada e a tela lenta.
- * O filtro da staff de atacado é aplicado aqui — o Shopify não busca por quem
+ * Uma página da lista de pedidos do `canal` (ver CANAIS), mais recentes
+ * primeiro. Paginada por cursor no próprio Shopify: pedir tudo de uma vez
+ * (com os metafields de cada cliente) deixava a consulta pesada e a tela
+ * lenta. O `aceita` do canal é aplicado aqui — o Shopify não busca por quem
  * converteu —, então uma página pode vir com menos pedidos que o `limite`.
  */
-export async function listarPedidosRecentes(opcoes) {
-  const pagina = await paginaDePedidos(opcoes);
-  return { ...pagina, pedidos: pagina.pedidos.filter(viradoPeloAtacado) };
+export async function listarPedidosRecentes({ canal = 'atacado', ...opcoes } = {}) {
+  const pagina = await paginaDePedidos({ ...opcoes, filtro: CANAIS[canal].filtro });
+  return { ...pagina, pedidos: pagina.pedidos.filter(CANAIS[canal].aceita) };
 }
 
-/** Página do Shopify sem o filtro da staff de atacado. */
-async function paginaDePedidos({ limite = 50, cursor = null, termos, nomes, periodo } = {}) {
+/** Página do Shopify sem o `aceita` do canal. */
+async function paginaDePedidos({ filtro, limite = 50, cursor = null, termos, nomes, periodo } = {}) {
   const dados = await shopifyGraphQL(QUERY_PEDIDOS_RECENTES, {
     limite,
     cursor,
-    busca: montarBusca({ termos, nomes, periodo }),
+    busca: montarBusca({ filtro, termos, nomes, periodo }),
   });
   const pedidos = dados.orders?.nodes ?? [];
 
@@ -297,18 +317,19 @@ const MAXIMO_PAGINAS_DO_DIA = 20;
  * páginas vêm do mais novo para o mais antigo, para de ler assim que passa
  * do início do dia.
  */
-export async function listarPedidosDoDia({ periodo, limitePorPagina = 50 }) {
+export async function listarPedidosDoDia({ periodo, limitePorPagina = 50, canal = 'atacado' }) {
+  const { filtro, aceita } = CANAIS[canal];
   const inicio = Date.parse(periodo.inicio);
   const fim = Date.parse(periodo.fim);
   const pedidos = [];
   let cursor = null;
   for (let pagina = 0; pagina < MAXIMO_PAGINAS_DO_DIA; pagina += 1) {
-    // Página sem o filtro da staff: o fim do dia se acha pelo último pedido
+    // Página sem o `aceita` do canal: o fim do dia se acha pelo último pedido
     // da página, seja de quem for.
-    const resultado = await paginaDePedidos({ limite: limitePorPagina, cursor, periodo });
+    const resultado = await paginaDePedidos({ filtro, limite: limitePorPagina, cursor, periodo });
     const criados = resultado.pedidos.map((p) => ({ p, em: Date.parse(p.createdAt) }));
     pedidos.push(
-      ...criados.filter(({ p, em }) => em >= inicio && em < fim && viradoPeloAtacado(p)).map(({ p }) => p)
+      ...criados.filter(({ p, em }) => em >= inicio && em < fim && aceita(p)).map(({ p }) => p)
     );
 
     const passouDoDia = criados.length > 0 && criados[criados.length - 1].em < inicio;
@@ -344,7 +365,7 @@ export async function obterPedidoCompleto(orderId) {
 
 /** Ping usado pelo /api/saude. */
 export async function verificarShopify() {
-  const dados = await shopifyGraphQL(QUERY_PEDIDOS_RECENTES, { limite: 1, busca: FILTRO_BASE });
+  const dados = await shopifyGraphQL(QUERY_PEDIDOS_RECENTES, { limite: 1, busca: CANAIS.atacado.filtro });
   const pedidos = dados.orders?.nodes ?? [];
 
   return {

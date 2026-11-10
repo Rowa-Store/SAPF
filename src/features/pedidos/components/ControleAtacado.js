@@ -1,6 +1,9 @@
 // /pedidos — tela única de atacado: pedidos de atacado e franquia do Shopify
 // e a nota fiscal de cada um no Tiny — rascunho, emissão, nº da NF e DANFE.
 // Cliente e itens se ajustam na conferência (/pedidos/[id]/rascunho).
+//
+// /varejo usa a mesma tela com `canal="b2c"`: pedidos da loja online, sem
+// classificação, transportadora nem conferência item a item (ver CANAIS).
 
 'use client';
 
@@ -12,7 +15,14 @@ import { formatarDataCurta, formatarDataHoraCurta, formatarMoeda, formatarMoedaO
 import { resumoDoTransporte } from '@/lib/fiscal/transporte';
 import { useAtacado } from '../hooks/useAtacado';
 
-const COLUNAS = 6;
+/**
+ * O que muda entre as telas: de onde vem a lista (`api`) e se há a
+ * conferência item a item em /pedidos/[id]/rascunho, que é só do B2B.
+ */
+const CANAIS = {
+  b2b: { api: '/api/pedidos', conferencia: true, vazio: 'Nenhum pedido B2B pago neste dia.' },
+  b2c: { api: '/api/varejo', conferencia: false, vazio: 'Nenhum pedido da loja online pago neste dia.' },
+};
 
 /** "erro no Tiny": clicável quando há erro guardado — abre o erro na linha. */
 function MarcaErro({ rotulo = 'erro no Tiny', aoClicar }) {
@@ -70,10 +80,10 @@ function AvisoTransporte({ transporte }) {
 }
 
 /** Linha de largura total logo abaixo do pedido (confirmação, erro). */
-function LinhaDetalhe({ children }) {
+function LinhaDetalhe({ colunas, children }) {
   return (
     <tr className="linha-detalhe">
-      <td colSpan={COLUNAS}>{children}</td>
+      <td colSpan={colunas}>{children}</td>
     </tr>
   );
 }
@@ -95,7 +105,13 @@ function ResumoPreview({ preview }) {
     <>
       <p className="fraco">
         Cliente na nota: {nota.cliente.nome}
-        {nota.cliente.cpf_cnpj && <span className="mono"> · CNPJ {nota.cliente.cpf_cnpj}</span>} ·{' '}
+        {nota.cliente.cpf_cnpj && (
+          <span className="mono">
+            {' '}
+            · {nota.cliente.tipo_pessoa === 'F' ? 'CPF' : 'CNPJ'} {nota.cliente.cpf_cnpj}
+          </span>
+        )}{' '}
+        ·{' '}
         {nota.itens.length} item(ns) · <strong>Total da nota: {formatarMoeda(dados.totalNota)}</strong>
         <br />
         Transporte: {resumoDoTransporte(dados)}
@@ -114,7 +130,10 @@ function ResumoPreview({ preview }) {
   );
 }
 
-export default function ControleAtacado() {
+export default function ControleAtacado({ canal = 'b2b' }) {
+  const config = CANAIS[canal];
+  const b2b = canal === 'b2b';
+  const colunas = b2b ? 6 : 5;
   const {
     pedidos,
     erro,
@@ -145,7 +164,7 @@ export default function ControleAtacado() {
     criarEEmitir,
     emitir,
     verErro,
-  } = useAtacado();
+  } = useAtacado({ api: config.api });
 
   // Sem busca, a lista é de um dia só (abre em hoje): a navegação por dia
   // fica no cartão, logo abaixo da busca — os botões andam um dia por vez e o
@@ -175,7 +194,7 @@ export default function ControleAtacado() {
 
   return (
     <>
-      <AbasAtacado />
+      {b2b && <AbasAtacado />}
 
       <div className="cartao">
         <div className="campos">
@@ -184,7 +203,7 @@ export default function ControleAtacado() {
             <input
               id="busca"
               placeholder="Ex.: #1024, #1030 ou nome do cliente"
-              title="Nº do pedido, cliente, nº da NF ou CNPJ — separe vários por vírgula. Enter para buscar."
+              title={`Nº do pedido, cliente, nº da NF ou ${b2b ? 'CNPJ' : 'CPF/CNPJ'} — separe vários por vírgula. Enter para buscar.`}
               value={filtros.busca}
               onChange={(e) => atualizarFiltro('busca', e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && buscar()}
@@ -243,7 +262,7 @@ export default function ControleAtacado() {
       ) : visiveis.length === 0 ? (
         <>
           <div className="vazio">
-            {dia ? 'Nenhum pedido B2B pago neste dia.' : 'Nenhum pedido corresponde aos filtros nesta página.'}
+            {dia ? config.vazio : 'Nenhum pedido corresponde aos filtros nesta página.'}
           </div>
           {paginacao}
         </>
@@ -256,7 +275,7 @@ export default function ControleAtacado() {
                   <th>Pedido</th>
                   <th>Cliente</th>
                   <th className="num">Total</th>
-                  <th>Classificação</th>
+                  {b2b && <th>Classificação</th>}
                   <th>Nota fiscal</th>
                   <th>Ações</th>
                 </tr>
@@ -277,7 +296,7 @@ export default function ControleAtacado() {
                       <tr className={expandida ? 'linha-expandida' : undefined}>
                         <td>
                           <div className="mono forte">
-                            <a href={`/pedidos/${p.id}/rascunho`}>{p.name}</a>
+                            {config.conferencia ? <a href={`/pedidos/${p.id}/rascunho`}>{p.name}</a> : p.name}
                           </div>
                           <div className="fraco">{formatarDataCurta(p.createdAt)}</div>
                         </td>
@@ -287,13 +306,15 @@ export default function ControleAtacado() {
                           <AvisoTransporte transporte={p.transporte} />
                         </td>
                         <td className="num">{formatarMoedaOuTraco(p.total)}</td>
-                        <td>
-                          <div className="pilha">
-                            <span className={`marca marca-${p.classificacao}`}>{p.classificacao}</span>
-                            {p.acessorio && <span className="marca marca-acessorio">acessórios</span>}
-                            {p.meiaNota && <span className="marca marca-meia-nota">meia nota</span>}
-                          </div>
-                        </td>
+                        {b2b && (
+                          <td>
+                            <div className="pilha">
+                              <span className={`marca marca-${p.classificacao}`}>{p.classificacao}</span>
+                              {p.acessorio && <span className="marca marca-acessorio">acessórios</span>}
+                              {p.meiaNota && <span className="marca marca-meia-nota">meia nota</span>}
+                            </div>
+                          </td>
+                        )}
                         <td>
                           <div className="pilha">
                             <StatusFiscal p={p} verErro={verErro} />
@@ -344,19 +365,21 @@ export default function ControleAtacado() {
                                 >
                                   Só rascunho
                                 </button>
-                                <a
-                                  className="botao-link"
-                                  href={`/pedidos/${p.id}/rascunho`}
-                                  title="Confere item a item e ajusta cliente e itens antes de criar o rascunho"
-                                >
-                                  Conferir itens
-                                </a>
+                                {config.conferencia && (
+                                  <a
+                                    className="botao-link"
+                                    href={`/pedidos/${p.id}/rascunho`}
+                                    title="Confere item a item e ajusta cliente e itens antes de criar o rascunho"
+                                  >
+                                    Conferir itens
+                                  </a>
+                                )}
                               </>
                             )}
 
                             {/* Rascunho já enviado: emitir (sempre o último — o id vem do
                                 Supabase) ou mandar um novo pela conferência. */}
-                            {temRascunho && !p.notaEmitida && (
+                            {config.conferencia && temRascunho && !p.notaEmitida && (
                               <a
                                 className="botao-link"
                                 href={`/pedidos/${p.id}/rascunho`}
@@ -379,7 +402,7 @@ export default function ControleAtacado() {
                       </tr>
 
                       {acao?.fase === 'confirmar-emissao-direta' && (
-                        <LinhaDetalhe>
+                        <LinhaDetalhe colunas={colunas}>
                           <div className="confirmacao">
                             <p style={{ marginTop: 0 }}>
                               <strong>Criar o rascunho e emitir a nota do pedido {p.name}?</strong> Isso grava a
@@ -399,7 +422,7 @@ export default function ControleAtacado() {
                       )}
 
                       {acao?.fase === 'confirmar-rascunho' && (
-                        <LinhaDetalhe>
+                        <LinhaDetalhe colunas={colunas}>
                           <div className="confirmacao">
                             <p style={{ marginTop: 0 }}>
                               <strong>Criar o rascunho do pedido {p.name}?</strong> Isto grava uma nota real no
@@ -419,7 +442,7 @@ export default function ControleAtacado() {
                       )}
 
                       {acao?.fase === 'confirmar-emissao' && (
-                        <LinhaDetalhe>
+                        <LinhaDetalhe colunas={colunas}>
                           <div className="confirmacao">
                             <p style={{ marginTop: 0 }}>
                               <strong>
@@ -438,7 +461,7 @@ export default function ControleAtacado() {
                       )}
 
                       {acao?.fase === 'erro' && (
-                        <LinhaDetalhe>
+                        <LinhaDetalhe colunas={colunas}>
                           <div className="aviso aviso-fechavel">
                             <div>
                               <strong>A operação no pedido {p.name} não foi concluída.</strong>

@@ -151,10 +151,14 @@ export async function POST(request, { params }) {
   // (ver tiny.js). Então o cadastro é marcado como Contribuinte ICMS ANTES da
   // inclusão. Falhar aqui não derruba o rascunho: a nota ainda é só rascunho e
   // a emissão é manual dentro do Tiny, então o aviso volta para a tela e a
-  // pessoa decide o que fazer.
-  const contribuinte = await garantirContribuinteIcms(payload?.nota_fiscal?.cliente?.cpf_cnpj, {
-    clienteNota: payload?.nota_fiscal?.cliente,
-  });
+  // pessoa decide o que fazer. O varejo (/varejo) vende para não contribuinte:
+  // o cadastro do cliente fica como está.
+  const contribuinte =
+    classificacao === 'varejo'
+      ? { ok: true, alterado: false, mensagem: 'Varejo: o cadastro do cliente não é marcado como Contribuinte ICMS.' }
+      : await garantirContribuinteIcms(payload?.nota_fiscal?.cliente?.cpf_cnpj, {
+          clienteNota: payload?.nota_fiscal?.cliente,
+        });
   if (!contribuinte.ok) {
     console.error(`[rascunho] Pedido ${gid}: ${contribuinte.mensagem}`);
   }
@@ -212,7 +216,7 @@ export async function POST(request, { params }) {
         ? `Novo rascunho criado no Tiny no lugar do ${anterior.tiny_nota_id} — é este que "Emitir nota" ` +
           `vai emitir. Cancele ou exclua o rascunho ${anterior.tiny_nota_id} dentro do Tiny: a API não ` +
           'faz isso, e os dois ficam duplicados até você remover o antigo à mão.'
-        : 'Rascunho criado no Tiny. Confira os dados e emita a nota pela tela B2B.') +
+        : `Rascunho criado no Tiny. Confira os dados e emita a nota pela tela ${classificacao === 'varejo' ? 'B2C' : 'B2B'}.`) +
         avisoTrocas +
         avisoDoCadastro(cadastroItens),
     });

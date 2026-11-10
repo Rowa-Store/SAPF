@@ -7,7 +7,8 @@
 // franquia, completa o cadastro dele com o que a nota tem e ele não e manda a
 // nota (XML + link do DANFE) para o e-mail do cadastro.
 
-import { emitirNota, garantirContribuinteIcms, obterSituacaoNota } from '@/lib/integrations/tiny';
+import { conferirNatureza, emitirNota, garantirContribuinteIcms, obterNota, obterSituacaoNota } from '@/lib/integrations/tiny';
+import { NATUREZA_VAREJO } from '@/lib/fiscal/montarNota';
 import {
   anotarErro,
   obterRascunhoCriado,
@@ -59,7 +60,28 @@ export async function POST(request, { params }) {
   }
   const recusaData = recusaPorDataDeEmissao(rascunho.rascunho?.payload_enviado?.nota_fiscal);
   if (recusaData) return falhou(gid, recusaData, 422);
-  const contribuinte = await garantirContribuinteIcms(cliente.cpf_cnpj, { clienteNota: cliente });
+  // Varejo (/varejo) é venda para não contribuinte: em vez do Contribuinte
+  // ICMS, confere a natureza — o Tiny troca em silêncio um nome que não está
+  // no cadastro pela natureza padrão (de contribuinte), e a nota sairia com o
+  // CFOP errado.
+  const varejo = rascunho.rascunho?.classificacao === 'varejo';
+  if (varejo) {
+    let natureza;
+    try {
+      natureza = conferirNatureza(await obterNota(tinyNotaId), NATUREZA_VAREJO);
+    } catch (erro) {
+      return falhou(gid, `Não foi possível ler a nota ${tinyNotaId} no Tiny: ${erro.message}. A nota não foi emitida.`, 502);
+    }
+    if (!natureza.ok) {
+      return falhou(
+        gid,
+        `A nota ${tinyNotaId} está no Tiny com a natureza "${natureza.naNota ?? '(vazia)'}", não "${NATUREZA_VAREJO}". ` +
+          'Confira o cadastro de naturezas de operação no Tiny e refaça o rascunho. A nota não foi emitida.',
+        422
+      );
+    }
+  }
+  const contribuinte = varejo ? { ok: true } : await garantirContribuinteIcms(cliente.cpf_cnpj, { clienteNota: cliente });
   if (!contribuinte.ok) {
     return falhou(
       gid,
