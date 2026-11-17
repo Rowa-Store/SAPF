@@ -76,7 +76,8 @@ query PedidoAtacado($id: ID!, $cursor: String) {
     totalWeight
     customer {
       id displayName email phone
-      metafields(first: 20) { nodes { namespace key value } }
+      # CNPJ do cadastro do cliente — fonte do documento (ver classificacao.js).
+      cnpj: metafield(namespace: "custom", key: "cnpj") { value }
     }
     billingAddress  { company address1 address2 city provinceCode zip }
     shippingAddress { company address1 address2 city provinceCode zip }
@@ -115,7 +116,8 @@ query PedidosRecentes($limite: Int!, $cursor: String, $busca: String!) {
       primeiroItem: lineItems(first: 1) { nodes { product { productType } } }
       customer {
         id displayName email
-        metafields(first: 20) { nodes { namespace key value } }
+        # CNPJ do cadastro do cliente — fonte do documento (ver classificacao.js).
+        cnpj: metafield(namespace: "custom", key: "cnpj") { value }
       }
       billingAddress  { company address1 address2 city provinceCode zip }
       shippingAddress { company address1 address2 city provinceCode zip }

@@ -2,7 +2,7 @@
 // ou nenhum dos dois. A regra de negócio é: quem tem CNPJ é atacado; se o CNPJ
 // estiver na lista de franquias, é franquia.
 
-import { pareceCnpj, somenteDigitos } from '../utils.js';
+import { cnpjValido, pareceCnpj, somenteDigitos } from '../utils.js';
 import { listarCnpjsFranquia } from '../db.js';
 
 // Não existe mais lista fixa de CNPJs no código — a fonte de verdade é a
@@ -11,11 +11,11 @@ import { listarCnpjsFranquia } from '../db.js';
 // "nenhum franqueado conhecido" (ver classificarPedido) em vez de arriscar
 // classificar errado.
 
-// TODO: confirmar onde o CNPJ é armazenado no Shopify (metafield do cliente,
-// company do endereço de cobrança, note_attributes ou B2B)
-// Enquanto não há confirmação, lemos todos os candidatos abaixo, na ordem, e
-// usamos o primeiro que existir. A ordem vai do mais estruturado para o mais
-// improvisado, porque campo estruturado erra menos.
+// O CNPJ vem do CADASTRO do cliente na Shopify (metafield custom.cnpj),
+// não do pedido: o que o checkout grava no pedido pode estar desatualizado ou
+// ser de outra empresa. Só quando o cadastro está em branco caímos para os
+// dados do próprio pedido (ver candidatosDeDocumento), para não travar o
+// pedido de quem ainda não tem o CNPJ cadastrado.
 export function extrairCnpj(pedido) {
   // O "company" pode conter só a razão social, sem número nenhum — por isso
   // só aceitamos o candidato cujo conteúdo realmente tem 14 dígitos.
@@ -24,9 +24,9 @@ export function extrairCnpj(pedido) {
 }
 
 /**
- * CPF ou CNPJ do cliente do varejo (loja online), só dígitos. O checkout grava
- * o documento em `info_document` (e repete em `additional_cpf_cnpj`) — os
- * mesmos candidatos do CNPJ, aceitando também os 11 dígitos do CPF.
+ * CPF ou CNPJ do cliente do varejo (loja online), só dígitos. Os mesmos
+ * candidatos do CNPJ (cadastro do cliente primeiro), aceitando também os 11
+ * dígitos do CPF — que o checkout grava em `info_document`.
  */
 export function extrairDocumento(pedido) {
   const achado = candidatosDeDocumento(pedido).find((c) => [11, 14].includes(somenteDigitos(c.valor).length));
@@ -39,14 +39,11 @@ export function extrairDocumento(pedido) {
 function candidatosDeDocumento(pedido) {
   const candidatos = [];
 
-  // 1. Metafields do cliente (ex.: namespace "custom", key "cnpj").
-  const metafields = pedido?.customer?.metafields?.nodes ?? [];
-  for (const mf of metafields) {
-    if (/cnpj|documento|cpf_cnpj/i.test(`${mf.namespace}.${mf.key}`)) {
-      candidatos.push({ valor: mf.value, origem: `metafield ${mf.namespace}.${mf.key}` });
-    }
-  }
+  // 1. Cadastro do cliente — a fonte de verdade.
+  const doCadastro = cnpjDoCadastro(pedido?.customer?.cnpj?.value);
+  if (doCadastro) candidatos.push({ valor: doCadastro, origem: 'cadastro do cliente (custom.cnpj)' });
 
+  // 2 a 4: dados do pedido — só valem quando o cadastro está em branco.
   // 2. Campo "company" dos endereços (comum em contas B2B do Shopify).
   if (pedido?.billingAddress?.company) {
     candidatos.push({ valor: pedido.billingAddress.company, origem: 'billingAddress.company' });
@@ -72,6 +69,21 @@ function candidatosDeDocumento(pedido) {
   }
 
   return candidatos;
+}
+
+/**
+ * CNPJ do metafield custom.cnpj do cliente, só dígitos, ou '' se não houver.
+ * O metafield é do tipo número inteiro, então a Shopify devolve o CNPJ sem os
+ * zeros à esquerda (03746514000189 vira 3746514000189): completamos até 14
+ * dígitos e, só nesse caso, conferimos os dígitos verificadores para não
+ * inventar um CNPJ a partir de um número qualquer.
+ */
+export function cnpjDoCadastro(valor) {
+  const digitos = somenteDigitos(valor ?? '');
+  if (!digitos || digitos.length > 14) return '';
+  if (digitos.length === 14) return digitos;
+  const completo = digitos.padStart(14, '0');
+  return cnpjValido(completo) ? completo : '';
 }
 
 /** Igual a classificarPedido, mas recebe a lista de CNPJs de franquia já
